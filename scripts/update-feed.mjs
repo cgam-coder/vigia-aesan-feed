@@ -4,9 +4,11 @@ import https from "node:https";
 import { resolve } from "node:path";
 import {
   AESAN_LIST_URL,
+  AESAN_LEGACY_LIST_URLS,
   assembleFeed,
   cardFallback,
   parseDetail,
+  parseLegacyListCards,
   parseListCards,
   previousForCard,
 } from "./aesan.mjs";
@@ -111,7 +113,7 @@ const listUrl = (page) => page === 1 ? AESAN_LIST_URL : `${AESAN_LIST_URL}/${pag
 async function readListPages() {
   if (!FULL_HISTORY) {
     const urls = Array.from({ length:RECENT_PAGE_COUNT }, (_, index) => listUrl(index + 1));
-    return { pages:await mapLimit(urls, 2, fetchHtml), scanned:urls.length };
+    return { pages:await mapLimit(urls, 2, fetchHtml), legacyPages:[], scanned:urls.length };
   }
 
   const pages = [];
@@ -134,7 +136,8 @@ async function readListPages() {
     if (consecutivePagesWithoutNewAlerts >= 2) break;
   }
   if (pages.length === MAX_ARCHIVE_PAGES) throw new Error(`El histórico alcanzó el límite de seguridad de ${MAX_ARCHIVE_PAGES} páginas; se amplía el límite antes de declarar la cobertura completa.`);
-  return { pages, scanned:pages.length };
+  const legacyPages = await mapLimit(AESAN_LEGACY_LIST_URLS, 2, async (url) => ({ url, html:await fetchHtml(url) }));
+  return { pages, legacyPages, scanned:pages.length };
 }
 
 async function main() {
@@ -142,7 +145,9 @@ async function main() {
   const current = await readCurrentFeed();
   const listing = await readListPages();
   const pages = listing.pages;
-  const cardsByUrl = new Map(pages.flatMap(parseListCards).map((card) => [card.url, card]));
+  const currentCards = pages.flatMap(parseListCards);
+  const legacyCards = listing.legacyPages.flatMap(({ html }) => parseLegacyListCards(html));
+  const cardsByUrl = new Map([...currentCards, ...legacyCards].map((card) => [card.url, card]));
   const cards = [...cardsByUrl.values()];
   if (!cards.length) throw new Error("AESAN respondió, pero no se identificaron fichas de alerta en el buscador oficial");
 
@@ -158,9 +163,13 @@ async function main() {
     }
   });
 
-  const feed = assembleFeed(current, alerts, now, { fullSync:FULL_HISTORY, pagesScanned:listing.scanned });
+  const feed = assembleFeed(current, alerts, now, {
+    fullSync:FULL_HISTORY,
+    pagesScanned:listing.scanned,
+    legacyIndexesScanned:listing.legacyPages.length,
+  });
   await writeFile(OUTPUT_PATH, `${JSON.stringify(feed, null, 2)}\n`, "utf8");
-  console.log(JSON.stringify({ source:AESAN_LIST_URL, mode:FULL_HISTORY ? "full-history" : "recent", pages:listing.scanned, cards:cards.length, alerts:feed.alerts.length, detailFailures, generatedAt:feed.generatedAt, archive:feed.archive }));
+  console.log(JSON.stringify({ source:AESAN_LIST_URL, mode:FULL_HISTORY ? "full-history" : "recent", pages:listing.scanned, legacyIndexes:listing.legacyPages.length, currentCards:currentCards.length, legacyCards:legacyCards.length, cards:cards.length, alerts:feed.alerts.length, detailFailures, generatedAt:feed.generatedAt, archive:feed.archive }));
 }
 
 await main();

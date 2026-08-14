@@ -2,6 +2,9 @@ import { createHash } from "node:crypto";
 
 export const AESAN_ORIGIN = "https://www.aesan.gob.es";
 export const AESAN_LIST_URL = `${AESAN_ORIGIN}/alertas/buscador-alertas`;
+export const AESAN_LEGACY_LIST_URLS = [
+  `${AESAN_ORIGIN}/AECOSAN/web/seguridad_alimentaria/alertas_alimentarias/listado/aecosan_listado_alertas_alimentarias.htm`,
+];
 
 const MONTHS = new Map([
   ["enero", 0], ["febrero", 1], ["marzo", 2], ["abril", 3], ["mayo", 4], ["junio", 5],
@@ -95,6 +98,23 @@ export function parseListCards(html) {
     const icon = stripHtml(match[2].match(/<[^>]*\bseeMoreCard-heading__icon\b[^>]*>([\s\S]*?)<\//i)?.[1] ?? "");
     const reference = normalizeReference(title);
     cards.set(href, { url:href, title, reference, publishedAt:parseSpanishDate(dateText), category:categoryFor(title, icon) });
+  }
+  return [...cards.values()];
+}
+
+export function parseLegacyListCards(html) {
+  const cards = new Map();
+  for (const match of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
+    const href = absoluteOfficialUrl(attribute(match[1], "href"));
+    if (!href || !isOfficialAesanAlertUrl(href)) continue;
+    const title = attribute(match[1], "title") || stripHtml(match[2]) || new URL(href).pathname.split("/").at(-1)?.replace(/\.htm$/i, "") || "Alerta alimentaria AESAN";
+    cards.set(href, {
+      url:href,
+      title,
+      reference:normalizeReference(title),
+      publishedAt:null,
+      category:categoryFor(title),
+    });
   }
   return [...cards.values()];
 }
@@ -327,12 +347,13 @@ export function assembleFeed(currentFeed, currentAlerts, now = new Date().toISOS
     .sort((a, b) => (b.publishedAt || b.detectedAt || "").localeCompare(a.publishedAt || a.detectedAt || ""));
   const dated = alerts.map((alert) => alert.publishedAt).filter(Boolean).sort();
   const archive = {
-    scope:"Archivo público accesible desde el buscador oficial de AESAN",
+    scope:"Archivo público accesible desde el buscador oficial y el índice histórico de AESAN",
     totalAlerts:alerts.length,
     earliestPublishedAt:dated[0] ?? null,
     latestPublishedAt:dated.at(-1) ?? null,
     lastFullSyncAt:options.fullSync ? now : currentFeed?.archive?.lastFullSyncAt ?? null,
     pagesScanned:options.pagesScanned ?? currentFeed?.archive?.pagesScanned ?? null,
+    legacyIndexesScanned:options.legacyIndexesScanned ?? currentFeed?.archive?.legacyIndexesScanned ?? null,
   };
   const next = { schemaVersion:1, source:{ name:"AESAN", url:AESAN_LIST_URL }, generatedAt:now, archive, alerts };
   if (currentFeed?.generatedAt && feedSignature(currentFeed) === feedSignature(next)) return { ...next, generatedAt:currentFeed.generatedAt };

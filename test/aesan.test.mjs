@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assembleFeed, isOfficialAesanAlertUrl, parseDetail, parseListCards, productClassFor } from "../scripts/aesan.mjs";
+import { assembleFeed, isOfficialAesanAlertUrl, parseDetail, parseLegacyListCards, parseListCards, productClassFor } from "../scripts/aesan.mjs";
 
 const listing = `
 <html><body><div class="aesan-section__row">
@@ -86,6 +86,17 @@ test("acepta fichas históricas oficiales y rechaza redes sociales", () => {
   assert.equal(isOfficialAesanAlertUrl("https://www.aesan.gob.es/alertas/2026_62"), true);
   assert.equal(isOfficialAesanAlertUrl("https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/ampliacion/2024_8.htm"), true);
   assert.equal(isOfficialAesanAlertUrl("https://bsky.app/profile/aesan.gob.es/post/example"), false);
+});
+
+test("extrae fichas desde el índice histórico heredado", () => {
+  const cards = parseLegacyListCards(`
+    <a href="/AECOSAN/web/seguridad_alimentaria/alertas_alimentarias/listado/aecosan_listado_alertas_alimentarias.htm">Listado</a>
+    <a href="/AECOSAN/web/seguridad_alimentaria/alertas_alimentarias/2025_07.htm" title="Advertencia por alérgenos (Ref. ES2025/041)">Ver alerta</a>
+    <a href="/AECOSAN/web/seguridad_alimentaria/ampliacion/INF2021_0056.htm">Ampliación de alerta</a>
+  `);
+  assert.equal(cards.length, 2);
+  assert.equal(cards[0].reference, "ES2025/041");
+  assert.equal(cards[1].url, "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/ampliacion/INF2021_0056.htm");
 });
 
 test("clasifica productos sin confundir la categoría de riesgo", () => {
