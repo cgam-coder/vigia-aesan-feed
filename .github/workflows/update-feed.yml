@@ -1,0 +1,43 @@
+name: Update AESAN feed
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/**"
+      - "test/**"
+      - "package.json"
+      - ".github/workflows/update-feed.yml"
+  schedule:
+    - cron: "3,18,33,48 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-aesan-feed
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+      - run: npm run update
+      - name: Publish changed feed
+        run: |
+          if git diff --quiet -- feed.json; then
+            echo "No alert changes"
+            exit 0
+          fi
+          git config user.name "vigia-aesan-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add feed.json
+          git commit -m "Update AESAN feed"
+          git push
