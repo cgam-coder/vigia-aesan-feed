@@ -136,15 +136,31 @@ async function readListPages() {
     if (consecutivePagesWithoutNewAlerts >= 2) break;
   }
   if (pages.length === MAX_ARCHIVE_PAGES) throw new Error(`El histórico alcanzó el límite de seguridad de ${MAX_ARCHIVE_PAGES} páginas; se amplía el límite antes de declarar la cobertura completa.`);
-  const legacyPages = await mapLimit(AESAN_LEGACY_LIST_URLS, 2, async (url) => ({ url, html:await fetchHtml(url) }));
+  const legacyPages = [];
+  for (const url of AESAN_LEGACY_LIST_URLS) {
+    try {
+      legacyPages.push({ url, html:await fetchHtml(url) });
+    } catch (error) {
+      console.warn(`Índice histórico no disponible ${url}: ${error instanceof Error ? error.message : "error desconocido"}`);
+    }
+  }
   return { pages, legacyPages, scanned:pages.length };
 }
+
+const searchDiscovery = (html) => ({
+  forms:[...html.matchAll(/<form\b[^>]*>/gi)].map((match) => match[0]).slice(0, 20),
+  inputs:[...html.matchAll(/<input\b[^>]*>/gi)].map((match) => match[0]).slice(0, 40),
+  selects:[...html.matchAll(/<select\b[\s\S]*?<\/select>/gi)].map((match) => match[0].replace(/\s+/g, " ")).slice(0, 20),
+  searchLinks:[...new Set([...html.matchAll(/(?:href|action)\s*=\s*["']([^"']*buscador-alertas[^"']*)["']/gi)].map((match) => match[1]))].slice(0, 80),
+  scripts:[...html.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi)].map((match) => match[1]).slice(0, 40),
+});
 
 async function main() {
   const now = new Date().toISOString();
   const current = await readCurrentFeed();
   const listing = await readListPages();
   const pages = listing.pages;
+  if (FULL_HISTORY && pages[0]) console.log(`AESAN_SEARCH_DISCOVERY ${JSON.stringify(searchDiscovery(pages[0]))}`);
   const currentCards = pages.flatMap(parseListCards);
   const legacyCards = listing.legacyPages.flatMap(({ html }) => parseLegacyListCards(html));
   const cardsByUrl = new Map([...currentCards, ...legacyCards].map((card) => [card.url, card]));
