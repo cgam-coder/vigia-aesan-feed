@@ -4,7 +4,7 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-08-14T10:07:25.628Z",
+  "generatedAt": "2026-08-14T10:09:46.245Z",
   "alerts": [
     {
       "id": "aesan:ES2026/485",
@@ -20,7 +20,7 @@
       "scope": "Según la información disponible, la distribución inicial ha sido a la comunidad autónoma de Galicia, si bien no es descartable que exista distribución a otras comunidades autónomas.",
       "action": "Como medida de precaución, se recomienda a aquellas PERSONAS CON ALERGIA O INTOLERANCIA A LOS COMPONENTES DE LA LECHE que pudieran tener el producto anteriormente mencionado en sus hogares se abstengan de consumirlo.",
       "lots": [
-        "todos los lotes del producto en los que no figure el alérgeno leche en el etiquetado."
+        "todos los lotes del producto en los que no figure el alérgeno leche en el etiquetado"
       ],
       "imageUrl": "https://www.aesan.gob.es/dam/jcr:d7f8661b-779f-42b0-ad75-7485c0cd60d3/alerta_10_08_2026_1.2026-08-13-12-56-55.png",
       "url": "https://www.aesan.gob.es/alertas/2026_62",
@@ -63,8 +63,8 @@
       "type": "Alimentaria",
       "priority": "Media",
       "title": "Advertencia para personas con alergia o intolerancia a los componentes de la leche: Presencia de leche no declarada en el etiquetado de salchichón cular extra procedente de España (Ref: ES2026/481)",
-      "product": "Salchichón cular extra.",
-      "brand": "Espuña.",
+      "product": "Salchichón cular extra",
+      "brand": "Espuña",
       "hazard": "Leche no declarada",
       "origin": "España",
       "scope": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Andalucía, Aragón, Comunidad de Madrid, Comunidad Valenciana, Extremadura, Galicia, Islas Baleares y Región de Murcia, si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
@@ -90,7 +90,7 @@
       "brand": "Ocean Sea",
       "hazard": "Salmonella spp.",
       "origin": "Honduras",
-      "scope": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+      "scope": "Población general · publicación oficial AESAN",
       "action": "Se recomienda a las personas que tengan en su domicilio los productos incluidos en esta alerta se abstengan de consumirlos.",
       "lots": [
         "X1392618BUXX"
@@ -115,7 +115,7 @@
       "brand": "Díaz",
       "hazard": "Salmonella spp.",
       "origin": "España",
-      "scope": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+      "scope": "Población general · publicación oficial AESAN",
       "action": "Se recomienda a las personas que tengan en su domicilio productos incluidos en esta alerta se abstengan de consumirlos .",
       "lots": [
         "260513",
@@ -133,7 +133,7 @@
         "260504",
         "04/05/2027",
         "260519",
-        "19/05/2027."
+        "19/05/2027"
       ],
       "imageUrl": "https://www.aesan.gob.es/dam/jcr:17c0fed5-7530-4e76-bf69-4139d065a3c1/alerta_29_07_2026_1.2026-08-07-09-42-49.jpg",
       "url": "https://www.aesan.gob.es/alertas/2026_55_ampliacion_1",
@@ -141,7 +141,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-07-30T22:00:00.000Z",
       "contentHash": "d3f02af2366f2198908d469fdee915338d31c47fea2337b4b64ad1719b0f0d46",
-      "versionCount": 1,
+      "versionCount": 2,
       "isUpdate": true
     },
     {
@@ -168,31 +168,6 @@
       "isUpdate": false
     },
     {
-      "id": "aesan:ES2026/469",
-      "reference": "ES2026/469",
-      "source": "AESAN",
-      "type": "Alimentaria",
-      "priority": "Alta",
-      "title": "Alerta por presencia de Salmonella spp. en salchichón procedente de España (Ref. ES2026/469)",
-      "product": "Vela ibérica salchichón",
-      "brand": "Díaz",
-      "hazard": "Salmonella spp.",
-      "origin": "España",
-      "scope": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Andalucía y Castilla y León, si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
-      "action": "Se recomienda a las personas que tengan en su domicilio los productos incluidos en esta alerta se abstengan de consumirlos.",
-      "lots": [
-        "260513"
-      ],
-      "imageUrl": "https://www.aesan.gob.es/dam/jcr:17c0fed5-7530-4e76-bf69-4139d065a3c1/alerta_29_07_2026_1.2026-08-07-09-42-49.jpg",
-      "url": "https://www.aesan.gob.es/alertas/2026_55",
-      "publishedAt": "2026-07-28T22:00:00.000Z",
-      "detectedAt": "2026-08-14T10:07:25.628Z",
-      "updatedAt": "2026-07-28T22:00:00.000Z",
-      "contentHash": "b87f030ddb9627ecd028556ef9bf4b86a19f0c12071345c94cafbced74d72bb6",
-      "versionCount": 1,
-      "isUpdate": false
-    },
-    {
       "id": "aesan:ES2026/431",
       "reference": "ES2026/431",
       "source": "AESAN",
@@ -201,7 +176,7 @@
       "title": "Advertencia por presencia de gluten: presencia de gluten en harina de garbanzo procedente de España. (Ref. ES2026/431)",
       "product": "Harina de garbanzo",
       "brand": "Harinas de Mallorca",
-      "hazard": "Consultar publicación oficial",
+      "hazard": "Gluten no declarado",
       "origin": "España",
       "scope": "Según la información disponible, la distribución inicial ha sido a Islas Baleares, si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
       "action": "Como medida de precaución, se recomienda a aquellas PERSONAS CON PROBLEMAS DERIVADOS DE LA INGESTA DE GLUTEN que pudieran tener el producto anteriormente mencionado en sus hogares se abstengan de consumirlo.",
@@ -230,10 +205,10 @@
       "brand": "La Mar de Tapas",
       "hazard": "Listeria monocytogenes",
       "origin": "España",
-      "scope": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+      "scope": "Población general · publicación oficial AESAN",
       "action": "Se recomienda a las personas que tengan en su domicilio los productos incluidos en esta alerta se abstengan de consumirlos.",
       "lots": [
-        "todos los lotes que empiezan con las cifras 0532 y con caducidades comprendidas entre el 10 y el 30 de julio."
+        "todos los lotes que empiezan con las cifras 0532 y con caducidades comprendidas entre el 10 y el 30 de julio"
       ],
       "imageUrl": "https://www.aesan.gob.es/dam/jcr:301d5e51-a39f-47ae-a042-f31a99ff7931/alerta_03_07_2026_1.2026-08-07-09-42-49.jpg",
       "url": "https://www.aesan.gob.es/alertas/2026_53",
@@ -255,7 +230,7 @@
       "brand": "El Granero integral",
       "hazard": "Salmonella spp.",
       "origin": "Alemania",
-      "scope": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+      "scope": "Población general · publicación oficial AESAN",
       "action": "Se recomienda a las personas que tengan en su domicilio productos incluidos en esta alerta se abstengan de consumirlos.",
       "lots": [
         "MO260635"
@@ -280,7 +255,7 @@
       "brand": "Sol Natural",
       "hazard": "Leche no declarada",
       "origin": "Italia",
-      "scope": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+      "scope": "Colectivo alérgico o intolerante indicado por AESAN",
       "action": "Como medida de precaución, se recomienda a aquellas personas CON ALERGIA O INTOLERANCA A LOS COMPONENTES DE LA LECHE que pudieran tener en sus hogares el producto anteriormente mencionado se abstengan de consumirlo.",
       "lots": [],
       "imageUrl": "https://www.aesan.gob.es/dam/jcr:c6158c51-0102-4b87-b90f-4af742559f90/alerta_17_06_2026_1.jpg",
@@ -300,10 +275,10 @@
       "priority": "Media",
       "title": "Ampliación de información sobre la alerta por presencia de lactosa no declarada en etiquetado de producto cárnico procedente de España (Ref ES2026/382)",
       "product": "Lomo embuchado",
-      "brand": "Jamones Alfredo Monfort, S.L..",
+      "brand": "Jamones Alfredo Monfort, S.L",
       "hazard": "Lactosa no declarada",
       "origin": "España",
-      "scope": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+      "scope": "Colectivo alérgico o intolerante indicado por AESAN",
       "action": "Como medida de precaución, se recomienda a las personas con intolerancia a la lactosa que pudieran tener el producto anteriormente mencionado en sus hogares que se abstengan de consumirlo.",
       "lots": [
         "03-26",
@@ -319,7 +294,7 @@
         "18-26",
         "28/02/2027",
         "52-25",
-        "22/12/2026."
+        "22/12/2026"
       ],
       "imageUrl": "https://www.aesan.gob.es/dam/jcr:60c77c46-c33a-44a2-8792-5408de155080/alerta_23_06_2026_2.jpg",
       "url": "https://www.aesan.gob.es/alertas/2026_52_Ampliacion_1",
