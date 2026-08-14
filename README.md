@@ -7,10 +7,14 @@ Feed público para VIGÍA generado a partir del [buscador oficial de alertas ali
 - consulta directamente el listado y las fichas oficiales de `aesan.gob.es`;
 - elimina las fichas repetidas que pueda devolver el buscador;
 - extrae referencia, fecha, producto, marca, peligro, origen, lotes, distribución, recomendación e imagen;
+- conserva el archivo histórico público accesible desde el buscador, sin el límite anterior de 60 registros;
+- clasifica el producto y separa marca de operador, fabricante, distribuidor o importador cuando la ficha lo identifica expresamente;
 - conserva siempre el enlace de la ficha oficial de AESAN;
 - publica un JSON normalizado que VIGÍA puede consumir sin depender de redes sociales.
 
-El feed se comprueba cada 15 minutos mediante GitHub Actions. Solo se crea un nuevo commit cuando cambia una alerta, para evitar ruido innecesario en el historial.
+El feed reciente se comprueba cada 15 minutos mediante GitHub Actions. Una sincronización integral recorre semanalmente todo el histórico público y también se ejecuta al publicar cambios del conector. Solo se identifica un proveedor u operador cuando AESAN lo menciona de forma explícita: una marca no se convierte automáticamente en proveedor.
+
+> Alcance: este repositorio archiva las alertas que AESAN publica para consulta pública. No representa todas las notificaciones internas gestionadas mediante SCIRI, ya que AESAN no publica necesariamente cada notificación recibida.
 
 ## Feed
 

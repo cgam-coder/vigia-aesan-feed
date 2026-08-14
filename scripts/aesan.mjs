@@ -54,6 +54,14 @@ const absoluteOfficialUrl = (value) => {
   }
 };
 
+export function isOfficialAesanAlertUrl(value) {
+  const url = absoluteOfficialUrl(value);
+  if (!url) return false;
+  const path = new URL(url).pathname;
+  return /^\/alertas\/(?!buscador-alertas(?:\/|$)|alertas-alimentarias(?:\/|$))[^/?#]+/i.test(path) ||
+    /^\/AECOSAN\/web\/seguridad_alimentaria\/(?:alertas_alimentarias|ampliacion)\/(?!listado\/)[^/?#]+\.htm$/i.test(path);
+}
+
 const normalizeReference = (value = "") => {
   const match = value.match(/ES\s*(20\d{2})\s*[/.\-]\s*(\d+)/i);
   return match ? `ES${match[1]}/${match[2]}` : "";
@@ -80,7 +88,7 @@ export function parseListCards(html) {
   const pattern = /<a\b([^>]*\bclass\s*=\s*(?:\"[^\"]*\bseeMoreCard\b[^\"]*\"|'[^']*\bseeMoreCard\b[^']*')[^>]*)>([\s\S]*?)<\/a>/gi;
   for (const match of html.matchAll(pattern)) {
     const href = absoluteOfficialUrl(attribute(match[1], "href"));
-    if (!href || !/\/alertas\/(?!buscador-alertas|alertas-alimentarias)[^/?#]+/i.test(new URL(href).pathname)) continue;
+    if (!href || !isOfficialAesanAlertUrl(href)) continue;
     const title = attribute(match[1], "title") || stripHtml(match[2].match(/<p\b[^>]*\bseeMoreCard__text\b[^>]*>([\s\S]*?)<\/p>/i)?.[1] ?? "");
     if (!title) continue;
     const dateText = stripHtml(match[2].match(/<[^>]*\bseeMoreCard-heading__value\b[^>]*>([\s\S]*?)<\//i)?.[1] ?? "");
@@ -101,11 +109,59 @@ const fieldMap = (articleHtml) => {
   return fields;
 };
 
-const findField = (fields, labels) => {
+const findFieldEntry = (fields, labels) => {
   for (const [label, value] of fields) {
-    if (labels.some((candidate) => label === candidate || label.startsWith(`${candidate} `))) return value;
+    if (labels.some((candidate) => label === candidate || label.startsWith(`${candidate} `))) return { label, value };
   }
-  return "";
+  return null;
+};
+
+const findField = (fields, labels) => findFieldEntry(fields, labels)?.value ?? "";
+
+export const normalizeEntityKey = (value = "") => stripHtml(value)
+  .normalize("NFD")
+  .replace(/\p{Diacritic}/gu, "")
+  .toLowerCase()
+  .replace(/\b(?:s\.?l\.?u?|s\.?a\.?u?|s\.?c\.?|sociedad limitada|sociedad anonima)\b/g, " ")
+  .replace(/[^a-z0-9]+/g, " ")
+  .trim();
+
+export const productClassFor = (product = "", title = "", alertCategory = "") => {
+  const normalized = (value) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+  const productValue = normalized(product);
+  const titleValue = normalized(title);
+  const classes = [
+    ["Complementos alimenticios", /complemento alimenticio|suplemento|capsul|comprimido|extracto|vitamin|minerales?/],
+    ["Carne y productos cárnicos", /carne|carnic|salchich|choriz|fuet|jamon|lomo embuchado|mortadela|hamburgues|pollo|pavo|cerdo|vacuno/],
+    ["Pescado y marisco", /pescad|marisc|bacalao|salmon|atun|anchoa|langost|gamba|camaron|mejillon|almeja|calamar|pulpo|necora/],
+    ["Leche y productos lácteos", /\bleche\b|lacte|queso|yogur|nata|mantequilla|helado/],
+    ["Platos preparados y sopas", /plato preparado|precocinado|sopa|pizza|lasana|tortilla|croqueta|kit ramen/],
+    ["Cereales, panadería y pasta", /harina|pan\b|bolleri|galleta|cereal|pasta|fideo|ramen|trigo|centeno|avena|arroz|maiz/],
+    ["Bebidas", /bebida|zumo|jugo|cerveza|vino|licor|refresco|infusion|te\b|cafe/],
+    ["Frutas y hortalizas", /fruta|hortaliza|verdura|lechuga|espinaca|tomate|patata|seta|manzana|moringa|brotes? germinad/],
+    ["Frutos secos y semillas", /fruto seco|almendra|avellana|nuez|pistacho|cacahuete|sesamo|semilla/],
+    ["Dulces y confitería", /chocolate|cacao|caramelo|golosina|confiteria|dulce|postre|crema de cacao/],
+    ["Condimentos, salsas y especias", /especia|condimento|salsa|canela|pimenton|curcuma|mostaza|mayonesa/],
+    ["Aceites y grasas", /aceite|grasa vegetal|margarina/],
+  ];
+  return classes.find(([, pattern]) => pattern.test(productValue))?.[0] ||
+    classes.find(([, pattern]) => pattern.test(titleValue))?.[0] ||
+    (alertCategory === "supplements" ? "Complementos alimenticios" : "Otros alimentos");
+};
+
+const providerFor = (fields) => {
+  const groups = [
+    { role:"Fabricante", labels:["fabricante", "empresa fabricante"] },
+    { role:"Distribuidor", labels:["distribuidor", "empresa distribuidora"] },
+    { role:"Importador", labels:["importador", "empresa importadora"] },
+    { role:"Comercializador", labels:["comercializador", "empresa comercializadora"] },
+    { role:"Operador alimentario", labels:["operador alimentario", "operador", "empresa responsable", "nombre de la empresa", "empresa", "razon social"] },
+  ];
+  for (const group of groups) {
+    const entry = findFieldEntry(fields, group.labels);
+    if (entry?.value) return { name:entry.value, role:group.role, evidence:`Campo oficial: ${entry.label}` };
+  }
+  return { name:"", role:"", evidence:"" };
 };
 
 const inferHazard = (text) => {
@@ -191,8 +247,10 @@ export function parseDetail(html, card, previous = null, detectedAt = new Date()
   const reference = normalizeReference(title) || card.reference || new URL(card.url).pathname.split("/").filter(Boolean).at(-1);
   const product = findField(fields, ["nombre del producto", "denominacion del producto", "producto"]) || titleProduct(title);
   const brand = findField(fields, ["marca", "nombre de marca", "marca comercial"]);
+  const provider = providerFor(fields);
   const lotText = findField(fields, ["numero de lote", "nº de lote", "n° de lote", "lote", "lotes"]);
   const category = categoryFor(title, "", articleText);
+  const productClass = productClassFor(product, title, category);
   const image = [...articleHtml.matchAll(/<img\b([^>]*)>/gi)].map((match) => absoluteOfficialUrl(attribute(match[1], "src")))
     .find((url) => url && /\/dam\/jcr:/i.test(url)) ?? null;
   const publishedAt = contentDate(html) || card.publishedAt;
@@ -207,6 +265,13 @@ export function parseDetail(html, card, previous = null, detectedAt = new Date()
     title,
     product,
     brand,
+    productClass,
+    productKey:normalizeEntityKey(product),
+    brandKey:normalizeEntityKey(brand),
+    provider:provider.name,
+    providerKey:normalizeEntityKey(provider.name),
+    providerRole:provider.role,
+    providerEvidence:provider.evidence,
     hazard:inferHazard(title),
     origin:originFor(title, fields),
     scope:scopeFor(articleText, category),
@@ -227,11 +292,14 @@ export function parseDetail(html, card, previous = null, detectedAt = new Date()
 export function cardFallback(card, previous = null, detectedAt = new Date().toISOString()) {
   if (previous) return previous;
   const contentHash = digest(card);
+  const product = titleProduct(card.title);
   return {
     id:`aesan:${card.reference || new URL(card.url).pathname.split("/").filter(Boolean).at(-1)}`,
     reference:card.reference || `AESAN/${new URL(card.url).pathname.split("/").filter(Boolean).at(-1)}`,
     source:"AESAN", type:"Alimentaria", priority:inferPriority(card.title), title:card.title,
-    product:titleProduct(card.title), brand:"", hazard:inferHazard(card.title), origin:originFor(card.title, new Map()),
+    product, brand:"", productClass:productClassFor(product, card.title, card.category), productKey:normalizeEntityKey(product), brandKey:"",
+    provider:"", providerKey:"", providerRole:"", providerEvidence:"",
+    hazard:inferHazard(card.title), origin:originFor(card.title, new Map()),
     scope:card.category === "allergens" ? "Colectivo alérgico o intolerante indicado por AESAN" : "Población general · publicación oficial AESAN",
     action:"Consultar las medidas y recomendaciones incluidas en la ficha oficial de AESAN.", lots:[], imageUrl:null,
     url:card.url, publishedAt:card.publishedAt, detectedAt, updatedAt:card.publishedAt || detectedAt,
@@ -239,9 +307,9 @@ export function cardFallback(card, previous = null, detectedAt = new Date().toIS
   };
 }
 
-const feedSignature = (feed) => JSON.stringify({ source:feed.source, alerts:feed.alerts });
+const feedSignature = (feed) => JSON.stringify({ source:feed.source, archive:feed.archive, alerts:feed.alerts });
 
-export function assembleFeed(currentFeed, currentAlerts, now = new Date().toISOString()) {
+export function assembleFeed(currentFeed, currentAlerts, now = new Date().toISOString(), options = {}) {
   const unique = new Map();
   for (const alert of [...currentAlerts].sort((a, b) => (b.publishedAt || "").localeCompare(a.publishedAt || ""))) {
     const selected = unique.get(alert.id);
@@ -256,9 +324,17 @@ export function assembleFeed(currentFeed, currentAlerts, now = new Date().toISOS
   const activeIds = new Set(activeAlerts.map((alert) => alert.id));
   const archived = (currentFeed?.alerts ?? []).filter((alert) => !activeIds.has(alert.id));
   const alerts = [...activeAlerts, ...archived]
-    .sort((a, b) => (b.publishedAt || b.detectedAt || "").localeCompare(a.publishedAt || a.detectedAt || ""))
-    .slice(0, 60);
-  const next = { schemaVersion:1, source:{ name:"AESAN", url:AESAN_LIST_URL }, generatedAt:now, alerts };
+    .sort((a, b) => (b.publishedAt || b.detectedAt || "").localeCompare(a.publishedAt || a.detectedAt || ""));
+  const dated = alerts.map((alert) => alert.publishedAt).filter(Boolean).sort();
+  const archive = {
+    scope:"Archivo público accesible desde el buscador oficial de AESAN",
+    totalAlerts:alerts.length,
+    earliestPublishedAt:dated[0] ?? null,
+    latestPublishedAt:dated.at(-1) ?? null,
+    lastFullSyncAt:options.fullSync ? now : currentFeed?.archive?.lastFullSyncAt ?? null,
+    pagesScanned:options.pagesScanned ?? currentFeed?.archive?.pagesScanned ?? null,
+  };
+  const next = { schemaVersion:1, source:{ name:"AESAN", url:AESAN_LIST_URL }, generatedAt:now, archive, alerts };
   if (currentFeed?.generatedAt && feedSignature(currentFeed) === feedSignature(next)) return { ...next, generatedAt:currentFeed.generatedAt };
   return next;
 }

@@ -12,7 +12,9 @@ import {
 } from "./aesan.mjs";
 
 const OUTPUT_PATH = resolve(process.env.OUTPUT_PATH || "feed.json");
-const PAGE_COUNT = Math.max(1, Math.min(10, Number(process.env.AESAN_PAGES || 4)));
+const RECENT_PAGE_COUNT = Math.max(1, Math.min(20, Number(process.env.AESAN_PAGES || 4)));
+const MAX_ARCHIVE_PAGES = Math.max(20, Math.min(600, Number(process.env.AESAN_MAX_ARCHIVE_PAGES || 400)));
+const FULL_HISTORY = /^(?:1|true|yes)$/i.test(process.env.AESAN_FULL_HISTORY || "");
 const USER_AGENT = "VIGIA-AESAN-Feed/1.0 (+https://github.com/cgam-coder/vigia-aesan-feed)";
 const TLS_CERTIFICATE_ERRORS = new Set([
   "CERT_HAS_EXPIRED",
@@ -41,7 +43,9 @@ const requestHtml = (value, allowInvalidCertificate = false, redirects = 0) => n
     }
     if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
       response.resume();
-      return rejectRequest(new Error(`HTTP ${response.statusCode ?? "desconocido"}`));
+      const error = new Error(`HTTP ${response.statusCode ?? "desconocido"}`);
+      error.statusCode = response.statusCode;
+      return rejectRequest(error);
     }
     const chunks = [];
     let size = 0;
@@ -72,6 +76,7 @@ async function fetchHtml(url) {
       return html;
     } catch (error) {
       lastError = error;
+      if (error?.statusCode && error.statusCode < 500) break;
       if (attempt < 3) await wait(attempt * 1_500);
     }
   }
@@ -101,11 +106,42 @@ async function readCurrentFeed() {
   }
 }
 
+const listUrl = (page) => page === 1 ? AESAN_LIST_URL : `${AESAN_LIST_URL}/${page}`;
+
+async function readListPages() {
+  if (!FULL_HISTORY) {
+    const urls = Array.from({ length:RECENT_PAGE_COUNT }, (_, index) => listUrl(index + 1));
+    return { pages:await mapLimit(urls, 2, fetchHtml), scanned:urls.length };
+  }
+
+  const pages = [];
+  const seenCards = new Set();
+  let consecutivePagesWithoutNewAlerts = 0;
+  for (let page = 1; page <= MAX_ARCHIVE_PAGES; page += 1) {
+    let html;
+    try {
+      html = await fetchHtml(listUrl(page));
+    } catch (error) {
+      if (page === 1) throw error;
+      console.warn(`Fin del histórico al solicitar la página ${page}: ${error instanceof Error ? error.message : "error desconocido"}`);
+      break;
+    }
+    pages.push(html);
+    const cards = parseListCards(html);
+    const newCards = cards.filter((card) => !seenCards.has(card.url));
+    cards.forEach((card) => seenCards.add(card.url));
+    consecutivePagesWithoutNewAlerts = cards.length === 0 || newCards.length === 0 ? consecutivePagesWithoutNewAlerts + 1 : 0;
+    if (consecutivePagesWithoutNewAlerts >= 2) break;
+  }
+  if (pages.length === MAX_ARCHIVE_PAGES) throw new Error(`El histórico alcanzó el límite de seguridad de ${MAX_ARCHIVE_PAGES} páginas; se amplía el límite antes de declarar la cobertura completa.`);
+  return { pages, scanned:pages.length };
+}
+
 async function main() {
   const now = new Date().toISOString();
   const current = await readCurrentFeed();
-  const listUrls = Array.from({ length:PAGE_COUNT }, (_, index) => index === 0 ? AESAN_LIST_URL : `${AESAN_LIST_URL}/${index + 1}`);
-  const pages = await mapLimit(listUrls, 2, fetchHtml);
+  const listing = await readListPages();
+  const pages = listing.pages;
   const cardsByUrl = new Map(pages.flatMap(parseListCards).map((card) => [card.url, card]));
   const cards = [...cardsByUrl.values()];
   if (!cards.length) throw new Error("AESAN respondió, pero no se identificaron fichas de alerta en el buscador oficial");
@@ -122,9 +158,9 @@ async function main() {
     }
   });
 
-  const feed = assembleFeed(current, alerts, now);
+  const feed = assembleFeed(current, alerts, now, { fullSync:FULL_HISTORY, pagesScanned:listing.scanned });
   await writeFile(OUTPUT_PATH, `${JSON.stringify(feed, null, 2)}\n`, "utf8");
-  console.log(JSON.stringify({ source:AESAN_LIST_URL, pages:PAGE_COUNT, cards:cards.length, alerts:feed.alerts.length, detailFailures, generatedAt:feed.generatedAt }));
+  console.log(JSON.stringify({ source:AESAN_LIST_URL, mode:FULL_HISTORY ? "full-history" : "recent", pages:listing.scanned, cards:cards.length, alerts:feed.alerts.length, detailFailures, generatedAt:feed.generatedAt, archive:feed.archive }));
 }
 
 await main();

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assembleFeed, parseDetail, parseListCards } from "../scripts/aesan.mjs";
+import { assembleFeed, isOfficialAesanAlertUrl, parseDetail, parseListCards, productClassFor } from "../scripts/aesan.mjs";
 
 const listing = `
 <html><body><div class="aesan-section__row">
@@ -20,6 +20,7 @@ const detail = `
   <ul>
     <li><p>Nombre del producto: Kit Ramen Curry</p></li>
     <li><p>Marca: Kania</p></li>
+    <li><p>Distribuidor: Alimentación Ejemplo, S.L.</p></li>
     <li><p>Número de lote: L2401; L2402</p></li>
   </ul>
   <figure><img src="/dam/jcr:abc/producto.png"></figure>
@@ -42,6 +43,11 @@ test("normaliza los campos de una ficha oficial", () => {
   assert.equal(alert.reference, "ES2026/485");
   assert.equal(alert.product, "Kit Ramen Curry");
   assert.equal(alert.brand, "Kania");
+  assert.equal(alert.provider, "Alimentación Ejemplo, S.L");
+  assert.equal(alert.providerRole, "Distribuidor");
+  assert.equal(alert.providerKey, "alimentacion ejemplo");
+  assert.match(alert.providerEvidence, /campo oficial/i);
+  assert.equal(alert.productClass, "Platos preparados y sopas");
   assert.deepEqual(alert.lots, ["L2401", "L2402"]);
   assert.equal(alert.hazard, "Leche no declarada");
   assert.equal(alert.origin, "España");
@@ -74,4 +80,32 @@ test("consolida una ampliación y su ficha original bajo una referencia", () => 
   assert.equal(feed.alerts[0].url, update.url);
   assert.equal(feed.alerts[0].versionCount, 2);
   assert.equal(feed.alerts[0].isUpdate, true);
+});
+
+test("acepta fichas históricas oficiales y rechaza redes sociales", () => {
+  assert.equal(isOfficialAesanAlertUrl("https://www.aesan.gob.es/alertas/2026_62"), true);
+  assert.equal(isOfficialAesanAlertUrl("https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/ampliacion/2024_8.htm"), true);
+  assert.equal(isOfficialAesanAlertUrl("https://bsky.app/profile/aesan.gob.es/post/example"), false);
+});
+
+test("clasifica productos sin confundir la categoría de riesgo", () => {
+  assert.equal(productClassFor("Salchichón cular extra", ""), "Carne y productos cárnicos");
+  assert.equal(productClassFor("Bacalao en aceite", ""), "Pescado y marisco");
+  assert.equal(productClassFor("Kit Ramen Curry", ""), "Platos preparados y sopas");
+});
+
+test("conserva más de sesenta alertas en el archivo", () => {
+  const alerts = Array.from({ length:75 }, (_, index) => ({
+    id:`aesan:ES2025/${index}`,
+    reference:`ES2025/${index}`,
+    source:"AESAN",
+    publishedAt:new Date(Date.UTC(2025, 0, index + 1)).toISOString(),
+    detectedAt:"2026-08-14T10:00:00.000Z",
+    versionCount:1,
+    isUpdate:false,
+  }));
+  const feed = assembleFeed({ alerts:[] }, alerts, "2026-08-14T10:00:00.000Z", { fullSync:true, pagesScanned:25 });
+  assert.equal(feed.alerts.length, 75);
+  assert.equal(feed.archive.totalAlerts, 75);
+  assert.equal(feed.archive.pagesScanned, 25);
 });

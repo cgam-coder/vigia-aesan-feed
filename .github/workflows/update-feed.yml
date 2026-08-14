@@ -10,6 +10,7 @@ on:
       - ".github/workflows/update-feed.yml"
   schedule:
     - cron: "3,18,33,48 * * * *"
+    - cron: "27 3 * * 0"
   workflow_dispatch:
 
 permissions:
@@ -22,7 +23,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,6 +31,9 @@ jobs:
           node-version: 22
       - run: npm test
       - run: npm run update
+        env:
+          AESAN_FULL_HISTORY: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.schedule == '27 3 * * 0') && '1' || '0' }}
+          AESAN_MAX_ARCHIVE_PAGES: "400"
       - name: Publish changed feed
         run: |
           if git diff --quiet -- feed.json; then
