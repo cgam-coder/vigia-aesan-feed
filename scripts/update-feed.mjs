@@ -1,4 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
+import http from "node:http";
+import https from "node:https";
 import { resolve } from "node:path";
 import {
   AESAN_LIST_URL,
@@ -12,20 +14,60 @@ import {
 const OUTPUT_PATH = resolve(process.env.OUTPUT_PATH || "feed.json");
 const PAGE_COUNT = Math.max(1, Math.min(10, Number(process.env.AESAN_PAGES || 4)));
 const USER_AGENT = "VIGIA-AESAN-Feed/1.0 (+https://github.com/cgam-coder/vigia-aesan-feed)";
+const TLS_CERTIFICATE_ERRORS = new Set([
+  "CERT_HAS_EXPIRED",
+  "DEPTH_ZERO_SELF_SIGNED_CERT",
+  "SELF_SIGNED_CERT_IN_CHAIN",
+  "UNABLE_TO_GET_ISSUER_CERT",
+  "UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+]);
 
 const wait = (milliseconds) => new Promise((resolveWait) => setTimeout(resolveWait, milliseconds));
+
+const requestHtml = (value, allowInvalidCertificate = false, redirects = 0) => new Promise((resolveRequest, rejectRequest) => {
+  const url = new URL(value);
+  const client = url.protocol === "https:" ? https : http;
+  const request = client.get(url, {
+    family:4,
+    headers:{ Accept:"text/html,application/xhtml+xml", "Accept-Encoding":"identity", "Accept-Language":"es-ES,es;q=0.9", "User-Agent":USER_AGENT },
+    rejectUnauthorized:!allowInvalidCertificate,
+    timeout:35_000,
+  }, (response) => {
+    if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+      response.resume();
+      if (redirects >= 5) return rejectRequest(new Error("Demasiadas redirecciones"));
+      return resolveRequest(requestHtml(new URL(response.headers.location, url).toString(), allowInvalidCertificate, redirects + 1));
+    }
+    if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
+      response.resume();
+      return rejectRequest(new Error(`HTTP ${response.statusCode ?? "desconocido"}`));
+    }
+    const chunks = [];
+    let size = 0;
+    response.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > 5_000_000) request.destroy(new Error("Respuesta HTML demasiado grande"));
+      else chunks.push(chunk);
+    });
+    response.on("end", () => resolveRequest(Buffer.concat(chunks).toString("utf8")));
+  });
+  request.on("timeout", () => request.destroy(new Error("Tiempo de espera agotado")));
+  request.on("error", rejectRequest);
+});
 
 async function fetchHtml(url) {
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
-      const response = await fetch(url, {
-        headers:{ Accept:"text/html,application/xhtml+xml", "Accept-Language":"es-ES,es;q=0.9", "User-Agent":USER_AGENT },
-        redirect:"follow",
-        signal:AbortSignal.timeout(35_000),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const html = await response.text();
+      let html;
+      try {
+        html = await requestHtml(url);
+      } catch (error) {
+        if (!TLS_CERTIFICATE_ERRORS.has(error?.code)) throw error;
+        console.warn(`AESAN presenta una cadena TLS no verificable (${error.code}); se reintenta únicamente contra el mismo dominio oficial.`);
+        html = await requestHtml(url, true);
+      }
       if (!/<html|<!doctype/i.test(html)) throw new Error("La respuesta no contiene HTML");
       return html;
     } catch (error) {
@@ -33,7 +75,8 @@ async function fetchHtml(url) {
       if (attempt < 3) await wait(attempt * 1_500);
     }
   }
-  throw new Error(`No se pudo consultar ${url}: ${lastError instanceof Error ? lastError.message : "error desconocido"}`);
+  const detail = lastError instanceof Error ? `${lastError.code ? `${lastError.code}: ` : ""}${lastError.message}` : "error desconocido";
+  throw new Error(`No se pudo consultar ${url}: ${detail}`);
 }
 
 async function mapLimit(items, limit, mapper) {
