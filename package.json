@@ -1,0 +1,14 @@
+{
+  "name": "vigia-aesan-feed",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Conector directo entre el buscador oficial de alertas de AESAN y VIGÍA.",
+  "scripts": {
+    "test": "node --test",
+    "update": "node scripts/update-feed.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
