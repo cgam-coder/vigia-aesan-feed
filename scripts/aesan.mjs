@@ -71,7 +71,7 @@ export function parseSpanishDate(value = "") {
 const categoryFor = (title, icon = "", body = "") => {
   const value = `${icon} ${title} ${body}`.toLowerCase();
   if (/\bpill\b|complementos? alimenticios?|sildenafilo|tadalafilo/.test(value)) return "supplements";
-  if (/\bcookie\b|alerg|intoler|no declarad|etiquetado incorrecto/.test(value)) return "allergens";
+  if (/\bcookie\b|advertencia|alerg|intoler|no declarad|etiquetado incorrecto/.test(value)) return "allergens";
   return "general";
 };
 
@@ -96,7 +96,7 @@ const fieldMap = (articleHtml) => {
   for (const item of articleHtml.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)) {
     const text = stripHtml(item[1]);
     const match = text.match(/^([^:\n]{2,90})\s*:\s*([\s\S]+)$/);
-    if (match) fields.set(match[1].toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, ""), match[2].trim());
+    if (match) fields.set(match[1].toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, ""), match[2].trim().replace(/[.;]+$/, ""));
   }
   return fields;
 };
@@ -124,7 +124,7 @@ const inferHazard = (text) => {
   if (found.some((label) => label.startsWith("Fragmentos de ") || label.startsWith("Partículas de "))) {
     found = found.filter((label) => label !== "Cuerpos extraños");
   }
-  if (/alerg|intoler|no declarad|etiquetado incorrecto/.test(value)) {
+  if (/advertencia|alerg|intoler|no declarad|etiquetado incorrecto/.test(value)) {
     const allergens = [
       ["leche", "Leche no declarada"], ["lactosa", "Lactosa no declarada"], ["gluten", "Gluten no declarado"],
       ["almendra", "Almendra no declarada"], ["huevo", "Huevo no declarado"], ["soja", "Soja no declarada"],
@@ -153,7 +153,7 @@ const originFor = (title, fields) => findField(fields, ["pais de origen", "orige
 const sentences = (text) => text.split(/\n+|(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÜ])/).map((line) => line.trim()).filter(Boolean);
 
 const scopeFor = (text, category) => sentences(text).find((line) =>
-  /distribuci[oó]n (?:inicial|del producto)|distribuido (?:inicialmente|en)|comunidades? aut[oó]nomas?/i.test(line))?.slice(0, 360) ||
+  /distribuci[oó]n (?:inicial|del producto)|distribuido (?:inicialmente|en)|ha sido distribuido/i.test(line))?.slice(0, 360) ||
   (category === "allergens" ? "Colectivo alérgico o intolerante indicado por AESAN" :
     category === "supplements" ? "Personas consumidoras del complemento alimenticio indicado" : "Población general · publicación oficial AESAN");
 
@@ -242,9 +242,20 @@ export function cardFallback(card, previous = null, detectedAt = new Date().toIS
 const feedSignature = (feed) => JSON.stringify({ source:feed.source, alerts:feed.alerts });
 
 export function assembleFeed(currentFeed, currentAlerts, now = new Date().toISOString()) {
-  const activeIds = new Set(currentAlerts.map((alert) => alert.id));
+  const unique = new Map();
+  for (const alert of [...currentAlerts].sort((a, b) => (b.publishedAt || "").localeCompare(a.publishedAt || ""))) {
+    const selected = unique.get(alert.id);
+    if (!selected) unique.set(alert.id, alert);
+    else unique.set(alert.id, {
+      ...selected,
+      isUpdate:selected.isUpdate || alert.isUpdate,
+      versionCount:Math.max(selected.versionCount || 1, alert.versionCount || 1, 2),
+    });
+  }
+  const activeAlerts = [...unique.values()];
+  const activeIds = new Set(activeAlerts.map((alert) => alert.id));
   const archived = (currentFeed?.alerts ?? []).filter((alert) => !activeIds.has(alert.id));
-  const alerts = [...currentAlerts, ...archived]
+  const alerts = [...activeAlerts, ...archived]
     .sort((a, b) => (b.publishedAt || b.detectedAt || "").localeCompare(a.publishedAt || a.detectedAt || ""))
     .slice(0, 60);
   const next = { schemaVersion:1, source:{ name:"AESAN", url:AESAN_LIST_URL }, generatedAt:now, alerts };
@@ -252,4 +263,5 @@ export function assembleFeed(currentFeed, currentAlerts, now = new Date().toISOS
   return next;
 }
 
-export const previousForCard = (alerts, card) => alerts.find((alert) => alert.url === card.url || (card.reference && alert.reference === card.reference)) ?? null;
+export const previousForCard = (alerts, card) => alerts.find((alert) => alert.url === card.url) ??
+  alerts.find((alert) => card.reference && alert.reference === card.reference) ?? null;

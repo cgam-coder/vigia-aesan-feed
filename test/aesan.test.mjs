@@ -58,3 +58,20 @@ test("no cambia generatedAt cuando el contenido permanece idéntico", () => {
   const second = assembleFeed(first, [alert], "2026-08-14T10:15:00.000Z");
   assert.equal(second.generatedAt, first.generatedAt);
 });
+
+test("consolida una ampliación y su ficha original bajo una referencia", () => {
+  const card = parseListCards(listing)[0];
+  const original = parseDetail(detail, card, null, "2026-08-14T10:00:00.000Z");
+  const update = {
+    ...original,
+    url:"https://www.aesan.gob.es/alertas/2026_62_ampliacion_1",
+    publishedAt:"2026-08-12T22:00:00.000Z",
+    isUpdate:true,
+    contentHash:"updated-content",
+  };
+  const feed = assembleFeed({ alerts:[] }, [original, update], "2026-08-14T10:00:00.000Z");
+  assert.equal(feed.alerts.length, 1);
+  assert.equal(feed.alerts[0].url, update.url);
+  assert.equal(feed.alerts[0].versionCount, 2);
+  assert.equal(feed.alerts[0].isUpdate, true);
+});
