@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "name": "AESAN",
+    "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
+  },
+  "generatedAt": null,
+  "alerts": []
+}
