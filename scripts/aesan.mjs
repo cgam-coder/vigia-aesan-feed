@@ -2,9 +2,6 @@ import { createHash } from "node:crypto";
 
 export const AESAN_ORIGIN = "https://www.aesan.gob.es";
 export const AESAN_LIST_URL = `${AESAN_ORIGIN}/alertas/buscador-alertas`;
-export const AESAN_LEGACY_LIST_URLS = [
-  `${AESAN_ORIGIN}/AECOSAN/web/seguridad_alimentaria/alertas_alimentarias/listado/aecosan_listado_alertas_alimentarias.htm`,
-];
 
 const MONTHS = new Map([
   ["enero", 0], ["febrero", 1], ["marzo", 2], ["abril", 3], ["mayo", 4], ["junio", 5],
@@ -347,7 +344,7 @@ export function assembleFeed(currentFeed, currentAlerts, now = new Date().toISOS
     .sort((a, b) => (b.publishedAt || b.detectedAt || "").localeCompare(a.publishedAt || a.detectedAt || ""));
   const dated = alerts.map((alert) => alert.publishedAt).filter(Boolean).sort();
   const archive = {
-    scope:"Archivo público accesible desde el buscador oficial y el índice histórico de AESAN",
+    scope:"Archivo público accesible desde el buscador oficial de AESAN",
     totalAlerts:alerts.length,
     earliestPublishedAt:dated[0] ?? null,
     latestPublishedAt:dated.at(-1) ?? null,

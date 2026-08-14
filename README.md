@@ -7,7 +7,7 @@ Feed público para VIGÍA generado a partir del [buscador oficial de alertas ali
 - consulta directamente el listado y las fichas oficiales de `aesan.gob.es`;
 - elimina las fichas repetidas que pueda devolver el buscador;
 - extrae referencia, fecha, producto, marca, peligro, origen, lotes, distribución, recomendación e imagen;
-- conserva el archivo histórico público accesible desde el buscador y el índice histórico heredado de AESAN, sin el límite anterior de 60 registros;
+- conserva el archivo histórico público accesible desde el buscador oficial de AESAN, sin el límite anterior de 60 registros;
 - clasifica el producto y separa marca de operador, fabricante, distribuidor o importador cuando la ficha lo identifica expresamente;
 - conserva siempre el enlace de la ficha oficial de AESAN;
 - publica un JSON normalizado que VIGÍA puede consumir sin depender de redes sociales.

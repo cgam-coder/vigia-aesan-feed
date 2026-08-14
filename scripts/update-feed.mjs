@@ -4,11 +4,9 @@ import https from "node:https";
 import { resolve } from "node:path";
 import {
   AESAN_LIST_URL,
-  AESAN_LEGACY_LIST_URLS,
   assembleFeed,
   cardFallback,
   parseDetail,
-  parseLegacyListCards,
   parseListCards,
   previousForCard,
 } from "./aesan.mjs";
@@ -108,7 +106,25 @@ async function readCurrentFeed() {
   }
 }
 
-const listUrl = (page) => page === 1 ? AESAN_LIST_URL : `${AESAN_LIST_URL}/${page}`;
+const archiveDateRange = () => {
+  const now = new Date();
+  const endDate = [String(now.getUTCDate()).padStart(2, "0"), String(now.getUTCMonth() + 1).padStart(2, "0"), now.getUTCFullYear()].join("/");
+  return { startDate:"01/01/2000", endDate };
+};
+
+const listUrl = (page, fullHistory = false) => {
+  const url = new URL(page === 1 ? AESAN_LIST_URL : `${AESAN_LIST_URL}/${page}`);
+  if (fullHistory) {
+    const { startDate, endDate } = archiveDateRange();
+    url.searchParams.set("filter-initDate", startDate);
+    url.searchParams.set("filter-endDate", endDate);
+    url.searchParams.set("quantity", "40");
+  }
+  return url.toString();
+};
+
+const lastListPage = (html) => Math.max(1, ...[...html.matchAll(/(?:href|action)\s*=\s*["'][^"']*\/buscador-alertas\/(\d+)(?:[?"'])/gi)]
+  .map((match) => Number(match[1])).filter(Number.isFinite));
 
 async function readListPages() {
   if (!FULL_HISTORY) {
@@ -116,35 +132,12 @@ async function readListPages() {
     return { pages:await mapLimit(urls, 2, fetchHtml), legacyPages:[], scanned:urls.length };
   }
 
-  const pages = [];
-  const seenCards = new Set();
-  let consecutivePagesWithoutNewAlerts = 0;
-  for (let page = 1; page <= MAX_ARCHIVE_PAGES; page += 1) {
-    let html;
-    try {
-      html = await fetchHtml(listUrl(page));
-    } catch (error) {
-      if (page === 1) throw error;
-      console.warn(`Fin del histórico al solicitar la página ${page}: ${error instanceof Error ? error.message : "error desconocido"}`);
-      break;
-    }
-    pages.push(html);
-    const cards = parseListCards(html);
-    const newCards = cards.filter((card) => !seenCards.has(card.url));
-    cards.forEach((card) => seenCards.add(card.url));
-    consecutivePagesWithoutNewAlerts = cards.length === 0 || newCards.length === 0 ? consecutivePagesWithoutNewAlerts + 1 : 0;
-    if (consecutivePagesWithoutNewAlerts >= 2) break;
-  }
-  if (pages.length === MAX_ARCHIVE_PAGES) throw new Error(`El histórico alcanzó el límite de seguridad de ${MAX_ARCHIVE_PAGES} páginas; se amplía el límite antes de declarar la cobertura completa.`);
-  const legacyPages = [];
-  for (const url of AESAN_LEGACY_LIST_URLS) {
-    try {
-      legacyPages.push({ url, html:await fetchHtml(url) });
-    } catch (error) {
-      console.warn(`Índice histórico no disponible ${url}: ${error instanceof Error ? error.message : "error desconocido"}`);
-    }
-  }
-  return { pages, legacyPages, scanned:pages.length };
+  const firstPage = await fetchHtml(listUrl(1, true));
+  const declaredLastPage = lastListPage(firstPage);
+  if (declaredLastPage > MAX_ARCHIVE_PAGES) throw new Error(`El buscador declara ${declaredLastPage} páginas, por encima del límite de seguridad de ${MAX_ARCHIVE_PAGES}.`);
+  const remainingUrls = Array.from({ length:declaredLastPage - 1 }, (_, index) => listUrl(index + 2, true));
+  const pages = [firstPage, ...await mapLimit(remainingUrls, 2, fetchHtml)];
+  return { pages, legacyPages:[], scanned:pages.length };
 }
 
 const searchDiscovery = (html) => ({
@@ -162,8 +155,8 @@ async function main() {
   const pages = listing.pages;
   if (FULL_HISTORY && pages[0]) console.log(`AESAN_SEARCH_DISCOVERY ${JSON.stringify(searchDiscovery(pages[0]))}`);
   const currentCards = pages.flatMap(parseListCards);
-  const legacyCards = listing.legacyPages.flatMap(({ html }) => parseLegacyListCards(html));
-  const cardsByUrl = new Map([...currentCards, ...legacyCards].map((card) => [card.url, card]));
+  const legacyCards = [];
+  const cardsByUrl = new Map(currentCards.map((card) => [card.url, card]));
   const cards = [...cardsByUrl.values()];
   if (!cards.length) throw new Error("AESAN respondió, pero no se identificaron fichas de alerta en el buscador oficial");
 
