@@ -4,7 +4,7 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-08-17T10:06:56.517Z",
+  "generatedAt": "2026-08-17T11:04:14.320Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
     "totalAlerts": 106,
@@ -38,13 +38,13 @@
       "lots": [
         "todos los lotes del producto en los que no figure el alérgeno leche en el etiquetado"
       ],
-      "imageUrl": "https://www.aesan.gob.es/dam/jcr:d7f8661b-779f-42b0-ad75-7485c0cd60d3/alerta_10_08_2026_1.2026-08-13-12-56-55.png",
+      "imageUrl": "https://www.aesan.gob.es/dam/jcr:d7f8661b-779f-42b0-ad75-7485c0cd60d3/alerta_10_08_2026_1.2026-08-17-12-54-10.png",
       "url": "https://www.aesan.gob.es/alertas/2026_62",
       "publishedAt": "2026-08-09T22:00:00.000Z",
       "detectedAt": "2026-08-14T10:07:25.628Z",
-      "updatedAt": "2026-08-09T22:00:00.000Z",
-      "contentHash": "7d481e223c5f19da6a8ce8fb8778c6c1a798e99262be78971a6a6629e0d80cf6",
-      "versionCount": 1,
+      "updatedAt": "2026-08-17T11:04:14.320Z",
+      "contentHash": "e3da4764a1054d817a55669fd1c4772471898f0990749f13759033d6aea1318c",
+      "versionCount": 2,
       "isUpdate": false
     },
     {
@@ -70,13 +70,13 @@
       "lots": [
         "K157"
       ],
-      "imageUrl": "https://www.aesan.gob.es/dam/jcr:0940d6fa-28db-432f-83a0-7ca18afe7b0b/Mermelada1.2026-08-13-12-56-55.jpg",
+      "imageUrl": "https://www.aesan.gob.es/dam/jcr:0940d6fa-28db-432f-83a0-7ca18afe7b0b/Mermelada1.2026-08-17-12-54-10.jpg",
       "url": "https://www.aesan.gob.es/alertas/2026_61",
       "publishedAt": "2026-08-06T22:00:00.000Z",
       "detectedAt": "2026-08-14T10:07:25.628Z",
-      "updatedAt": "2026-08-06T22:00:00.000Z",
-      "contentHash": "2a63c8031912cc5261863dcbf35384bd17335f178c38b6b0b414f99aa0d1e232",
-      "versionCount": 1,
+      "updatedAt": "2026-08-17T11:04:14.320Z",
+      "contentHash": "64a0ac874592a87c31dee923aed51edb4c41a758ff81623391ddeae0240bfa37",
+      "versionCount": 2,
       "isUpdate": false
     },
     {
@@ -185,7 +185,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-07-30T22:00:00.000Z",
       "contentHash": "d3f02af2366f2198908d469fdee915338d31c47fea2337b4b64ad1719b0f0d46",
-      "versionCount": 69,
+      "versionCount": 70,
       "isUpdate": true
     },
     {
