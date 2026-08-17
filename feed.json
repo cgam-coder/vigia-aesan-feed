@@ -4,17 +4,49 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-08-17T11:57:42.805Z",
+  "generatedAt": "2026-08-17T13:56:00.648Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
-    "totalAlerts": 106,
+    "totalAlerts": 107,
     "earliestPublishedAt": "2025-04-11T22:00:00.000Z",
-    "latestPublishedAt": "2026-08-09T22:00:00.000Z",
+    "latestPublishedAt": "2026-08-16T22:00:00.000Z",
     "lastFullSyncAt": "2026-08-14T11:39:41.462Z",
     "pagesScanned": 4,
     "legacyIndexesScanned": 0
   },
   "alerts": [
+    {
+      "id": "aesan:ES2026/478",
+      "reference": "ES2026/478",
+      "source": "AESAN",
+      "type": "Alimentaria",
+      "priority": "Media",
+      "title": "Advertencia para personas con a alergia a la mostaza: Presencia de mostaza no declarada en pasta alimenticia “cabello de ángel” procedente de Marruecos (Ref.ES2026/478)",
+      "product": "Cabello de ángel (cheveux d'ange)",
+      "brand": "TRIA",
+      "productClass": "Cereales, panadería y pasta",
+      "productKey": "cabello de angel cheveux d ange",
+      "brandKey": "tria",
+      "provider": "",
+      "providerKey": "",
+      "providerRole": "",
+      "providerEvidence": "",
+      "hazard": "Consultar publicación oficial",
+      "origin": "Marruecos",
+      "scope": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Andalucía, Cataluña, Comunidad Valenciana, Murcia y País Vasco, si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
+      "action": "Como medida de precaución, se recomienda a aquellas PERSONAS CON ALERGIA A LA MOSTAZA que pudieran tener el producto anteriormente mencionado en sus hogares se abstengan de consumirlo.",
+      "lots": [
+        "L10/2025SHN"
+      ],
+      "imageUrl": "https://www.aesan.gob.es/dam/jcr:8717f27c-0cc5-45e3-974d-6bd1dacaad35/Tria.2026-08-17-13-00-15.png",
+      "url": "https://www.aesan.gob.es/alertas/2026_63",
+      "publishedAt": "2026-08-16T22:00:00.000Z",
+      "detectedAt": "2026-08-17T13:56:00.648Z",
+      "updatedAt": "2026-08-16T22:00:00.000Z",
+      "contentHash": "cda1f3ae9d13321a8ad9d07c0bfc1745cd5d50ad53c85b801f5ef67d88a4fdaf",
+      "versionCount": 1,
+      "isUpdate": false
+    },
     {
       "id": "aesan:ES2026/485",
       "reference": "ES2026/485",
@@ -215,7 +247,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-07-30T22:00:00.000Z",
       "contentHash": "d3f02af2366f2198908d469fdee915338d31c47fea2337b4b64ad1719b0f0d46",
-      "versionCount": 71,
+      "versionCount": 72,
       "isUpdate": true
     },
     {
@@ -313,7 +345,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-06-28T22:00:00.000Z",
       "contentHash": "c983be0884f217b4db74e0685fa5117a61c6e06824554a58c7152bc57ea10e8a",
-      "versionCount": 5,
+      "versionCount": 6,
       "isUpdate": true
     },
     {
@@ -343,7 +375,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-06-25T22:00:00.000Z",
       "contentHash": "ab7181ffb4d0bc36b00cc6dc4dd64b5d2587c65603192db3f24751d3e5541a0f",
-      "versionCount": 4,
+      "versionCount": 5,
       "isUpdate": true
     },
     {
@@ -388,7 +420,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-06-25T22:00:00.000Z",
       "contentHash": "682d68aba571a0d292649de1db2e1de771738cfe075786086372a0b19c352140",
-      "versionCount": 5,
+      "versionCount": 6,
       "isUpdate": true
     },
     {
@@ -456,6 +488,36 @@
       "isUpdate": false
     },
     {
+      "id": "aesan:ES2026/349",
+      "reference": "ES2026/349",
+      "source": "AESAN",
+      "type": "Alimentaria",
+      "priority": "Media",
+      "title": "Alerta por presencia de ácido cianhídrico en semillas de lino procedentes de La India (Ref. ES2026/349)",
+      "product": "ALSI (LINSEED) semillas de lino",
+      "brand": "ApnaBaba",
+      "productClass": "Frutos secos y semillas",
+      "productKey": "alsi linseed semillas de lino",
+      "brandKey": "apnababa",
+      "provider": "",
+      "providerKey": "",
+      "providerRole": "",
+      "providerEvidence": "",
+      "hazard": "Consultar publicación oficial",
+      "origin": "La India",
+      "scope": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Comunidad Valenciana, Cataluña, Andalucía, País Vasco e islas Baleares, si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
+      "action": "Se recomienda a las personas que tengan en su domicilio los productos incluidos en esta alerta se abstengan de consumirlos.",
+      "lots": [],
+      "imageUrl": "https://www.aesan.gob.es/dam/jcr:c6c440d2-f76e-4dc4-a90f-48167e23e8dc/alerta_15_06_2026_1.jpg",
+      "url": "https://www.aesan.gob.es/alertas/2026_47",
+      "publishedAt": "2026-06-14T22:00:00.000Z",
+      "detectedAt": "2026-08-14T11:24:15.349Z",
+      "updatedAt": "2026-06-14T22:00:00.000Z",
+      "contentHash": "c39ed54bdd264209debcf94d549689022b06649424f7bbb886db0da938d98113",
+      "versionCount": 1,
+      "isUpdate": false
+    },
+    {
       "id": "aesan:ES2026/350",
       "reference": "ES2026/350",
       "source": "AESAN",
@@ -488,36 +550,6 @@
       "isUpdate": false
     },
     {
-      "id": "aesan:ES2026/349",
-      "reference": "ES2026/349",
-      "source": "AESAN",
-      "type": "Alimentaria",
-      "priority": "Media",
-      "title": "Alerta por presencia de ácido cianhídrico en semillas de lino procedentes de La India (Ref. ES2026/349)",
-      "product": "ALSI (LINSEED) semillas de lino",
-      "brand": "ApnaBaba",
-      "productClass": "Frutos secos y semillas",
-      "productKey": "alsi linseed semillas de lino",
-      "brandKey": "apnababa",
-      "provider": "",
-      "providerKey": "",
-      "providerRole": "",
-      "providerEvidence": "",
-      "hazard": "Consultar publicación oficial",
-      "origin": "La India",
-      "scope": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Comunidad Valenciana, Cataluña, Andalucía, País Vasco e islas Baleares, si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
-      "action": "Se recomienda a las personas que tengan en su domicilio los productos incluidos en esta alerta se abstengan de consumirlos.",
-      "lots": [],
-      "imageUrl": "https://www.aesan.gob.es/dam/jcr:c6c440d2-f76e-4dc4-a90f-48167e23e8dc/alerta_15_06_2026_1.jpg",
-      "url": "https://www.aesan.gob.es/alertas/2026_47",
-      "publishedAt": "2026-06-14T22:00:00.000Z",
-      "detectedAt": "2026-08-14T11:24:15.349Z",
-      "updatedAt": "2026-06-14T22:00:00.000Z",
-      "contentHash": "c39ed54bdd264209debcf94d549689022b06649424f7bbb886db0da938d98113",
-      "versionCount": 1,
-      "isUpdate": false
-    },
-    {
       "id": "aesan:ES2026/327",
       "reference": "ES2026/327",
       "source": "AESAN",
@@ -544,7 +576,7 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-06-04T22:00:00.000Z",
       "contentHash": "667d0b37dde10d42e7702c2a97491fae361b0f44e837aba3a6e336663c7d2998",
-      "versionCount": 4,
+      "versionCount": 5,
       "isUpdate": true
     },
     {
