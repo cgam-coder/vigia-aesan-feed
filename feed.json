@@ -4,7 +4,7 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-08-18T05:59:48.884Z",
+  "generatedAt": "2026-08-18T07:58:31.651Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
     "totalAlerts": 107,
@@ -247,7 +247,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-07-30T22:00:00.000Z",
       "contentHash": "d3f02af2366f2198908d469fdee915338d31c47fea2337b4b64ad1719b0f0d46",
-      "versionCount": 84,
+      "versionCount": 85,
       "isUpdate": true
     },
     {
@@ -345,7 +345,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-06-28T22:00:00.000Z",
       "contentHash": "c983be0884f217b4db74e0685fa5117a61c6e06824554a58c7152bc57ea10e8a",
-      "versionCount": 18,
+      "versionCount": 19,
       "isUpdate": true
     },
     {
@@ -375,7 +375,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-06-25T22:00:00.000Z",
       "contentHash": "ab7181ffb4d0bc36b00cc6dc4dd64b5d2587c65603192db3f24751d3e5541a0f",
-      "versionCount": 17,
+      "versionCount": 18,
       "isUpdate": true
     },
     {
@@ -420,7 +420,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-06-25T22:00:00.000Z",
       "contentHash": "682d68aba571a0d292649de1db2e1de771738cfe075786086372a0b19c352140",
-      "versionCount": 18,
+      "versionCount": 19,
       "isUpdate": true
     },
     {
@@ -576,7 +576,7 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-06-04T22:00:00.000Z",
       "contentHash": "667d0b37dde10d42e7702c2a97491fae361b0f44e837aba3a6e336663c7d2998",
-      "versionCount": 5,
+      "versionCount": 6,
       "isUpdate": true
     },
     {
@@ -674,6 +674,36 @@
       "isUpdate": false
     },
     {
+      "id": "aesan:ES2026/322",
+      "reference": "ES2026/322",
+      "source": "AESAN",
+      "type": "Alimentaria",
+      "priority": "Alta",
+      "title": "Alerta por presencia de Listeria monocytogenes en queso fresco de vaca procedente de España (Ref. ES2026/322)",
+      "product": "Queso fresco semiduro",
+      "brand": "De mi tierra",
+      "productClass": "Leche y productos lácteos",
+      "productKey": "queso fresco semiduro",
+      "brandKey": "de mi tierra",
+      "provider": "",
+      "providerKey": "",
+      "providerRole": "",
+      "providerEvidence": "",
+      "hazard": "Listeria monocytogenes",
+      "origin": "España",
+      "scope": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Galicia, Aragón, Madrid y Andalucía, si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
+      "action": "Se recomienda a las personas que tengan en su domicilio los productos incluidos en esta alerta se abstengan de consumirlos.",
+      "lots": [],
+      "imageUrl": "https://www.aesan.gob.es/dam/jcr:182a6726-26ce-4b91-a938-a64e0f03f46c/alerta_28_05_2026_2.jpg",
+      "url": "https://www.aesan.gob.es/alertas/2026_42",
+      "publishedAt": "2026-05-28T22:00:00.000Z",
+      "detectedAt": "2026-08-14T11:24:15.349Z",
+      "updatedAt": "2026-05-28T22:00:00.000Z",
+      "contentHash": "004d2bcad1e407362e7d024da3f2906c1c6d878de0ff717e1bd440429204cbf2",
+      "versionCount": 1,
+      "isUpdate": false
+    },
+    {
       "id": "aesan:ES2026/312",
       "reference": "ES2026/312",
       "source": "AESAN",
@@ -702,36 +732,6 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-05-28T22:00:00.000Z",
       "contentHash": "85fb1eef8f0403761a87dbf00e1873f181d4fc51b030d96477b3e25aede99703",
-      "versionCount": 1,
-      "isUpdate": false
-    },
-    {
-      "id": "aesan:ES2026/322",
-      "reference": "ES2026/322",
-      "source": "AESAN",
-      "type": "Alimentaria",
-      "priority": "Alta",
-      "title": "Alerta por presencia de Listeria monocytogenes en queso fresco de vaca procedente de España (Ref. ES2026/322)",
-      "product": "Queso fresco semiduro",
-      "brand": "De mi tierra",
-      "productClass": "Leche y productos lácteos",
-      "productKey": "queso fresco semiduro",
-      "brandKey": "de mi tierra",
-      "provider": "",
-      "providerKey": "",
-      "providerRole": "",
-      "providerEvidence": "",
-      "hazard": "Listeria monocytogenes",
-      "origin": "España",
-      "scope": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Galicia, Aragón, Madrid y Andalucía, si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
-      "action": "Se recomienda a las personas que tengan en su domicilio los productos incluidos en esta alerta se abstengan de consumirlos.",
-      "lots": [],
-      "imageUrl": "https://www.aesan.gob.es/dam/jcr:182a6726-26ce-4b91-a938-a64e0f03f46c/alerta_28_05_2026_2.jpg",
-      "url": "https://www.aesan.gob.es/alertas/2026_42",
-      "publishedAt": "2026-05-28T22:00:00.000Z",
-      "detectedAt": "2026-08-14T11:24:15.349Z",
-      "updatedAt": "2026-05-28T22:00:00.000Z",
-      "contentHash": "004d2bcad1e407362e7d024da3f2906c1c6d878de0ff717e1bd440429204cbf2",
       "versionCount": 1,
       "isUpdate": false
     },
@@ -824,7 +824,7 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-05-18T22:00:00.000Z",
       "contentHash": "c35522e441b1f64c7865c2aa5f755d140e614242abf68401932095cb9642e63d",
-      "versionCount": 4,
+      "versionCount": 5,
       "isUpdate": true
     },
     {
@@ -1109,7 +1109,7 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-04-01T22:00:00.000Z",
       "contentHash": "f9cdfb3cca98596e040f54e1a950e48e61dee15e6b1d9dbcf4ee9dea35bc4999",
-      "versionCount": 4,
+      "versionCount": 5,
       "isUpdate": true
     },
     {
@@ -1358,7 +1358,7 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-03-17T23:00:00.000Z",
       "contentHash": "4ca20bbe59a26ceebc60c586ea78f1e6da47532c9093fdd27c91e5232ac7b4c5",
-      "versionCount": 4,
+      "versionCount": 5,
       "isUpdate": true
     },
     {
@@ -1422,36 +1422,6 @@
       "isUpdate": false
     },
     {
-      "id": "aesan:ES2026/103",
-      "reference": "ES2026/103",
-      "source": "AESAN",
-      "type": "Alimentaria",
-      "priority": "Media",
-      "title": "Advertencia para personas con alergia a las almendras: Presencia de almendra no declarada en el etiqutedado en yogur con muesli procedente de España (Ref. ES2026/103)",
-      "product": "Yogur Bífidus Trozos Muesli y Fibra",
-      "brand": "Alteza",
-      "productClass": "Leche y productos lácteos",
-      "productKey": "yogur bifidus trozos muesli y fibra",
-      "brandKey": "alteza",
-      "provider": "",
-      "providerKey": "",
-      "providerRole": "",
-      "providerEvidence": "",
-      "hazard": "Almendra no declarada",
-      "origin": "España",
-      "scope": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Cantabria y Castilla y León, si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
-      "action": "Como medida de precaución, se recomienda a aquellas PERSONAS CON ALERGIA A LAS ALMENDRAS que pudieran tener el producto anteriormente mencionado en sus hogares se abstengan de consumirlo.",
-      "lots": [],
-      "imageUrl": "https://www.aesan.gob.es/dam/jcr:79579f8f-0717-492f-a1c7-af0440b10888/bifidus-alerta.png",
-      "url": "https://www.aesan.gob.es/alertas/2026_16",
-      "publishedAt": "2026-03-02T23:00:00.000Z",
-      "detectedAt": "2026-08-14T11:24:15.349Z",
-      "updatedAt": "2026-03-02T23:00:00.000Z",
-      "contentHash": "139c01cabeef179054e228a72a91a4a98a19ca99c36b0978a0c3662932522713",
-      "versionCount": 1,
-      "isUpdate": false
-    },
-    {
       "id": "aesan:ES2026/104",
       "reference": "ES2026/104",
       "source": "AESAN",
@@ -1478,6 +1448,36 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-03-02T23:00:00.000Z",
       "contentHash": "a548ad4882ed0db0187995d8d8b501de8f53bf07f20570987b186595dcd66b4c",
+      "versionCount": 1,
+      "isUpdate": false
+    },
+    {
+      "id": "aesan:ES2026/103",
+      "reference": "ES2026/103",
+      "source": "AESAN",
+      "type": "Alimentaria",
+      "priority": "Media",
+      "title": "Advertencia para personas con alergia a las almendras: Presencia de almendra no declarada en el etiqutedado en yogur con muesli procedente de España (Ref. ES2026/103)",
+      "product": "Yogur Bífidus Trozos Muesli y Fibra",
+      "brand": "Alteza",
+      "productClass": "Leche y productos lácteos",
+      "productKey": "yogur bifidus trozos muesli y fibra",
+      "brandKey": "alteza",
+      "provider": "",
+      "providerKey": "",
+      "providerRole": "",
+      "providerEvidence": "",
+      "hazard": "Almendra no declarada",
+      "origin": "España",
+      "scope": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Cantabria y Castilla y León, si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
+      "action": "Como medida de precaución, se recomienda a aquellas PERSONAS CON ALERGIA A LAS ALMENDRAS que pudieran tener el producto anteriormente mencionado en sus hogares se abstengan de consumirlo.",
+      "lots": [],
+      "imageUrl": "https://www.aesan.gob.es/dam/jcr:79579f8f-0717-492f-a1c7-af0440b10888/bifidus-alerta.png",
+      "url": "https://www.aesan.gob.es/alertas/2026_16",
+      "publishedAt": "2026-03-02T23:00:00.000Z",
+      "detectedAt": "2026-08-14T11:24:15.349Z",
+      "updatedAt": "2026-03-02T23:00:00.000Z",
+      "contentHash": "139c01cabeef179054e228a72a91a4a98a19ca99c36b0978a0c3662932522713",
       "versionCount": 1,
       "isUpdate": false
     },
@@ -1572,7 +1572,7 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-02-19T23:00:00.000Z",
       "contentHash": "4a6a468a64164823caba0df7400504fe69a499176726c0e1fa0ec26e5200166b",
-      "versionCount": 4,
+      "versionCount": 5,
       "isUpdate": false
     },
     {
@@ -1726,7 +1726,7 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-02-05T23:00:00.000Z",
       "contentHash": "abba83bbc66ad8ca0d34d4e30b1da250b8b068b6732eddc8e540c0cd749e73c1",
-      "versionCount": 4,
+      "versionCount": 5,
       "isUpdate": true
     },
     {
