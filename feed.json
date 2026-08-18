@@ -4,7 +4,7 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-08-18T05:02:40.057Z",
+  "generatedAt": "2026-08-18T05:59:48.884Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
     "totalAlerts": 107,
@@ -247,7 +247,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-07-30T22:00:00.000Z",
       "contentHash": "d3f02af2366f2198908d469fdee915338d31c47fea2337b4b64ad1719b0f0d46",
-      "versionCount": 83,
+      "versionCount": 84,
       "isUpdate": true
     },
     {
@@ -345,7 +345,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-06-28T22:00:00.000Z",
       "contentHash": "c983be0884f217b4db74e0685fa5117a61c6e06824554a58c7152bc57ea10e8a",
-      "versionCount": 17,
+      "versionCount": 18,
       "isUpdate": true
     },
     {
@@ -375,7 +375,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-06-25T22:00:00.000Z",
       "contentHash": "ab7181ffb4d0bc36b00cc6dc4dd64b5d2587c65603192db3f24751d3e5541a0f",
-      "versionCount": 16,
+      "versionCount": 17,
       "isUpdate": true
     },
     {
@@ -420,7 +420,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-06-25T22:00:00.000Z",
       "contentHash": "682d68aba571a0d292649de1db2e1de771738cfe075786086372a0b19c352140",
-      "versionCount": 17,
+      "versionCount": 18,
       "isUpdate": true
     },
     {
