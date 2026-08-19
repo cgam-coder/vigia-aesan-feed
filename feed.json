@@ -4,7 +4,7 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-08-18T23:49:06.995Z",
+  "generatedAt": "2026-08-19T03:13:58.238Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
     "totalAlerts": 107,
@@ -247,7 +247,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-07-30T22:00:00.000Z",
       "contentHash": "d3f02af2366f2198908d469fdee915338d31c47fea2337b4b64ad1719b0f0d46",
-      "versionCount": 98,
+      "versionCount": 99,
       "isUpdate": true
     },
     {
@@ -345,7 +345,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-06-28T22:00:00.000Z",
       "contentHash": "c983be0884f217b4db74e0685fa5117a61c6e06824554a58c7152bc57ea10e8a",
-      "versionCount": 32,
+      "versionCount": 33,
       "isUpdate": true
     },
     {
@@ -375,7 +375,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-06-25T22:00:00.000Z",
       "contentHash": "ab7181ffb4d0bc36b00cc6dc4dd64b5d2587c65603192db3f24751d3e5541a0f",
-      "versionCount": 31,
+      "versionCount": 32,
       "isUpdate": true
     },
     {
@@ -420,7 +420,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-06-25T22:00:00.000Z",
       "contentHash": "682d68aba571a0d292649de1db2e1de771738cfe075786086372a0b19c352140",
-      "versionCount": 32,
+      "versionCount": 33,
       "isUpdate": true
     },
     {
@@ -576,7 +576,7 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-06-04T22:00:00.000Z",
       "contentHash": "667d0b37dde10d42e7702c2a97491fae361b0f44e837aba3a6e336663c7d2998",
-      "versionCount": 19,
+      "versionCount": 20,
       "isUpdate": true
     },
     {
@@ -824,7 +824,7 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-05-18T22:00:00.000Z",
       "contentHash": "c35522e441b1f64c7865c2aa5f755d140e614242abf68401932095cb9642e63d",
-      "versionCount": 18,
+      "versionCount": 19,
       "isUpdate": true
     },
     {
@@ -1109,7 +1109,7 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-04-01T22:00:00.000Z",
       "contentHash": "f9cdfb3cca98596e040f54e1a950e48e61dee15e6b1d9dbcf4ee9dea35bc4999",
-      "versionCount": 18,
+      "versionCount": 19,
       "isUpdate": true
     },
     {
@@ -1358,7 +1358,7 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-03-17T23:00:00.000Z",
       "contentHash": "4ca20bbe59a26ceebc60c586ea78f1e6da47532c9093fdd27c91e5232ac7b4c5",
-      "versionCount": 18,
+      "versionCount": 19,
       "isUpdate": true
     },
     {
@@ -1572,7 +1572,7 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-02-19T23:00:00.000Z",
       "contentHash": "4a6a468a64164823caba0df7400504fe69a499176726c0e1fa0ec26e5200166b",
-      "versionCount": 18,
+      "versionCount": 19,
       "isUpdate": false
     },
     {
@@ -1726,7 +1726,7 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-02-05T23:00:00.000Z",
       "contentHash": "abba83bbc66ad8ca0d34d4e30b1da250b8b068b6732eddc8e540c0cd749e73c1",
-      "versionCount": 18,
+      "versionCount": 19,
       "isUpdate": true
     },
     {
