@@ -4,7 +4,7 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-08-20T11:59:13.620Z",
+  "generatedAt": "2026-08-20T14:10:06.448Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
     "totalAlerts": 107,
@@ -174,36 +174,6 @@
       "isUpdate": false
     },
     {
-      "id": "aesan:ES2026/473",
-      "reference": "ES2026/473",
-      "source": "AESAN",
-      "type": "Alimentaria",
-      "priority": "Alta",
-      "title": "Alerta por presencia de Salmonella spp. en chips de fruta procedentes de Alemania. (Ref. ES2026/473)",
-      "product": "GENUSS PLUS KIDS BIO CHIPS DE MANZANA",
-      "brand": "ROSSMAN",
-      "productClass": "Frutas y hortalizas",
-      "productKey": "genuss plus kids bio chips de manzana",
-      "brandKey": "rossman",
-      "provider": "",
-      "providerKey": "",
-      "providerRole": "",
-      "providerEvidence": "",
-      "hazard": "Salmonella spp.",
-      "origin": "Alemania",
-      "scope": "Según la información disponible, la distribución inicial ha sido a través de la cadena de establecimientos minoristas ROSSMAN, cuya sede social se ubica en la Comunidad Valenciana, pudiendo por tanto existir distribución en otras comunidades autónomas a través de esta cadena.",
-      "action": "Se recomienda a las personas que tengan en su domicilio los productos incluidos en esta alerta se abstengan de consumirlos.",
-      "lots": [],
-      "imageUrl": "https://www.aesan.gob.es/dam/jcr:bdcb5bd9-98ea-4485-8715-bde61dc7ec92/alerta_31_07_2026_1.2026-08-07-09-43-10.jpg",
-      "url": "https://www.aesan.gob.es/alertas/2026_56",
-      "publishedAt": "2026-07-30T22:00:00.000Z",
-      "detectedAt": "2026-08-14T10:07:25.628Z",
-      "updatedAt": "2026-07-30T22:00:00.000Z",
-      "contentHash": "b0201a2f58ee81debb0f0286c336b779be6d68c0e113cd3390340cf8cf6289ea",
-      "versionCount": 1,
-      "isUpdate": false
-    },
-    {
       "id": "aesan:ES2026/469",
       "reference": "ES2026/469",
       "source": "AESAN",
@@ -247,8 +217,38 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-07-30T22:00:00.000Z",
       "contentHash": "d3f02af2366f2198908d469fdee915338d31c47fea2337b4b64ad1719b0f0d46",
-      "versionCount": 122,
+      "versionCount": 123,
       "isUpdate": true
+    },
+    {
+      "id": "aesan:ES2026/473",
+      "reference": "ES2026/473",
+      "source": "AESAN",
+      "type": "Alimentaria",
+      "priority": "Alta",
+      "title": "Alerta por presencia de Salmonella spp. en chips de fruta procedentes de Alemania. (Ref. ES2026/473)",
+      "product": "GENUSS PLUS KIDS BIO CHIPS DE MANZANA",
+      "brand": "ROSSMAN",
+      "productClass": "Frutas y hortalizas",
+      "productKey": "genuss plus kids bio chips de manzana",
+      "brandKey": "rossman",
+      "provider": "",
+      "providerKey": "",
+      "providerRole": "",
+      "providerEvidence": "",
+      "hazard": "Salmonella spp.",
+      "origin": "Alemania",
+      "scope": "Según la información disponible, la distribución inicial ha sido a través de la cadena de establecimientos minoristas ROSSMAN, cuya sede social se ubica en la Comunidad Valenciana, pudiendo por tanto existir distribución en otras comunidades autónomas a través de esta cadena.",
+      "action": "Se recomienda a las personas que tengan en su domicilio los productos incluidos en esta alerta se abstengan de consumirlos.",
+      "lots": [],
+      "imageUrl": "https://www.aesan.gob.es/dam/jcr:bdcb5bd9-98ea-4485-8715-bde61dc7ec92/alerta_31_07_2026_1.2026-08-07-09-43-10.jpg",
+      "url": "https://www.aesan.gob.es/alertas/2026_56",
+      "publishedAt": "2026-07-30T22:00:00.000Z",
+      "detectedAt": "2026-08-14T10:07:25.628Z",
+      "updatedAt": "2026-07-30T22:00:00.000Z",
+      "contentHash": "b0201a2f58ee81debb0f0286c336b779be6d68c0e113cd3390340cf8cf6289ea",
+      "versionCount": 1,
+      "isUpdate": false
     },
     {
       "id": "aesan:ES2026/431",
@@ -345,7 +345,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-06-28T22:00:00.000Z",
       "contentHash": "c983be0884f217b4db74e0685fa5117a61c6e06824554a58c7152bc57ea10e8a",
-      "versionCount": 56,
+      "versionCount": 57,
       "isUpdate": true
     },
     {
@@ -375,7 +375,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-06-25T22:00:00.000Z",
       "contentHash": "ab7181ffb4d0bc36b00cc6dc4dd64b5d2587c65603192db3f24751d3e5541a0f",
-      "versionCount": 55,
+      "versionCount": 56,
       "isUpdate": true
     },
     {
@@ -420,7 +420,7 @@
       "detectedAt": "2026-08-14T10:07:25.628Z",
       "updatedAt": "2026-06-25T22:00:00.000Z",
       "contentHash": "682d68aba571a0d292649de1db2e1de771738cfe075786086372a0b19c352140",
-      "versionCount": 56,
+      "versionCount": 57,
       "isUpdate": true
     },
     {
@@ -550,36 +550,6 @@
       "isUpdate": false
     },
     {
-      "id": "aesan:ES2026/327",
-      "reference": "ES2026/327",
-      "source": "AESAN",
-      "type": "Alimentaria",
-      "priority": "Media",
-      "title": "Ampliación de información sobre la alerta por presencia de almendra y huevo no declarados en postre procedente de España (Ref ES2026/327)",
-      "product": "Delicias de Galleta María",
-      "brand": "La Lechera",
-      "productClass": "Cereales, panadería y pasta",
-      "productKey": "delicias de galleta maria",
-      "brandKey": "la lechera",
-      "provider": "",
-      "providerKey": "",
-      "providerRole": "",
-      "providerEvidence": "",
-      "hazard": "Almendra no declarada · Huevo no declarado",
-      "origin": "España",
-      "scope": "Colectivo alérgico o intolerante indicado por AESAN",
-      "action": "Como medida de precaución, se recomienda a aquellas PERSONAS CON ALERGIA A LAS ALMENDRAS O AL HUEVO que pudieran tener el producto anteriormente mencionado en sus hogares se abstengan de consumirlo.",
-      "lots": [],
-      "imageUrl": null,
-      "url": "https://www.aesan.gob.es/alertas/2026_46_Ampliacion",
-      "publishedAt": "2026-06-04T22:00:00.000Z",
-      "detectedAt": "2026-08-14T11:24:15.349Z",
-      "updatedAt": "2026-06-04T22:00:00.000Z",
-      "contentHash": "667d0b37dde10d42e7702c2a97491fae361b0f44e837aba3a6e336663c7d2998",
-      "versionCount": 43,
-      "isUpdate": true
-    },
-    {
       "id": "aesan:ES2026/332",
       "reference": "ES2026/332",
       "source": "AESAN",
@@ -610,6 +580,36 @@
       "contentHash": "f7e731dbdadbcdb963c04b5e691f16e4ef6f17beca075efb3ebfb717c045b7d7",
       "versionCount": 1,
       "isUpdate": false
+    },
+    {
+      "id": "aesan:ES2026/327",
+      "reference": "ES2026/327",
+      "source": "AESAN",
+      "type": "Alimentaria",
+      "priority": "Media",
+      "title": "Ampliación de información sobre la alerta por presencia de almendra y huevo no declarados en postre procedente de España (Ref ES2026/327)",
+      "product": "Delicias de Galleta María",
+      "brand": "La Lechera",
+      "productClass": "Cereales, panadería y pasta",
+      "productKey": "delicias de galleta maria",
+      "brandKey": "la lechera",
+      "provider": "",
+      "providerKey": "",
+      "providerRole": "",
+      "providerEvidence": "",
+      "hazard": "Almendra no declarada · Huevo no declarado",
+      "origin": "España",
+      "scope": "Colectivo alérgico o intolerante indicado por AESAN",
+      "action": "Como medida de precaución, se recomienda a aquellas PERSONAS CON ALERGIA A LAS ALMENDRAS O AL HUEVO que pudieran tener el producto anteriormente mencionado en sus hogares se abstengan de consumirlo.",
+      "lots": [],
+      "imageUrl": null,
+      "url": "https://www.aesan.gob.es/alertas/2026_46_Ampliacion",
+      "publishedAt": "2026-06-04T22:00:00.000Z",
+      "detectedAt": "2026-08-14T11:24:15.349Z",
+      "updatedAt": "2026-06-04T22:00:00.000Z",
+      "contentHash": "667d0b37dde10d42e7702c2a97491fae361b0f44e837aba3a6e336663c7d2998",
+      "versionCount": 44,
+      "isUpdate": true
     },
     {
       "id": "aesan:ES2026/300",
@@ -824,7 +824,7 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-05-18T22:00:00.000Z",
       "contentHash": "c35522e441b1f64c7865c2aa5f755d140e614242abf68401932095cb9642e63d",
-      "versionCount": 42,
+      "versionCount": 43,
       "isUpdate": true
     },
     {
@@ -1109,7 +1109,7 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-04-01T22:00:00.000Z",
       "contentHash": "f9cdfb3cca98596e040f54e1a950e48e61dee15e6b1d9dbcf4ee9dea35bc4999",
-      "versionCount": 42,
+      "versionCount": 43,
       "isUpdate": true
     },
     {
@@ -1358,7 +1358,7 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-03-17T23:00:00.000Z",
       "contentHash": "4ca20bbe59a26ceebc60c586ea78f1e6da47532c9093fdd27c91e5232ac7b4c5",
-      "versionCount": 42,
+      "versionCount": 43,
       "isUpdate": true
     },
     {
@@ -1572,7 +1572,7 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-02-19T23:00:00.000Z",
       "contentHash": "4a6a468a64164823caba0df7400504fe69a499176726c0e1fa0ec26e5200166b",
-      "versionCount": 42,
+      "versionCount": 43,
       "isUpdate": false
     },
     {
@@ -1726,7 +1726,7 @@
       "detectedAt": "2026-08-14T11:24:15.349Z",
       "updatedAt": "2026-02-05T23:00:00.000Z",
       "contentHash": "abba83bbc66ad8ca0d34d4e30b1da250b8b068b6732eddc8e540c0cd749e73c1",
-      "versionCount": 42,
+      "versionCount": 43,
       "isUpdate": true
     },
     {
