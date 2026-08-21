@@ -116,6 +116,22 @@ export function parseLegacyListCards(html) {
   return [...cards.values()];
 }
 
+export function consolidateListCards(cards) {
+  const selected = new Map();
+  const updateRank = (card) => /ampliaci[oó]n|actualizaci[oó]n|correcci[oó]n/i.test(`${card.title || ""} ${card.url || ""}`) ? 1 : 0;
+  const ordered = [...cards].sort((a, b) =>
+    (b.publishedAt || "").localeCompare(a.publishedAt || "") ||
+    updateRank(b) - updateRank(a) ||
+    a.url.localeCompare(b.url));
+
+  for (const card of ordered) {
+    const key = card.reference ? `reference:${card.reference}` : `url:${card.url}`;
+    if (!selected.has(key)) selected.set(key, card);
+  }
+
+  return [...selected.values()];
+}
+
 const fieldMap = (articleHtml) => {
   const fields = new Map();
   for (const item of articleHtml.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)) {
@@ -328,7 +344,10 @@ const feedSignature = (feed) => JSON.stringify({ source:feed.source, archive:fee
 
 export function assembleFeed(currentFeed, currentAlerts, now = new Date().toISOString(), options = {}) {
   const unique = new Map();
-  for (const alert of [...currentAlerts].sort((a, b) => (b.publishedAt || "").localeCompare(a.publishedAt || ""))) {
+  const alertOrder = (a, b) =>
+    (b.publishedAt || b.detectedAt || "").localeCompare(a.publishedAt || a.detectedAt || "") ||
+    a.id.localeCompare(b.id);
+  for (const alert of [...currentAlerts].sort(alertOrder)) {
     const selected = unique.get(alert.id);
     if (!selected) unique.set(alert.id, alert);
     else unique.set(alert.id, {
@@ -340,8 +359,7 @@ export function assembleFeed(currentFeed, currentAlerts, now = new Date().toISOS
   const activeAlerts = [...unique.values()];
   const activeIds = new Set(activeAlerts.map((alert) => alert.id));
   const archived = (currentFeed?.alerts ?? []).filter((alert) => !activeIds.has(alert.id));
-  const alerts = [...activeAlerts, ...archived]
-    .sort((a, b) => (b.publishedAt || b.detectedAt || "").localeCompare(a.publishedAt || a.detectedAt || ""));
+  const alerts = [...activeAlerts, ...archived].sort(alertOrder);
   const dated = alerts.map((alert) => alert.publishedAt).filter(Boolean).sort();
   const archive = {
     scope:"Archivo público accesible desde el buscador oficial de AESAN",
@@ -349,8 +367,12 @@ export function assembleFeed(currentFeed, currentAlerts, now = new Date().toISOS
     earliestPublishedAt:dated[0] ?? null,
     latestPublishedAt:dated.at(-1) ?? null,
     lastFullSyncAt:options.fullSync ? now : currentFeed?.archive?.lastFullSyncAt ?? null,
-    pagesScanned:options.pagesScanned ?? currentFeed?.archive?.pagesScanned ?? null,
-    legacyIndexesScanned:options.legacyIndexesScanned ?? currentFeed?.archive?.legacyIndexesScanned ?? null,
+    pagesScanned:options.fullSync
+      ? options.pagesScanned ?? null
+      : currentFeed?.archive?.pagesScanned ?? options.pagesScanned ?? null,
+    legacyIndexesScanned:options.fullSync
+      ? options.legacyIndexesScanned ?? null
+      : currentFeed?.archive?.legacyIndexesScanned ?? options.legacyIndexesScanned ?? null,
   };
   const next = { schemaVersion:1, source:{ name:"AESAN", url:AESAN_LIST_URL }, generatedAt:now, archive, alerts };
   if (currentFeed?.generatedAt && feedSignature(currentFeed) === feedSignature(next)) return { ...next, generatedAt:currentFeed.generatedAt };

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assembleFeed, isOfficialAesanAlertUrl, parseDetail, parseLegacyListCards, parseListCards, productClassFor } from "../scripts/aesan.mjs";
+import { assembleFeed, consolidateListCards, isOfficialAesanAlertUrl, parseDetail, parseLegacyListCards, parseListCards, productClassFor } from "../scripts/aesan.mjs";
 
 const listing = `
 <html><body><div class="aesan-section__row">
@@ -80,6 +80,29 @@ test("consolida una ampliación y su ficha original bajo una referencia", () => 
   assert.equal(feed.alerts[0].url, update.url);
   assert.equal(feed.alerts[0].versionCount, 2);
   assert.equal(feed.alerts[0].isUpdate, true);
+});
+
+test("elige una sola ficha, la más reciente, antes de normalizar una referencia", () => {
+  const original = { url:"https://www.aesan.gob.es/alertas/2026_62", reference:"ES2026/485", publishedAt:"2026-08-10T12:00:00.000Z" };
+  const update = { url:"https://www.aesan.gob.es/alertas/2026_62_ampliacion_1", reference:"ES2026/485", publishedAt:"2026-08-12T12:00:00.000Z" };
+  assert.deepEqual(consolidateListCards([original, update]), [update]);
+});
+
+test("prefiere una ampliación cuando dos fichas comparten referencia y fecha", () => {
+  const original = { url:"https://www.aesan.gob.es/alertas/2026_62", title:"Alerta", reference:"ES2026/485", publishedAt:"2026-08-10T12:00:00.000Z" };
+  const update = { url:"https://www.aesan.gob.es/alertas/2026_62_ampliacion_1", title:"Ampliación de alerta", reference:"ES2026/485", publishedAt:"2026-08-10T12:00:00.000Z" };
+  assert.deepEqual(consolidateListCards([original, update]), [update]);
+});
+
+test("una sincronización reciente conserva la cobertura de la última sincronización integral", () => {
+  const current = {
+    alerts:[],
+    archive:{ pagesScanned:58, legacyIndexesScanned:3, lastFullSyncAt:"2026-08-14T11:39:41.462Z" },
+  };
+  const feed = assembleFeed(current, [], "2026-08-21T06:00:00.000Z", { fullSync:false, pagesScanned:4, legacyIndexesScanned:0 });
+  assert.equal(feed.archive.pagesScanned, 58);
+  assert.equal(feed.archive.legacyIndexesScanned, 3);
+  assert.equal(feed.archive.lastFullSyncAt, current.archive.lastFullSyncAt);
 });
 
 test("acepta fichas históricas oficiales y rechaza redes sociales", () => {

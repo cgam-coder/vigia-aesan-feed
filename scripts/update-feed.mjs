@@ -6,6 +6,7 @@ import {
   AESAN_LIST_URL,
   assembleFeed,
   cardFallback,
+  consolidateListCards,
   parseDetail,
   parseListCards,
   previousForCard,
@@ -157,7 +158,7 @@ async function main() {
   const currentCards = pages.flatMap(parseListCards);
   const legacyCards = [];
   const cardsByUrl = new Map(currentCards.map((card) => [card.url, card]));
-  const cards = [...cardsByUrl.values()];
+  const cards = consolidateListCards([...cardsByUrl.values()]);
   if (!cards.length) throw new Error("AESAN respondió, pero no se identificaron fichas de alerta en el buscador oficial");
 
   let detailFailures = 0;
