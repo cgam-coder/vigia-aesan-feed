@@ -1,0 +1,38 @@
+name: Update full AESAN archive
+
+on:
+  schedule:
+    - cron: "27 3 * * 0"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-aesan-feed
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+      - run: npm run update
+        env:
+          AESAN_FULL_HISTORY: "1"
+          AESAN_MAX_ARCHIVE_PAGES: "400"
+      - name: Publish changed feed
+        run: |
+          if git diff --quiet -- feed.json; then
+            echo "No alert changes"
+            exit 0
+          fi
+          git config user.name "vigia-aesan-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add feed.json
+          git commit -m "Update full AESAN archive"
+          git push
