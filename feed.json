@@ -4,13 +4,13 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-08-21T07:21:26.024Z",
+  "generatedAt": "2026-08-23T05:04:51.190Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
     "totalAlerts": 124,
     "earliestPublishedAt": "2025-01-01T23:00:00.000Z",
     "latestPublishedAt": "2026-08-16T22:00:00.000Z",
-    "lastFullSyncAt": "2026-08-21T07:21:26.024Z",
+    "lastFullSyncAt": "2026-08-23T05:04:51.190Z",
     "pagesScanned": 9,
     "legacyIndexesScanned": 0
   },
