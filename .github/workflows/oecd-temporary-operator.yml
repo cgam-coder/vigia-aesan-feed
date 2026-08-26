@@ -1,0 +1,91 @@
+name: VIGIA OECD temporary operator
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/oecd-temporary-operator.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  preflight-and-snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Authenticated OECD preflight
+        env:
+          VIGIA_OECD_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/oecd/sync
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          if [ -z "${VIGIA_SYNC_TOKEN}" ]; then
+            echo "OECD preflight: VIGIA_SYNC_TOKEN is missing"
+            exit 1
+          fi
+          echo "OECD preflight: VIGIA_SYNC_TOKEN is available"
+          response_file="${RUNNER_TEMP}/oecd-preflight.json"
+          http_code="$(curl --silent --show-error --location --request POST             --header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}" --max-time 30             --output "${response_file}" --write-out '%{http_code}'             "${VIGIA_OECD_SYNC_URL}?mode=preflight")"
+          node -e '
+            const fs = require("node:fs");
+            const status = Number(process.argv[1]);
+            const text = fs.readFileSync(process.argv[2], "utf8");
+            let body = null;
+            try { body = JSON.parse(text); } catch {}
+            if (status === 401 && body?.error === "No autorizado") throw new Error("OECD preflight: endpoint reached but token rejected");
+            if (status === 401) throw new Error("OECD preflight: Sites returned 401 before endpoint authorization");
+            if (status !== 200 || body?.authorized !== true || body?.source !== "OECD") {
+              throw new Error(`OECD preflight failed with HTTP ${status}`);
+            }
+            console.log("OECD preflight: endpoint authorized");
+          ' "${http_code}" "${response_file}"
+
+      - name: Create selective OECD snapshot
+        env:
+          VIGIA_OECD_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/oecd/sync
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          response_file="${RUNNER_TEMP}/oecd-snapshot.json"
+          http_code="$(curl --silent --show-error --location --request POST             --header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}" --max-time 120             --output "${response_file}" --write-out '%{http_code}'             "${VIGIA_OECD_SYNC_URL}?mode=snapshot")"
+          node -e '
+            const fs = require("node:fs");
+            const status = Number(process.argv[1]);
+            const body = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+            const snapshot = body?.snapshot;
+            if (status !== 201 || !snapshot || snapshot.source !== "OECD" || snapshot.status !== "ready") {
+              throw new Error(`OECD snapshot failed with HTTP ${status}`);
+            }
+            if (!snapshot.id || !snapshot.createdAt || !snapshot.checksum || !snapshot.sourceDataChecksum) {
+              throw new Error("OECD snapshot manifest is incomplete");
+            }
+            console.log(JSON.stringify({id:snapshot.id,createdAt:snapshot.createdAt,status:snapshot.status,
+              alertCount:snapshot.alertCount,sourceAlertCount:snapshot.sourceAlertCount,
+              checksum:snapshot.checksum,sourceDataChecksum:snapshot.sourceDataChecksum}));
+          ' "${http_code}" "${response_file}"
+
+      - name: Reconstruct and verify OECD snapshot
+        env:
+          VIGIA_OECD_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/oecd/sync
+        run: |
+          response_file="${RUNNER_TEMP}/oecd-snapshot-audit.json"
+          http_code="$(curl --silent --show-error --location --max-time 120             --output "${response_file}" --write-out '%{http_code}'             "${VIGIA_OECD_SYNC_URL}?audit=1")"
+          node -e '
+            const fs = require("node:fs");
+            const status = Number(process.argv[1]);
+            const body = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+            const audit = body?.audit;
+            const snapshot = audit?.snapshot;
+            if (status !== 200 || !snapshot || snapshot.status !== "ready") {
+              throw new Error(`OECD snapshot audit failed with HTTP ${status}`);
+            }
+            if (snapshot.sourceAlertCount !== 0 || snapshot.missingOecdAlerts?.length ||
+                snapshot.changedOecdAlerts?.length || audit.counts?.oecdAlerts !== 0) {
+              throw new Error("OECD pre-backfill snapshot baseline is inconsistent");
+            }
+            console.log(JSON.stringify({checkedAt:audit.checkedAt,counts:audit.counts,
+              snapshot:{id:snapshot.id,status:snapshot.status,sourceAlertCount:snapshot.sourceAlertCount,
+                checksum:snapshot.checksum,sourceDataChecksum:snapshot.sourceDataChecksum,
+                missingOecdAlerts:snapshot.missingOecdAlerts.length,
+                changedOecdAlerts:snapshot.changedOecdAlerts.length}}));
+          ' "${http_code}" "${response_file}"
