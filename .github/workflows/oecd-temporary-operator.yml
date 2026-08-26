@@ -1,4 +1,4 @@
-name: VIGIA OECD temporary operator
+name: VIGIA OECD temporary operator\n# authorized preflight and snapshot run 1
 
 on:
   workflow_dispatch:
