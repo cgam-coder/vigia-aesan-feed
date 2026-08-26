@@ -1,6 +1,7 @@
 name: VIGIA OECD temporary operator
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
