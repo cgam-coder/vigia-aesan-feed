@@ -8,85 +8,116 @@ on:
     paths:
       - ".github/workflows/oecd-temporary-operator.yml"
 
+concurrency:
+  group: vigia-oecd-temporary-backfill
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
 jobs:
-  preflight-and-snapshot:
+  backfill:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 350
+    env:
+      VIGIA_OECD_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/oecd/sync
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
-      - name: Authenticated OECD preflight
-        env:
-          VIGIA_OECD_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/oecd/sync
-          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+      - name: Confirm authorization and snapshot
         run: |
           if [ -z "${VIGIA_SYNC_TOKEN}" ]; then
-            echo "OECD preflight: VIGIA_SYNC_TOKEN is missing"
+            echo "OECD operator: VIGIA_SYNC_TOKEN is missing"
             exit 1
           fi
-          echo "OECD preflight: VIGIA_SYNC_TOKEN is available"
-          response_file="${RUNNER_TEMP}/oecd-preflight.json"
-          http_code="$(curl --silent --show-error --location --request POST             --header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}" --max-time 30             --output "${response_file}" --write-out '%{http_code}'             "${VIGIA_OECD_SYNC_URL}?mode=preflight")"
+          preflight_file="${RUNNER_TEMP}/oecd-preflight.json"
+          preflight_code="$(curl --silent --show-error --location --request POST --header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}" --max-time 30 --output "${preflight_file}" --write-out '%{http_code}' "${VIGIA_OECD_SYNC_URL}?mode=preflight")"
           node -e '
-            const fs = require("node:fs");
-            const status = Number(process.argv[1]);
-            const text = fs.readFileSync(process.argv[2], "utf8");
-            let body = null;
-            try { body = JSON.parse(text); } catch {}
-            if (status === 401 && body?.error === "No autorizado") throw new Error("OECD preflight: endpoint reached but token rejected");
-            if (status === 401) throw new Error("OECD preflight: Sites returned 401 before endpoint authorization");
-            if (status !== 200 || body?.authorized !== true || body?.source !== "OECD") {
-              throw new Error(`OECD preflight failed with HTTP ${status}`);
+            const fs=require("node:fs");
+            const status=Number(process.argv[1]);
+            const body=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
+            if(status!==200||body?.authorized!==true||body?.source!=="OECD") throw new Error(`OECD preflight failed with HTTP ${status}`);
+            console.log("OECD operator: endpoint authorized");
+          ' "${preflight_code}" "${preflight_file}"
+          observe_file="${RUNNER_TEMP}/oecd-observe.json"
+          observe_code="$(curl --silent --show-error --location --max-time 120 --output "${observe_file}" --write-out '%{http_code}' "${VIGIA_OECD_SYNC_URL}?observe=1")"
+          node -e '
+            const fs=require("node:fs");
+            const status=Number(process.argv[1]);
+            const body=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
+            if(status!==200||!body?.snapshot||!["ready","backfill-running","backfill-completed"].includes(body.snapshot.status)) {
+              throw new Error("OECD verified snapshot is unavailable");
             }
-            console.log("OECD preflight: endpoint authorized");
-          ' "${http_code}" "${response_file}"
+            console.log(JSON.stringify({snapshot:body.snapshot,backfill:body.backfill,lease:body.lease}));
+          ' "${observe_code}" "${observe_file}"
 
-      - name: Create selective OECD snapshot
-        env:
-          VIGIA_OECD_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/oecd/sync
-          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+      - name: Run resumable OECD backfill
         run: |
-          response_file="${RUNNER_TEMP}/oecd-snapshot.json"
-          http_code="$(curl --silent --show-error --location --request POST             --header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}" --max-time 120             --output "${response_file}" --write-out '%{http_code}'             "${VIGIA_OECD_SYNC_URL}?mode=snapshot")"
-          node -e '
-            const fs = require("node:fs");
-            const status = Number(process.argv[1]);
-            const body = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-            const snapshot = body?.snapshot;
-            if (status !== 201 || !snapshot || snapshot.source !== "OECD" || snapshot.status !== "ready") {
-              throw new Error(`OECD snapshot failed with HTTP ${status}`);
-            }
-            if (!snapshot.id || !snapshot.createdAt || !snapshot.checksum || !snapshot.sourceDataChecksum) {
-              throw new Error("OECD snapshot manifest is incomplete");
-            }
-            console.log(JSON.stringify({id:snapshot.id,createdAt:snapshot.createdAt,status:snapshot.status,
-              alertCount:snapshot.alertCount,sourceAlertCount:snapshot.sourceAlertCount,
-              checksum:snapshot.checksum,sourceDataChecksum:snapshot.sourceDataChecksum}));
-          ' "${http_code}" "${response_file}"
+          previous_cursor=-1
+          completed=0
+          for batch in $(seq 1 665); do
+            response_file="${RUNNER_TEMP}/oecd-backfill-${batch}.json"
+            http_code="$(curl --silent --show-error --location --request POST --header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}" --retry 2 --retry-delay 3 --retry-all-errors --max-time 480 --output "${response_file}" --write-out '%{http_code}' "${VIGIA_OECD_SYNC_URL}?mode=backfill&batchSize=1")"
+            state_line="$(node -e '
+              const fs=require("node:fs");
+              const http=Number(process.argv[1]);
+              const body=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
+              const previous=Number(process.argv[3]);
+              const state=body?.state;
+              if(http!==200||!state||state.source!=="OECD"||state.mode!=="backfill") throw new Error(`Unexpected OECD backfill response: HTTP ${http}`);
+              if(["failed","skipped"].includes(state.status)||state.lastError) throw new Error(state.lastError||`OECD backfill ${state.status}`);
+              if(state.cursor<previous) throw new Error(`OECD cursor regressed from ${previous} to ${state.cursor}`);
+              if(state.pageErrors!==0||state.detailFailures!==0) throw new Error("OECD backfill reported failures");
+              if(state.leaseOwnerId!==null||state.leaseMode!==null||state.leaseExpiresAt!==null) throw new Error("OECD lease was not released after a unit");
+              console.error(JSON.stringify({status:state.status,cursor:state.cursor,totalUnits:state.totalUnits,
+                pagesScanned:state.pagesScanned,recordsObserved:state.recordsObserved,
+                recordsPersisted:state.recordsPersisted,newCount:state.newCount,updatedCount:state.updatedCount,
+                detailFailures:state.detailFailures,pageErrors:state.pageErrors,lastError:state.lastError}));
+              process.stdout.write(`${state.status}|${state.cursor}|${state.totalUnits}`);
+            ' "${http_code}" "${response_file}" "${previous_cursor}")"
+            state_status="${state_line%%|*}"
+            cursor_and_total="${state_line#*|}"
+            current_cursor="${cursor_and_total%%|*}"
+            previous_cursor="${current_cursor}"
+            if [ "${state_status}" = "completed" ]; then
+              completed=1
+              break
+            fi
+            if [ $((batch % 10)) -eq 0 ]; then
+              audit_file="${RUNNER_TEMP}/oecd-audit-${batch}.json"
+              audit_code="$(curl --silent --show-error --location --max-time 120 --output "${audit_file}" --write-out '%{http_code}' "${VIGIA_OECD_SYNC_URL}?audit=1")"
+              node -e '
+                const fs=require("node:fs");
+                const http=Number(process.argv[1]);
+                const body=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
+                const audit=body?.audit;
+                if(http!==200||!audit) throw new Error(`OECD audit failed with HTTP ${http}`);
+                const c=audit.counts, i=audit.integrity, s=audit.logicalStorage;
+                if(i.duplicateReferenceGroups||i.invalidIdentities||i.emptyCanonicalRows||i.invalidOfficialUrls) throw new Error("OECD integrity gate failed");
+                if(c.oecdAlerts!==c.oecdUniqueReferences||c.oecdAlerts!==c.oecdVersions||c.oecdAlerts!==c.oecdVersionCountSum) throw new Error("OECD initial version gate failed");
+                if(c.aesanAlerts<124||c.safetyGateAlerts<46746||c.rapnaAlerts<11151) throw new Error("Existing-source preservation gate failed");
+                const logical=s.allCanonicalJsonBytes+s.allVersionSnapshotBytes;
+                if(logical>8000000000) throw new Error("OECD logical storage safety envelope exceeded");
+                console.log(JSON.stringify({checkedAt:audit.checkedAt,counts:c,integrity:i,logicalStorage:s,totalLogicalBytes:logical,snapshotStatus:audit.snapshot?.status}));
+              ' "${audit_code}" "${audit_file}"
+            fi
+          done
+          if [ "${completed}" -ne 1 ]; then
+            echo "OECD backfill remains resumable at cursor ${previous_cursor}"
+            exit 2
+          fi
 
-      - name: Reconstruct and verify OECD snapshot
-        env:
-          VIGIA_OECD_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/oecd/sync
+      - name: Final backfill audit
         run: |
-          response_file="${RUNNER_TEMP}/oecd-snapshot-audit.json"
-          http_code="$(curl --silent --show-error --location --max-time 120             --output "${response_file}" --write-out '%{http_code}'             "${VIGIA_OECD_SYNC_URL}?audit=1")"
+          audit_file="${RUNNER_TEMP}/oecd-final-audit.json"
+          audit_code="$(curl --silent --show-error --location --max-time 180 --output "${audit_file}" --write-out '%{http_code}' "${VIGIA_OECD_SYNC_URL}?audit=1")"
           node -e '
-            const fs = require("node:fs");
-            const status = Number(process.argv[1]);
-            const body = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-            const audit = body?.audit;
-            const snapshot = audit?.snapshot;
-            if (status !== 200 || !snapshot || snapshot.status !== "ready") {
-              throw new Error(`OECD snapshot audit failed with HTTP ${status}`);
-            }
-            if (snapshot.sourceAlertCount !== 0 || snapshot.missingOecdAlerts?.length ||
-                snapshot.changedOecdAlerts?.length || audit.counts?.oecdAlerts !== 0) {
-              throw new Error("OECD pre-backfill snapshot baseline is inconsistent");
-            }
-            console.log(JSON.stringify({checkedAt:audit.checkedAt,counts:audit.counts,
-              snapshot:{id:snapshot.id,status:snapshot.status,sourceAlertCount:snapshot.sourceAlertCount,
-                checksum:snapshot.checksum,sourceDataChecksum:snapshot.sourceDataChecksum,
-                missingOecdAlerts:snapshot.missingOecdAlerts.length,
-                changedOecdAlerts:snapshot.changedOecdAlerts.length}}));
-          ' "${http_code}" "${response_file}"
+            const fs=require("node:fs");
+            const http=Number(process.argv[1]);
+            const body=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
+            const audit=body?.audit;
+            if(http!==200||!audit) throw new Error(`OECD final audit failed with HTTP ${http}`);
+            const c=audit.counts, i=audit.integrity;
+            if(i.duplicateReferenceGroups||i.invalidIdentities||i.emptyCanonicalRows||i.invalidOfficialUrls) throw new Error("OECD final integrity gate failed");
+            if(c.oecdAlerts!==c.oecdUniqueReferences||c.oecdAlerts!==c.oecdVersions||c.oecdAlerts!==c.oecdVersionCountSum) throw new Error("OECD final version gate failed");
+            console.log(JSON.stringify(audit));
+          ' "${audit_code}" "${audit_file}"
