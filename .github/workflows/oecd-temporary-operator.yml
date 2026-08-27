@@ -2,11 +2,6 @@ name: VIGIA OECD temporary operator
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/oecd-temporary-operator.yml"
 
 concurrency:
   group: vigia-oecd-temporary-backfill
@@ -22,7 +17,7 @@ jobs:
     timeout-minutes: 360
     env:
       VIGIA_OECD_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/oecd/sync
-      VIGIA_SYNC_TOKEN: \${{ secrets.VIGIA_SYNC_TOKEN }}
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
       - name: Confirm authorization and original snapshot
         run: |
@@ -150,7 +145,7 @@ jobs:
       - name: Queue next bounded continuation
         if: steps.backfill.outputs.completed != 'true'
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           echo "Queuing OECD continuation from cursor \${{ steps.backfill.outputs.cursor }}"
           gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/oecd-temporary-operator.yml/dispatches" -f ref=main
