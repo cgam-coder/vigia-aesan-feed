@@ -52,12 +52,32 @@ jobs:
       - name: Run bounded resumable OECD backfill
         id: backfill
         run: |
-          previous_cursor=-1
+          baseline_file="$RUNNER_TEMP/oecd-backfill-baseline.json"
+          baseline_code="$(curl --silent --show-error --location --max-time 120 --output "$baseline_file" --write-out '%{http_code}' "$VIGIA_OECD_SYNC_URL?observe=1")"
+          baseline_line="$(node -e '
+            const fs=require("node:fs");
+            const http=Number(process.argv[1]);
+            const body=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
+            const state=body?.backfill;
+            if(http!==200||!state||state.source!=="OECD"||state.mode!=="backfill") throw new Error("OECD baseline unavailable: HTTP "+http);
+            if(state.planVersion!=="oecd-v2-daily"||!state.cursorKey) throw new Error("OECD baseline cursor is not versioned");
+            if(body.lease!==null||state.leaseOwnerId!==null||state.leaseMode!==null||state.leaseExpiresAt!==null) throw new Error("OECD baseline has an active lease");
+            console.error(JSON.stringify({baseline:true,status:state.status,cursor:state.cursor,cursorKey:state.cursorKey,
+              totalUnits:state.totalUnits,recordsObserved:state.recordsObserved,recordsPersisted:state.recordsPersisted,
+              newCount:state.newCount,updatedCount:state.updatedCount,detailFailures:state.detailFailures,
+              pageErrors:state.pageErrors,lastError:state.lastError}));
+            process.stdout.write([state.status,state.cursor,state.totalUnits,state.cursorKey,state.pageErrors,
+              state.detailFailures,state.recordsObserved,state.recordsPersisted,state.newCount,state.updatedCount].join("|"));
+          ' "$baseline_code" "$baseline_file")"
+          IFS='|' read -r baseline_status previous_cursor total_units cursor_key baseline_page_errors baseline_detail_failures previous_records_observed previous_records_persisted previous_new_count baseline_updated_count <<< "$baseline_line"
           completed=false
+          if [ "$baseline_status" = "completed" ]; then
+            completed=true
+          fi
           successful_units=0
           wait_attempts=0
           deadline=$(( $(date +%s) + 18000 ))
-          while [ "$successful_units" -lt 300 ] && [ "$(date +%s)" -lt "$deadline" ]; do
+          while [ "$completed" != "true" ] && [ "$successful_units" -lt 300 ] && [ "$(date +%s)" -lt "$deadline" ]; do
             response_file="$RUNNER_TEMP/oecd-backfill-$successful_units-$wait_attempts.json"
             http_code="$(curl --silent --show-error --location --request POST --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" --retry 1 --retry-delay 3 --retry-all-errors --max-time 120 --output "$response_file" --write-out '%{http_code}' "$VIGIA_OECD_SYNC_URL?mode=backfill&batchSize=1" || true)"
             if [ "$http_code" = "202" ]; then
@@ -80,22 +100,36 @@ jobs:
               const fs=require("node:fs");
               const http=Number(process.argv[1]);
               const body=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
-              const previous=Number(process.argv[3]);
+              const previousCursor=Number(process.argv[3]);
+              const baselinePageErrors=Number(process.argv[4]);
+              const baselineDetailFailures=Number(process.argv[5]);
+              const previousObserved=Number(process.argv[6]);
+              const previousPersisted=Number(process.argv[7]);
+              const previousNewCount=Number(process.argv[8]);
+              const baselineUpdatedCount=Number(process.argv[9]);
               const state=body?.state;
               if(http!==200||!state||state.source!=="OECD"||state.mode!=="backfill") throw new Error("Unexpected OECD backfill response: HTTP "+http);
               if(["failed","skipped"].includes(state.status)||state.lastError) throw new Error(state.lastError||("OECD backfill "+state.status));
               if(state.planVersion!=="oecd-v2-daily"||!state.cursorKey) throw new Error("OECD versioned cursor was not persisted");
-              if(state.cursor<previous) throw new Error("OECD cursor regressed from "+previous+" to "+state.cursor);
-              if(state.pageErrors!==0||state.detailFailures!==0) throw new Error("OECD backfill reported failures");
+              if(state.cursor!==previousCursor+1) throw new Error("OECD cursor did not advance exactly one unit from "+previousCursor+" to "+state.cursor);
+              if(state.pageErrors!==baselinePageErrors) throw new Error("OECD pageErrors changed from baseline "+baselinePageErrors+" to "+state.pageErrors);
+              if(state.detailFailures!==baselineDetailFailures) throw new Error("OECD detailFailures changed from baseline "+baselineDetailFailures+" to "+state.detailFailures);
+              if(state.recordsObserved<previousObserved||state.recordsPersisted<previousPersisted||state.newCount<previousNewCount) throw new Error("OECD cumulative counters regressed");
+              if(state.updatedCount!==baselineUpdatedCount) throw new Error("OECD updatedCount changed from baseline "+baselineUpdatedCount+" to "+state.updatedCount);
+              if(state.status==="completed"&&state.cursor!==state.totalUnits) throw new Error("OECD completed state does not match totalUnits");
               if(state.leaseOwnerId!==null||state.leaseMode!==null||state.leaseExpiresAt!==null) throw new Error("OECD lease was not released after a unit");
               console.error(JSON.stringify({status:state.status,cursor:state.cursor,cursorKey:state.cursorKey,totalUnits:state.totalUnits,
                 pagesScanned:state.pagesScanned,recordsObserved:state.recordsObserved,
                 recordsPersisted:state.recordsPersisted,newCount:state.newCount,updatedCount:state.updatedCount,
                 detailFailures:state.detailFailures,pageErrors:state.pageErrors,lastError:state.lastError}));
-              process.stdout.write([state.status,state.cursor,state.totalUnits,state.cursorKey].join("|"));
-            ' "$http_code" "$response_file" "$previous_cursor")"
-            IFS='|' read -r state_status current_cursor total_units cursor_key <<< "$state_line"
+              process.stdout.write([state.status,state.cursor,state.totalUnits,state.cursorKey,state.recordsObserved,
+                state.recordsPersisted,state.newCount].join("|"));
+            ' "$http_code" "$response_file" "$previous_cursor" "$baseline_page_errors" "$baseline_detail_failures" "$previous_records_observed" "$previous_records_persisted" "$previous_new_count" "$baseline_updated_count")"
+            IFS='|' read -r state_status current_cursor total_units cursor_key current_records_observed current_records_persisted current_new_count <<< "$state_line"
             previous_cursor="$current_cursor"
+            previous_records_observed="$current_records_observed"
+            previous_records_persisted="$current_records_persisted"
+            previous_new_count="$current_new_count"
             successful_units=$((successful_units + 1))
             wait_attempts=0
             if [ "$state_status" = "completed" ]; then
