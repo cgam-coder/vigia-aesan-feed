@@ -1,0 +1,54 @@
+name: VIGÍA OECD recent sync
+
+on:
+  schedule:
+    - cron: "19 11 * * *"
+
+concurrency:
+  group: vigia-oecd-recent
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VIGIA_OECD_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/oecd/sync
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+    steps:
+      - name: Preflight OECD authorization
+        run: |
+          if [ -z "$VIGIA_SYNC_TOKEN" ]; then
+            echo "OECD preflight: VIGIA_SYNC_TOKEN is missing"
+            exit 1
+          fi
+          response_file="$RUNNER_TEMP/oecd-preflight.json"
+          http_code="$(curl --silent --show-error --location --request POST \
+            --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" --max-time 30 \
+            --output "$response_file" --write-out '%{http_code}' "$VIGIA_OECD_SYNC_URL?mode=preflight")"
+          node -e '
+            const fs=require("node:fs");
+            const status=Number(process.argv[1]);
+            const body=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
+            if(status!==200||body?.authorized!==true||body?.source!=="OECD") throw new Error(`OECD preflight failed with HTTP ${status}`);
+            console.log("OECD preflight: endpoint authorized");
+          ' "$http_code" "$response_file"
+
+      - name: Refresh OECD
+        run: |
+          response_file="$RUNNER_TEMP/oecd-sync.json"
+          http_code="$(curl --silent --show-error --location --request POST \
+            --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" --max-time 480 \
+            --output "$response_file" --write-out '%{http_code}' "$VIGIA_OECD_SYNC_URL?mode=recent")"
+          node -e '
+            const fs=require("node:fs");
+            const status=Number(process.argv[1]);
+            const state=JSON.parse(fs.readFileSync(process.argv[2],"utf8"))?.state;
+            if(status!==200||state?.source!=="OECD"||state?.mode!=="recent"||state?.status!=="completed") throw new Error(state?.lastError||`OECD recent sync failed with HTTP ${status}`);
+            if(state.lastError||state.detailFailures!==0||state.pageErrors!==0) throw new Error("OECD recent sync reported failures");
+            if(state.leaseOwnerId!==null||state.leaseMode!==null||state.leaseExpiresAt!==null) throw new Error("OECD recent lease was not released");
+            console.log(JSON.stringify({status:state.status,recordsObserved:state.recordsObserved,recordsPersisted:state.recordsPersisted,newCount:state.newCount,updatedCount:state.updatedCount,detailFailures:state.detailFailures,pageErrors:state.pageErrors,lastError:state.lastError,leaseReleased:true}));
+          ' "$http_code" "$response_file"
