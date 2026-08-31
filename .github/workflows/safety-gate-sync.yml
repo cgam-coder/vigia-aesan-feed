@@ -16,26 +16,90 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
+      - name: Smoke deployed read plane
+        run: |
+          root_code="$(curl --silent --show-error --location --max-time 30 \
+            --output "${RUNNER_TEMP}/vigia-root.html" --write-out '%{http_code}' \
+            "${VIGIA_BASE_URL}/")"
+          alerts_code="$(curl --silent --show-error --location --max-time 60 \
+            --output "${RUNNER_TEMP}/vigia-alerts.json" --write-out '%{http_code}' \
+            "${VIGIA_BASE_URL}/api/alerts")"
+          node -e '
+            const fs = require("node:fs");
+            const rootStatus = Number(process.argv[1]);
+            const alertsStatus = Number(process.argv[2]);
+            const body = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
+            if (rootStatus !== 200) throw new Error(`VIGIA frontend smoke failed with HTTP ${rootStatus}`);
+            if (alertsStatus !== 200 || body?.schemaVersion !== 1 || !Array.isArray(body?.alerts) || body.alerts.length === 0) {
+              throw new Error(`VIGIA read-plane smoke failed with HTTP ${alertsStatus}`);
+            }
+            console.log(JSON.stringify({ rootStatus, alertsStatus, schemaVersion:body.schemaVersion, mode:body.mode, alerts:body.alerts.length }));
+          ' "${root_code}" "${alerts_code}" "${RUNNER_TEMP}/vigia-alerts.json"
+
+      - name: Control-plane authorization preflight
+        run: |
+          if [ -z "${VIGIA_SYNC_TOKEN}" ]; then
+            echo "VIGIA_SYNC_TOKEN is missing"
+            exit 1
+          fi
+          for pair in "aesan:AESAN" "safety-gate:SAFETY GATE" "rapna:RAPNA" "oecd:OECD"; do
+            route="${pair%%:*}"
+            source="${pair#*:}"
+            endpoint="${VIGIA_BASE_URL}/api/${route}/sync?mode=preflight"
+            no_token_code="$(curl --silent --show-error --location --request POST --max-time 30 \
+              --output "${RUNNER_TEMP}/${route}-no-token.json" --write-out '%{http_code}' "${endpoint}")"
+            wrong_token_code="$(curl --silent --show-error --location --request POST --max-time 30 \
+              --header 'Authorization: Bearer work-16-invalid-token' \
+              --output "${RUNNER_TEMP}/${route}-wrong-token.json" --write-out '%{http_code}' "${endpoint}")"
+            correct_token_code="$(curl --silent --show-error --location --request POST --max-time 30 \
+              --header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}" \
+              --output "${RUNNER_TEMP}/${route}-authorized.json" --write-out '%{http_code}' "${endpoint}")"
+            node -e '
+              const fs = require("node:fs");
+              const noToken = Number(process.argv[1]);
+              const wrongToken = Number(process.argv[2]);
+              const correctToken = Number(process.argv[3]);
+              const source = process.argv[4];
+              const body = JSON.parse(fs.readFileSync(process.argv[5], "utf8"));
+              if (noToken !== 401 || wrongToken !== 401) throw new Error(`${source} accepted an unauthenticated mutation preflight`);
+              if (correctToken !== 200 || body?.authorized !== true || body?.source !== source) {
+                throw new Error(`${source} authorization preflight failed with HTTP ${correctToken}`);
+              }
+              console.log(`${source} authorization preflight passed`);
+            ' "${no_token_code}" "${wrong_token_code}" "${correct_token_code}" "${source}" \
+              "${RUNNER_TEMP}/${route}-authorized.json"
+          done
+
       - name: Refresh Safety Gate
         env:
           VIGIA_SAFETY_GATE_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/safety-gate/sync
         run: |
           response_file="${RUNNER_TEMP}/safety-gate-sync.json"
           http_code="$(curl --silent --show-error --location \
+            --request POST \
+            --header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}" \
             --retry 2 --retry-delay 3 --retry-all-errors \
             --max-time 480 --output "${response_file}" --write-out '%{http_code}' \
-            "${VIGIA_SAFETY_GATE_SYNC_URL}")"
+            "${VIGIA_SAFETY_GATE_SYNC_URL}?mode=recent")"
           node -e '
             const fs = require("node:fs");
             const status = Number(process.argv[1]);
             const body = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-            if (status >= 500 || body?.state?.status === "failed") {
+            if (status === 401 || status >= 500 || body?.state?.status === "failed") {
               throw new Error(body?.state?.lastError || `Safety Gate sync failed with HTTP ${status}`);
             }
-            if (!body?.state || body.state.source !== "SAFETY GATE" || body.state.mode !== "recent") {
+            if (![200, 202].includes(status) || !body?.state || body.state.source !== "SAFETY GATE" || body.state.mode !== "recent") {
               throw new Error("Unexpected VIGIA Safety Gate response");
             }
+            if (body.state.lastError) throw new Error(body.state.lastError);
+            if (body.state.status === "completed" && (body.state.leaseOwnerId || body.state.leaseMode || body.state.leaseExpiresAt)) {
+              throw new Error("Safety Gate completed without releasing its lease state");
+            }
+            if (!["completed", "skipped"].includes(body.state.status)) throw new Error(`Unexpected Safety Gate state ${body.state.status}`);
             console.log(JSON.stringify({
               status: body.state.status,
               pagesScanned: body.state.pagesScanned,
@@ -43,6 +107,7 @@ jobs:
               newCount: body.state.newCount,
               updatedCount: body.state.updatedCount,
               detailFailures: body.state.detailFailures,
+              lastError: body.state.lastError,
               skipped: body.skipped || null,
             }));
           ' "${http_code}" "${response_file}"

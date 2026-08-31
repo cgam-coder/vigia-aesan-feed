@@ -26,7 +26,10 @@ jobs:
           AESAN_FULL_HISTORY: "1"
           AESAN_MAX_ARCHIVE_PAGES: "400"
       - name: Publish changed feed
+        id: publish
         run: |
+          expected_sha256="$(sha256sum feed.json | cut -d' ' -f1)"
+          echo "expected_sha256=${expected_sha256}" >> "${GITHUB_OUTPUT}"
           if git diff --quiet -- feed.json; then
             echo "No alert changes"
             exit 0
@@ -36,3 +39,50 @@ jobs:
           git add feed.json
           git commit -m "Update full AESAN archive"
           git push
+      - name: Confirm published feed
+        env:
+          EXPECTED_SHA256: ${{ steps.publish.outputs.expected_sha256 }}
+        run: |
+          published_feed="${RUNNER_TEMP}/published-feed.json"
+          matched=0
+          for attempt in $(seq 1 12); do
+            curl --silent --show-error --location --max-time 30 \
+              "https://raw.githubusercontent.com/cgam-coder/vigia-aesan-feed/main/feed.json?run=${GITHUB_RUN_ID}&attempt=${attempt}" \
+              --output "${published_feed}"
+            actual_sha256="$(sha256sum "${published_feed}" | cut -d' ' -f1)"
+            if [ "${actual_sha256}" = "${EXPECTED_SHA256}" ]; then
+              matched=1
+              break
+            fi
+            sleep 5
+          done
+          if [ "${matched}" -ne 1 ]; then
+            echo "Published feed did not match the generated feed"
+            exit 1
+          fi
+          node -e 'const fs=require("node:fs"); const feed=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(!Array.isArray(feed?.alerts)) throw new Error("Published feed is invalid"); console.log(JSON.stringify({publishedAlerts:feed.alerts.length}));' "${published_feed}"
+      - name: Ingest published feed into VIGIA
+        env:
+          VIGIA_AESAN_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/aesan/sync
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          if [ -z "${VIGIA_SYNC_TOKEN}" ]; then
+            echo "VIGIA_SYNC_TOKEN is missing"
+            exit 1
+          fi
+          response_file="${RUNNER_TEMP}/aesan-sync.json"
+          http_code="$(curl --silent --show-error --location --request POST \
+            --header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}" --max-time 480 \
+            --output "${response_file}" --write-out '%{http_code}' \
+            "${VIGIA_AESAN_SYNC_URL}?mode=recent")"
+          node -e '
+            const fs=require("node:fs");
+            const status=Number(process.argv[1]);
+            const body=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
+            const state=body?.state;
+            if(status===401||status>=500||state?.status==="failed") throw new Error(state?.lastError||`AESAN sync failed with HTTP ${status}`);
+            if(![200,202].includes(status)||state?.source!=="AESAN"||state?.mode!=="recent"||!["completed","skipped"].includes(state?.status)) throw new Error("Unexpected VIGIA AESAN response");
+            if(state.lastError) throw new Error(state.lastError);
+            if(state.status==="completed"&&(state.leaseOwnerId||state.leaseMode||state.leaseExpiresAt)) throw new Error("AESAN completed without releasing its lease state");
+            console.log(JSON.stringify({status:state.status,recordsObserved:state.recordsObserved,recordsPersisted:state.recordsPersisted,newCount:state.newCount,updatedCount:state.updatedCount,lastError:state.lastError,skipped:body.skipped||null}));
+          ' "${http_code}" "${response_file}"
