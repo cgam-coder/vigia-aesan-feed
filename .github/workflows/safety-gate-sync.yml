@@ -74,6 +74,35 @@ jobs:
               "${RUNNER_TEMP}/${route}-authorized.json"
           done
 
+      - name: Verify read-only GET contracts
+        run: |
+          for route in aesan safety-gate rapna oecd; do
+            observe_code="$(curl --silent --show-error --location --max-time 30 \
+              --output "${RUNNER_TEMP}/${route}-observe.json" --write-out '%{http_code}' \
+              "${VIGIA_BASE_URL}/api/${route}/sync?observe=1")"
+            if [ "${observe_code}" -ne 200 ]; then
+              echo "${route} observe GET failed with HTTP ${observe_code}"
+              exit 1
+            fi
+            mutation_code="$(curl --silent --show-error --location --max-time 30 \
+              --output "${RUNNER_TEMP}/${route}-get-mutation.json" --write-out '%{http_code}' \
+              "${VIGIA_BASE_URL}/api/${route}/sync?mode=recent")"
+            if [ "${mutation_code}" -ne 405 ]; then
+              echo "${route} mutating GET was not rejected: HTTP ${mutation_code}"
+              exit 1
+            fi
+          done
+          for mode in backfill snapshot; do
+            status="$(curl --silent --show-error --location --max-time 30 \
+              --output "${RUNNER_TEMP}/safety-gate-get-${mode}.json" --write-out '%{http_code}' \
+              "${VIGIA_BASE_URL}/api/safety-gate/sync?mode=${mode}")"
+            if [ "${status}" -ne 405 ]; then
+              echo "Safety Gate ${mode} GET was not rejected: HTTP ${status}"
+              exit 1
+            fi
+          done
+          echo "All observation GETs are read-only and all mutating GETs return 405"
+
       - name: Refresh Safety Gate
         env:
           VIGIA_SAFETY_GATE_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/safety-gate/sync
