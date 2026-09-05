@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assembleFeed, consolidateListCards, isOfficialAesanAlertUrl, parseDetail, parseLegacyListCards, parseListCards, productClassFor } from "../scripts/aesan.mjs";
+import { readFile } from "node:fs/promises";
+import { assembleFeed, consolidateListCards, isOfficialAesanAlertUrl, notifyingTextFor, parseDetail, parseLegacyListCards, parseListCards, productClassFor, stripHtml } from "../scripts/aesan.mjs";
 
 const listing = `
 <html><body><div class="aesan-section__row">
@@ -46,6 +47,7 @@ test("normaliza los campos de una ficha oficial", () => {
   assert.equal(alert.provider, "Alimentación Ejemplo, S.L");
   assert.equal(alert.providerRole, "Distribuidor");
   assert.equal(alert.providerKey, "alimentacion ejemplo");
+  assert.equal(alert.notifyingText, "");
   assert.match(alert.providerEvidence, /campo oficial/i);
   assert.equal(alert.productClass, "Platos preparados y sopas");
   assert.deepEqual(alert.lots, ["L2401", "L2402"]);
@@ -55,6 +57,73 @@ test("normaliza los campos de una ficha oficial", () => {
   assert.match(alert.scope, /distribución inicial/i);
   assert.match(alert.action, /se recomienda/i);
   assert.equal(alert.url, "https://www.aesan.gob.es/alertas/2026_62");
+});
+
+const notifyingFixture = async (name) => readFile(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
+
+test("conserva literalmente una frase notificante oficial inequívoca", async () => {
+  const html = await notifyingFixture("aesan-notifying-positive.html");
+  const text = notifyingTextFor(stripHtml(html));
+  assert.match(text, /notificación de alerta trasladada por las autoridades sanitarias de Galicia/i);
+  assert.match(text, /SCIRI/);
+});
+
+test("no convierte distribución autonómica en evidencia notificante", async () => {
+  const html = await notifyingFixture("aesan-notifying-distribution-only.html");
+  assert.equal(notifyingTextFor(stripHtml(html)), "");
+});
+
+test("no convierte el traslado nacional genérico en una CCAA notificante", async () => {
+  const html = await notifyingFixture("aesan-notifying-generic-transfer.html");
+  assert.equal(notifyingTextFor(stripHtml(html)), "");
+});
+
+test("separa la frase notificante de las menciones territoriales de distribución", async () => {
+  const html = await notifyingFixture("aesan-notifying-multiple-territories.html");
+  const text = notifyingTextFor(stripHtml(html));
+  assert.match(text, /Comunidad Autónoma de Cantabria/);
+  assert.doesNotMatch(text, /Islas Baleares|Comunidad Valenciana|Cataluña|Castilla-La Mancha|Andalucía|Madrid/);
+});
+
+test("conserva el wording de ampliación cuando una comunidad informa a AESAN", async () => {
+  const html = await notifyingFixture("aesan-notifying-community-update.html");
+  const text = notifyingTextFor(stripHtml(html));
+  assert.match(text, /comunidad autónoma de Castilla y León ha informado a la Agencia Española/i);
+});
+
+test("no presenta un notificante extranjero RASFF como CCAA notificante", async () => {
+  const html = await notifyingFixture("aesan-notifying-rasff.html");
+  assert.equal(notifyingTextFor(stripHtml(html)), "");
+});
+
+test("no acepta como CCAA una autoridad nacional aunque el texto mencione SCIRI", () => {
+  assert.equal(notifyingTextFor("La Agencia Española de Seguridad Alimentaria y Nutrición ha sido informada por el Ministerio de Sanidad, a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de una incidencia."), "");
+});
+
+test("admite variantes territoriales verificadas aunque AESAN use plural o una elipsis", () => {
+  const variants = [
+    "Como ampliación de la información transmitida, las autoridades sanitarias de la Comunidad Valenciana han informado a la Agencia Española de Seguridad Alimentaria y Nutrición a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI) de nuevos lotes.",
+    "La Agencia Española de Seguridad Alimentaria y Nutrición ha tenido conocimiento, a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de una notificación de alerta trasladada por las autoridades sanitarias Cataluña, relativa a una incidencia.",
+  ];
+  for (const variant of variants) assert.equal(notifyingTextFor(variant), variant);
+});
+
+test("falla cerrado cuando no existe una frase territorial notificante", async () => {
+  const html = await notifyingFixture("aesan-notifying-none.html");
+  assert.equal(notifyingTextFor(stripHtml(html)), "");
+});
+
+test("el campo notificante derivado no amplifica versiones ni cambia el hash", async () => {
+  const html = await notifyingFixture("aesan-notifying-positive.html");
+  const card = { url:"https://www.aesan.gob.es/alertas/2026_99", title:"Alerta alimentaria (Ref. ES2026/485)", reference:"ES2026/485", publishedAt:"2026-08-10T12:00:00.000Z" };
+  const first = parseDetail(html, card, null, "2026-08-14T10:00:00.000Z");
+  const previousWithoutField = { ...first };
+  delete previousWithoutField.notifyingText;
+  const second = parseDetail(html, card, previousWithoutField, "2026-08-15T10:00:00.000Z");
+  assert.equal(second.notifyingText, first.notifyingText);
+  assert.equal(second.contentHash, first.contentHash);
+  assert.equal(second.versionCount, 1);
+  assert.equal(second.updatedAt, first.updatedAt);
 });
 
 test("no cambia generatedAt cuando el contenido permanece idéntico", () => {

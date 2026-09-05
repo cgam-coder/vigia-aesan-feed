@@ -241,6 +241,19 @@ const originFor = (title, fields) => findField(fields, ["pais de origen", "orige
 
 const sentences = (text) => text.split(/\n+|(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÜ])/).map((line) => line.trim()).filter(Boolean);
 
+const NOTIFYING_SENTENCE_PATTERNS = [
+  /\bnotificaci[oó]n de alerta trasladada por las autoridades sanitarias(?:\s+de)?\s+/i,
+  /\b(?:agencia española de seguridad alimentaria y nutrici[oó]n|AESAN)\b[\s\S]{0,180}\bha sido informada por\b/i,
+  /\b(?:comunidad aut[oó]noma de|comunidad valenciana)\b[\s\S]{0,260}\bha(?:n)? informado a (?:la )?(?:agencia española de seguridad alimentaria y nutrici[oó]n|AESAN)\b/i,
+  /\bautoridades (?:competentes|sanitarias) de\b[\s\S]{0,180}\bhan informado a (?:la )?(?:agencia española de seguridad alimentaria y nutrici[oó]n|AESAN)\b/i,
+];
+
+const SPAIN_AUTONOMOUS_COMMUNITY_PATTERN = /(?:^|[^a-záéíóúüñ])(?:Andalucía|Aragón|Asturias|Illes Balears|Islas Baleares|Baleares|Canarias|Cantabria|Castilla y León|Castilla\s*(?:-\s*)?La Mancha|Cataluña|Catalunya|Ceuta|Melilla|Comunidad Valenciana|Comunitat Valenciana|Extremadura|Galicia|Madrid|Murcia|Navarra|País Vasco|Euskadi|La Rioja)(?=$|[^a-záéíóúüñ])/iu;
+
+export const notifyingTextFor = (articleText = "") => sentences(articleText).find((line) =>
+  /\bSCIRI\b/i.test(line) && SPAIN_AUTONOMOUS_COMMUNITY_PATTERN.test(line) &&
+  NOTIFYING_SENTENCE_PATTERNS.some((pattern) => pattern.test(line))) ?? "";
+
 const scopeFor = (text, category) => sentences(text).find((line) =>
   /distribuci[oó]n (?:inicial|del producto)|distribuido (?:inicialmente|en)|ha sido distribuido/i.test(line))?.slice(0, 360) ||
   (category === "allergens" ? "Colectivo alérgico o intolerante indicado por AESAN" :
@@ -274,6 +287,7 @@ const contentDate = (html) => {
 export function parseDetail(html, card, previous = null, detectedAt = new Date().toISOString()) {
   const articleHtml = articleFragment(html);
   const articleText = stripHtml(articleHtml);
+  const notifyingText = notifyingTextFor(articleText);
   const fields = fieldMap(articleHtml);
   const heading = stripHtml(articleHtml.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? "");
   const title = heading || card.title;
@@ -305,6 +319,7 @@ export function parseDetail(html, card, previous = null, detectedAt = new Date()
     providerKey:normalizeEntityKey(provider.name),
     providerRole:provider.role,
     providerEvidence:provider.evidence,
+    notifyingText,
     hazard:inferHazard(title),
     origin:originFor(title, fields),
     scope:scopeFor(articleText, category),
@@ -323,7 +338,7 @@ export function parseDetail(html, card, previous = null, detectedAt = new Date()
 }
 
 export function cardFallback(card, previous = null, detectedAt = new Date().toISOString()) {
-  if (previous) return previous;
+  if (previous) return { ...previous, notifyingText:previous.notifyingText ?? "" };
   const contentHash = digest(card);
   const product = titleProduct(card.title);
   return {
@@ -331,7 +346,7 @@ export function cardFallback(card, previous = null, detectedAt = new Date().toIS
     reference:card.reference || `AESAN/${new URL(card.url).pathname.split("/").filter(Boolean).at(-1)}`,
     source:"AESAN", type:"Alimentaria", priority:inferPriority(card.title), title:card.title,
     product, brand:"", productClass:productClassFor(product, card.title, card.category), productKey:normalizeEntityKey(product), brandKey:"",
-    provider:"", providerKey:"", providerRole:"", providerEvidence:"",
+    provider:"", providerKey:"", providerRole:"", providerEvidence:"", notifyingText:"",
     hazard:inferHazard(card.title), origin:originFor(card.title, new Map()),
     scope:card.category === "allergens" ? "Colectivo alérgico o intolerante indicado por AESAN" : "Población general · publicación oficial AESAN",
     action:"Consultar las medidas y recomendaciones incluidas en la ficha oficial de AESAN.", lots:[], imageUrl:null,
