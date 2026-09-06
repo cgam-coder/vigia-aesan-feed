@@ -1,372 +1,233 @@
-name: WORK19G-AH Safety Gate read-only audit export
-
-on:
-  push:
-    branches:
-      - work/19g-ah-safety-gate-final-rematerialization-transport
-    paths:
-      - .github/workflows/work19g-ah-safety-gate-audit-transport.yml
-
+name: WORK19G-AH reusable certified Safety Gate audit
 permissions:
   contents: read
   actions: read
-
 concurrency:
-  group: work19g-ah-safety-gate-audit-transport
+  group: work19g-ah-safety-gate-window
   cancel-in-progress: false
-
 jobs:
   export:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Verify existing sync token
-        env:
-          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-        run: |
-          if [ -z "${VIGIA_SYNC_TOKEN}" ]; then
-            exit 1
-          fi
-          echo "VIGIA_SYNC_TOKEN available: yes"
-
-      - name: Wait for observed natural Safety Gate run and clear workflow queue
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          python3 - <<'PY'
-          import json, os, subprocess, time
-          from datetime import datetime, timezone
-          from pathlib import Path
-          began = datetime.now(timezone.utc)
-          def read(url):
-              r = subprocess.run(["curl","--silent","--show-error","--fail","--max-time","30","-H","Authorization: Bearer "+os.environ["GH_TOKEN"],url],capture_output=True,check=True)
-              return json.loads(r.stdout)
-          base = "https://api.github.com/repos/cgam-coder/vigia-aesan-feed"
-          selected = None
-          while True:
-              runs = read(base+"/actions/runs?per_page=100")["workflow_runs"]
-              sg = [r for r in runs if r["workflow_id"] == 339316486]
-              candidates = [r for r in sg if r["event"] == "schedule"
-                  and datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")) > began]
-              if selected is None and candidates:
-                  selected = min(candidates, key=lambda r:r["created_at"])["id"]
-              if selected is not None:
-                  run = read(base+"/actions/runs/"+str(selected))
-                  if run["event"] != "schedule": raise RuntimeError("Not a natural scheduled run")
-                  if run["status"] == "completed":
-                      if run["conclusion"] != "success": raise RuntimeError("Natural sync failed")
-                      if any(r["status"] != "completed" for r in sg):
-                          raise RuntimeError("Safety Gate workflow is still queued or active")
-                      break
-              time.sleep(20)
-          evidence = {k:run.get(k) for k in ("id","event","status","conclusion","created_at","run_started_at","updated_at")}
-          evidence["transportWaitBeganAt"] = began.isoformat()
-          Path(os.environ["RUNNER_TEMP"], "natural-sync.json").write_text(json.dumps(evidence))
-          print(json.dumps(evidence))
-          PY
-
-      - name: Export exact Safety Gate production corpus
-        env:
-          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          VIGIA_SAFETY_GATE_EXPORT_URL: https://vigia-alertas.csar68.chatgpt.site/api/admin/work19g-ah/safety-gate-export
-        run: |
-          python3 - <<'PY'
-          import hashlib
-          import json
-          import os
-          import subprocess
-          import sys
-          import re
-          import time
-          from datetime import datetime, timezone
-          from pathlib import Path
-          from urllib.parse import quote
-
-          output = Path("export")
-          pages_dir = output / "pages"
-          pages_dir.mkdir(parents=True, exist_ok=False)
-
-          base_url = os.environ["VIGIA_SAFETY_GATE_EXPORT_URL"]
-          token = os.environ["VIGIA_SYNC_TOKEN"]
-          run_id = os.environ["GITHUB_RUN_ID"]
-
-          started = time.monotonic()
-          class TransportFailure(Exception):
-              def __init__(self, code, status):
-                  self.code, self.status = code, status
-              def size_or_resource(self):
-                  return self.status in ("413", "500", "502", "503", "504", "507") or (self.code in (18, 28) and self.status in ("000", "200"))
-          def curl_get(url, destination):
-              result = subprocess.run([
-                  "curl", "--silent", "--show-error", "--location",
-                  "--request", "GET",
-                  "--header", f"Authorization: Bearer {token}",
-                  "--max-time", "180",
-                  "--output", str(destination),
-                  "--write-out", "%{http_code}",
-                  url,
-              ], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False)
-              status = result.stdout.decode("ascii", errors="replace").strip()
-              if result.returncode != 0 or status != "200":
-                  print(json.dumps({
-                      "curlExitCode": result.returncode,
-                      "httpStatus": status or None,
-                  }, sort_keys=True), file=sys.stderr)
-                  raise TransportFailure(result.returncode, status)
-              return destination.read_bytes()
-
-          gate_path = Path(os.environ["RUNNER_TEMP"]) / "work19g-ah-safety-gate-export-gate.json"
-          gate_raw = curl_get(f"{base_url}?metadataOnly=1", gate_path)
-          try:
-              gate = json.loads(gate_raw)
-          except json.JSONDecodeError as error:
-              raise RuntimeError("Authenticated curl gate did not return valid JSON") from error
-
-          metadata = gate.get("metadata")
-          corpus = metadata.get("corpus") if isinstance(metadata, dict) else None
-          dimensions = metadata.get("dimensions") if isinstance(metadata, dict) else None
-          operational = metadata.get("operational") if isinstance(metadata, dict) else None
-          mapping_versions = metadata.get("mappingVersions") if isinstance(metadata, dict) else None
-          if gate.get("runtimeMarker") != "work19g-ah-optimized-20260906":
-              raise RuntimeError("Temporary runtime marker mismatch")
-          if gate.get("source") != "SAFETY GATE":
-              raise RuntimeError("Safety Gate gate returned an unexpected source or cursor")
-          if not isinstance(gate.get("snapshotGuard"), str) or not re.fullmatch("[0-9a-f]{64}", gate["snapshotGuard"]):
-              raise RuntimeError("Safety Gate gate has no snapshot guard")
-          if not isinstance(corpus, dict) or any(not isinstance(corpus.get(key), int) for key in (
-              "alerts", "uniqueIds", "uniqueReferences", "alertVersions", "sumVersionCount",
-          )):
-              raise RuntimeError("Safety Gate gate has invalid corpus metadata")
-          if not isinstance(dimensions, dict) or any(not isinstance(dimensions.get(key), int) for key in (
-              "categories", "hazards", "geographies", "originRelations", "notifyingRelations",
-              "actors", "dimensionState", "missingState", "sourceContentHashMismatches",
-          )):
-              raise RuntimeError("Safety Gate gate has invalid dimension metadata")
-          if not isinstance(mapping_versions, list) or not isinstance(operational, dict):
-              raise RuntimeError("Safety Gate gate has invalid mapping or operational metadata")
-          if operational.get("sourceSyncLease") is not None:
-              raise RuntimeError("Safety Gate source lease is not clear")
-          if operational.get("rebuildLease") is not None:
-              raise RuntimeError("Safety Gate rebuild lease is not clear")
-          latest_sync = operational.get("latestSync")
-          if not isinstance(latest_sync, dict) or latest_sync.get("source") != "SAFETY GATE":
-              raise RuntimeError("Safety Gate latest sync metadata is invalid")
-          if latest_sync.get("status") != "completed" or latest_sync.get("completed_at") is None:
-              raise RuntimeError("Safety Gate latest sync is not completed")
-          started_at = latest_sync.get("started_at")
-          completed_at = latest_sync.get("completed_at")
-          if not isinstance(started_at, str) or not isinstance(completed_at, str):
-              raise RuntimeError("Safety Gate latest sync timestamps are invalid")
-          completed = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
-          completed_age = (datetime.now(timezone.utc) - completed).total_seconds()
-          if completed_age < -60 or completed_age > 20 * 60:
-              raise RuntimeError("No recently completed natural Safety Gate sync is available")
-          natural = json.loads(Path(os.environ["RUNNER_TEMP"], "natural-sync.json").read_text())
-          natural_start = datetime.fromisoformat(natural["run_started_at"].replace("Z", "+00:00"))
-          sync_start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
-          if sync_start < natural_start or completed < sync_start:
-              raise RuntimeError("Metadata does not identify the observed natural sync")
-          (output / "metadata-gate.json").write_bytes(gate_raw)
-          (output / "natural-sync.json").write_text(json.dumps(natural))
-          expected_guard = gate["snapshotGuard"]
-          first_metadata = metadata
-          probe_path = Path(os.environ["RUNNER_TEMP"]) / "work19g-ah-probe.json"
-          probes = []
-          chosen_limit = None
-          for candidate in (500, 250, 100):
-              probe_start = time.monotonic()
-              try:
-                  probe_raw = curl_get(f"{base_url}?limit={candidate}&expectedGuard={expected_guard}", probe_path)
-              except TransportFailure as failure:
-                  probes.append({"limit":candidate,"httpStatus":failure.status,"curlExitCode":failure.code,"seconds":round(time.monotonic()-probe_start,3)})
-                  if not failure.size_or_resource(): raise
-                  continue
-              probe = json.loads(probe_raw)
-              if probe.get("snapshotGuard") != expected_guard or probe.get("metadata") != metadata:
-                  raise RuntimeError("Snapshot failure during size probe")
-              if probe.get("runtimeMarker") != gate["runtimeMarker"] or probe.get("source") != "SAFETY GATE":
-                  raise RuntimeError("Runtime failure during size probe")
-              if len(probe.get("alerts", [])) != min(candidate, corpus["alerts"]):
-                  raise RuntimeError("Incomplete size probe")
-              chosen_limit = candidate
-              probes.append({"limit":candidate,"httpStatus":"200","bytes":len(probe_raw),"seconds":round(time.monotonic()-probe_start,3)})
-              break
-          if chosen_limit is None: raise RuntimeError("No safe export page size")
-          print(json.dumps({"chosenPageSize":chosen_limit,"probes":probes}))
-          after = ""
-          seen_ids = set()
-          seen_references = set()
-          ordered_ids = []
-          manifest = []
-          exported_counts = {
-              "alertVersions": 0,
-              "categories": 0,
-              "hazards": 0,
-              "geographies": 0,
-              "originRelations": 0,
-              "notifyingRelations": 0,
-              "actors": 0,
-              "dimensionState": 0,
-          }
-          sum_version_count = 0
-          ordinal = 0
-
-          while True:
-              ordinal += 1
-              url = f"{base_url}?limit={chosen_limit}&expectedGuard={expected_guard}"
-              if after:
-                  url += f"&after={quote(after, safe='')}"
-              page_path = pages_dir / f"page-{ordinal:04d}.json"
-              if ordinal == 1:
-                  raw = probe_raw
-                  page_path.write_bytes(raw)
-              else:
-                  raw = curl_get(url, page_path)
-              try:
-                  body = json.loads(raw)
-              except json.JSONDecodeError as error:
-                  raise RuntimeError(f"Page {ordinal} is not valid JSON") from error
-
-              if body.get("runtimeMarker") != gate["runtimeMarker"]:
-                  raise RuntimeError("Runtime changed during export")
-              if body.get("source") != "SAFETY GATE" or body.get("after") != after:
-                  raise RuntimeError(f"Page {ordinal} has unexpected source or cursor")
-              guard = body.get("snapshotGuard")
-              if not isinstance(guard, str) or not guard:
-                  raise RuntimeError(f"Page {ordinal} has no snapshot guard")
-              if guard != expected_guard or body.get("metadata") != metadata:
-                  raise RuntimeError(f"Snapshot guard or metadata changed on page {ordinal}")
-
-              page_alerts = body.get("alerts")
-              if not isinstance(page_alerts, list):
-                  raise RuntimeError(f"Page {ordinal} alerts are invalid")
-              page_ids = []
-              for alert in page_alerts:
-                  alert_id = alert.get("id") if isinstance(alert, dict) else None
-                  reference = alert.get("reference") if isinstance(alert, dict) else None
-                  if not isinstance(alert_id, str) or not alert_id:
-                      raise RuntimeError(f"Page {ordinal} contains an invalid alert ID")
-                  if not isinstance(reference, str) or not reference:
-                      raise RuntimeError(f"Alert {alert_id} contains an invalid reference")
-                  if page_ids and alert_id <= page_ids[-1]:
-                      raise RuntimeError(f"Page {ordinal} IDs are not strictly increasing")
-                  if ordered_ids and alert_id <= ordered_ids[-1]:
-                      raise RuntimeError(f"Page {ordinal} boundary is not strictly increasing")
-                  if alert_id in seen_ids:
-                      raise RuntimeError(f"Duplicate alert ID: {alert_id}")
-                  page_ids.append(alert_id)
-                  ordered_ids.append(alert_id)
-                  seen_ids.add(alert_id)
-                  seen_references.add(reference)
-                  try:
-                      sum_version_count += int(alert["version_count"])
-                  except (KeyError, TypeError, ValueError) as error:
-                      raise RuntimeError(f"Alert {alert_id} has invalid version_count") from error
-
-              next_after = body.get("nextAfter")
-              has_more = body.get("hasMore")
-              if not isinstance(has_more, bool):
-                  raise RuntimeError(f"Page {ordinal} has invalid hasMore")
-              expected_next = page_ids[-1] if page_ids else None
-              if next_after != expected_next:
-                  raise RuntimeError(f"Page {ordinal} has an invalid nextAfter")
-              if has_more and (not isinstance(next_after, str) or not next_after or next_after <= after):
-                  raise RuntimeError(f"Page {ordinal} has a missing or non-increasing cursor transition")
-
-              relation_keys = {
-                  "versions":"alertVersions", "categories":"categories", "hazards":"hazards",
-                  "geographies":"geographies", "actors":"actors", "dimensionStates":"dimensionState",
-              }
-              for body_key, count_key in relation_keys.items():
-                  rows = body.get(body_key)
-                  if not isinstance(rows, list):
-                      raise RuntimeError(f"Page {ordinal} has invalid {body_key}")
-                  if any(row.get("alert_id") not in page_ids for row in rows):
-                      raise RuntimeError("Relation outside exact alert page")
-                  exported_counts[count_key] += len(rows)
-                  if body_key == "geographies":
-                      exported_counts["originRelations"] += sum(row.get("role") == "origin" for row in rows)
-                      exported_counts["notifyingRelations"] += sum(row.get("role") == "notifying" for row in rows)
-
-              manifest.append({
-                  "ordinal":ordinal,
-                  "after":after,
-                  "nextAfter":next_after,
-                  "alertCount":len(page_alerts),
-                  "bytes":len(raw),
-                  "sha256":hashlib.sha256(raw).hexdigest(),
-              })
-              if not has_more:
-                  break
-              after = next_after
-
-          if first_metadata != metadata:
-              raise RuntimeError("Gate and first-page metadata differ")
-          total_alerts = len(ordered_ids)
-          if total_alerts != corpus["alerts"] or len(seen_ids) != corpus["uniqueIds"]:
-              raise RuntimeError("Exported alert or unique ID count does not match metadata")
-          if len(seen_references) != corpus["uniqueReferences"]:
-              raise RuntimeError("Exported unique reference count does not match metadata")
-          if exported_counts["alertVersions"] != corpus["alertVersions"]:
-              raise RuntimeError("Exported alert_versions count does not match metadata")
-          if sum_version_count != corpus["sumVersionCount"]:
-              raise RuntimeError("Exported version_count sum does not match metadata")
-          for key in ("categories", "hazards", "geographies", "originRelations", "notifyingRelations",
-                      "actors", "dimensionState"):
-              if exported_counts[key] != dimensions[key]:
-                  raise RuntimeError(f"Exported {key} count does not match metadata")
-
-          manifest_bytes = (json.dumps(
-              manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
-          ) + "\n").encode("utf-8")
-          (output / "page-manifest.json").write_bytes(manifest_bytes)
-          manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
-          summary = {
-              "workflowRunId":run_id,
-              "chosenPageSize":chosen_limit,
-              "probeResults":probes,
-              "exportDurationSeconds":round(time.monotonic()-started,3),
-              "globalMetadataCalls":1+len(probes)+len(manifest)-1,
-              "globalMetadataCallsAvoidedVsPrior210Pages":420-(1+len(probes)+len(manifest)-1),
-              "source":"SAFETY GATE",
-              "snapshotGuard":expected_guard,
-              "pages":len(manifest),
-              "totalAlerts":total_alerts,
-              "uniqueAlertIds":len(seen_ids),
-              "uniqueReferences":len(seen_references),
-              "totalVersionsReported":corpus["alertVersions"],
-              "totalVersionsExported":exported_counts["alertVersions"],
-              "sumVersionCount":sum_version_count,
-              "firstId":ordered_ids[0] if ordered_ids else None,
-              "lastId":ordered_ids[-1] if ordered_ids else None,
-              "dimensionCounts":dimensions,
-              "exportedDimensionCounts":exported_counts,
-              "mappingVersionCounts":mapping_versions,
-              "latestSafetyGateSync":operational.get("latestSync"),
-              "sourceSyncLease":operational.get("sourceSyncLease"),
-              "rebuildMetadata":operational.get("dimensionRebuildState"),
-              "rebuildLease":operational.get("rebuildLease"),
-              "pageManifestSha256":manifest_sha,
-          }
-          summary_bytes = (json.dumps(
-              summary, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
-          ) + "\n").encode("utf-8")
-          (output / "export-summary.json").write_bytes(summary_bytes)
-          print(json.dumps({
-              "source":"SAFETY GATE", "pages":len(manifest), "totalAlerts":total_alerts,
-              "chosenPageSize":chosen_limit,"exportDurationSeconds":summary["exportDurationSeconds"],
-              "totalVersions":exported_counts["alertVersions"], "snapshotGuard":expected_guard,
-              "pageManifestSha256":manifest_sha,
-          }, sort_keys=True))
-          PY
-
-      - name: Upload temporary audit transport
-        uses: actions/upload-artifact@v4
-        with:
-          name: work19g-ah-pre-safety-gate-export-${{ github.run_id }}
-          path: export/**
-          if-no-files-found: error
-          retention-days: 1
-
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+    - name: Verify existing sync token
+      env:
+        VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+      run: "if [ -z \"${VIGIA_SYNC_TOKEN}\" ]; then\n  exit 1\nfi\necho \"VIGIA_SYNC_TOKEN available: yes\"\n"
+    - name: Observe most recent successful natural sync with clear queue
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: "python3 - <<'PY'\nimport json, os, subprocess, time\nfrom datetime import datetime, timezone, timedelta\nfrom\
+        \ pathlib import Path\nbegan = datetime.now(timezone.utc)\ndef read(url):\n    r = subprocess.run([\"curl\",\"--silent\"\
+        ,\"--show-error\",\"--fail\",\"--max-time\",\"30\",\"-H\",\"Authorization: Bearer \"+os.environ[\"GH_TOKEN\"],url],capture_output=True,check=True)\n\
+        \    return json.loads(r.stdout)\nbase = \"https://api.github.com/repos/cgam-coder/vigia-aesan-feed\"\nwhile True:\n\
+        \    runs = read(base+\"/actions/runs?per_page=100\")[\"workflow_runs\"]\n    sg = [r for r in runs if r[\"workflow_id\"\
+        ] == 339316486]\n    now = datetime.now(timezone.utc)\n    boundary = max(now.replace(minute=m,second=0,microsecond=0)+timedelta(hours=h)\
+        \ for h in (-1,0) for m in (7,37) if now.replace(minute=m,second=0,microsecond=0)+timedelta(hours=h)<=now)\n    candidates\
+        \ = [r for r in sg if r[\"event\"] == \"schedule\" and datetime.fromisoformat(r[\"created_at\"].replace(\"Z\", \"\
+        +00:00\")) >= boundary]\n    if candidates:\n        selected = max(candidates, key=lambda r:r[\"created_at\"])\n\
+        \        run = read(base+\"/actions/runs/\"+str(selected[\"id\"]))\n        if run[\"event\"] != \"schedule\": raise\
+        \ RuntimeError(\"Not a natural scheduled run\")\n        if run[\"status\"] == \"completed\":\n            if run[\"\
+        conclusion\"] != \"success\": raise RuntimeError(\"Natural sync failed\")\n            if not any(r[\"status\"] !=\
+        \ \"completed\" for r in sg): break\n    time.sleep(20)\nevidence = {k:run.get(k) for k in (\"id\",\"event\",\"status\"\
+        ,\"conclusion\",\"created_at\",\"run_started_at\",\"updated_at\")}\nevidence[\"transportWaitBeganAt\"] = began.isoformat()\n\
+        Path(os.environ[\"RUNNER_TEMP\"], \"natural-sync.json\").write_text(json.dumps(evidence))\nprint(json.dumps(evidence))\n\
+        PY\n"
+    - name: Export exact Safety Gate production corpus
+      env:
+        VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        VIGIA_SAFETY_GATE_EXPORT_URL: https://vigia-alertas.csar68.chatgpt.site/api/admin/work19g-ah/safety-gate-export
+      run: "python3 - <<'PY'\nimport hashlib\nimport json\nimport os\nimport subprocess\nimport sys\nimport re\nimport time\n\
+        from datetime import datetime, timezone\nfrom pathlib import Path\nfrom urllib.parse import quote\n\noutput = Path(\"\
+        export\")\npages_dir = output / \"pages\"\npages_dir.mkdir(parents=True, exist_ok=False)\n\nbase_url = os.environ[\"\
+        VIGIA_SAFETY_GATE_EXPORT_URL\"]\ntoken = os.environ[\"VIGIA_SYNC_TOKEN\"]\nrun_id = os.environ[\"GITHUB_RUN_ID\"]\n\
+        \nstarted = time.monotonic()\nclass TransportFailure(Exception):\n    def __init__(self, code, status):\n        self.code,\
+        \ self.status = code, status\n    def size_or_resource(self):\n        return self.status in (\"413\", \"500\", \"\
+        502\", \"503\", \"504\", \"507\") or (self.code in (18, 28) and self.status in (\"000\", \"200\"))\ndef curl_get(url,\
+        \ destination):\n    result = subprocess.run([\n        \"curl\", \"--silent\", \"--show-error\", \"--location\",\n\
+        \        \"--request\", \"GET\",\n        \"--header\", f\"Authorization: Bearer {token}\",\n        \"--max-time\"\
+        , \"180\",\n        \"--output\", str(destination),\n        \"--write-out\", \"%{http_code}\",\n        url,\n  \
+        \  ], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False)\n    status = result.stdout.decode(\"ascii\"\
+        , errors=\"replace\").strip()\n    if result.returncode != 0 or status != \"200\":\n        print(json.dumps({\n \
+        \           \"curlExitCode\": result.returncode,\n            \"httpStatus\": status or None,\n        }, sort_keys=True),\
+        \ file=sys.stderr)\n        raise TransportFailure(result.returncode, status)\n    return destination.read_bytes()\n\
+        \ngate_path = Path(os.environ[\"RUNNER_TEMP\"]) / \"work19g-ah-safety-gate-export-gate.json\"\ngate_raw = curl_get(f\"\
+        {base_url}?metadataOnly=1\", gate_path)\ntry:\n    gate = json.loads(gate_raw)\nexcept json.JSONDecodeError as error:\n\
+        \    raise RuntimeError(\"Authenticated curl gate did not return valid JSON\") from error\n\nmetadata = gate.get(\"\
+        metadata\")\ncorpus = metadata.get(\"corpus\") if isinstance(metadata, dict) else None\ndimensions = metadata.get(\"\
+        dimensions\") if isinstance(metadata, dict) else None\noperational = metadata.get(\"operational\") if isinstance(metadata,\
+        \ dict) else None\nmapping_versions = metadata.get(\"mappingVersions\") if isinstance(metadata, dict) else None\n\
+        if gate.get(\"runtimeMarker\") != \"work19g-ah-optimized-20260906\":\n    raise RuntimeError(\"Temporary runtime marker\
+        \ mismatch\")\nif gate.get(\"source\") != \"SAFETY GATE\":\n    raise RuntimeError(\"Safety Gate gate returned an\
+        \ unexpected source or cursor\")\nif not isinstance(gate.get(\"snapshotGuard\"), str) or not re.fullmatch(\"[0-9a-f]{64}\"\
+        , gate[\"snapshotGuard\"]):\n    raise RuntimeError(\"Safety Gate gate has no snapshot guard\")\nif not isinstance(corpus,\
+        \ dict) or any(not isinstance(corpus.get(key), int) for key in (\n    \"alerts\", \"uniqueIds\", \"uniqueReferences\"\
+        , \"alertVersions\", \"sumVersionCount\",\n)):\n    raise RuntimeError(\"Safety Gate gate has invalid corpus metadata\"\
+        )\nif not isinstance(dimensions, dict) or any(not isinstance(dimensions.get(key), int) for key in (\n    \"categories\"\
+        , \"hazards\", \"geographies\", \"originRelations\", \"notifyingRelations\",\n    \"actors\", \"dimensionState\",\
+        \ \"missingState\", \"sourceContentHashMismatches\",\n)):\n    raise RuntimeError(\"Safety Gate gate has invalid dimension\
+        \ metadata\")\nif not isinstance(mapping_versions, list) or not isinstance(operational, dict):\n    raise RuntimeError(\"\
+        Safety Gate gate has invalid mapping or operational metadata\")\nif operational.get(\"sourceSyncLease\") is not None:\n\
+        \    raise RuntimeError(\"Safety Gate source lease is not clear\")\nif operational.get(\"rebuildLease\") is not None:\n\
+        \    raise RuntimeError(\"Safety Gate rebuild lease is not clear\")\nlatest_sync = operational.get(\"latestSync\"\
+        )\nif not isinstance(latest_sync, dict) or latest_sync.get(\"source\") != \"SAFETY GATE\":\n    raise RuntimeError(\"\
+        Safety Gate latest sync metadata is invalid\")\nif latest_sync.get(\"status\") != \"completed\" or latest_sync.get(\"\
+        completed_at\") is None:\n    raise RuntimeError(\"Safety Gate latest sync is not completed\")\nstarted_at = latest_sync.get(\"\
+        started_at\")\ncompleted_at = latest_sync.get(\"completed_at\")\nif not isinstance(started_at, str) or not isinstance(completed_at,\
+        \ str):\n    raise RuntimeError(\"Safety Gate latest sync timestamps are invalid\")\ncompleted = datetime.fromisoformat(completed_at.replace(\"\
+        Z\", \"+00:00\"))\ncompleted_age = (datetime.now(timezone.utc) - completed).total_seconds()\nif completed_age < -60\
+        \ or completed_age > 20 * 60:\n    raise RuntimeError(\"No recently completed natural Safety Gate sync is available\"\
+        )\nnatural = json.loads(Path(os.environ[\"RUNNER_TEMP\"], \"natural-sync.json\").read_text())\nnatural_start = datetime.fromisoformat(natural[\"\
+        run_started_at\"].replace(\"Z\", \"+00:00\"))\nsync_start = datetime.fromisoformat(started_at.replace(\"Z\", \"+00:00\"\
+        ))\nif sync_start < natural_start or completed < sync_start:\n    raise RuntimeError(\"Metadata does not identify\
+        \ the observed natural sync\")\n(output / \"metadata-gate.json\").write_bytes(gate_raw)\n(output / \"natural-sync.json\"\
+        ).write_text(json.dumps(natural))\nexpected_guard = gate[\"snapshotGuard\"]\nfirst_metadata = metadata\nprobe_path\
+        \ = Path(os.environ[\"RUNNER_TEMP\"]) / \"work19g-ah-probe.json\"\nprobes = []\nchosen_limit = None\nfor candidate\
+        \ in (500, 250, 100):\n    probe_start = time.monotonic()\n    try:\n        probe_raw = curl_get(f\"{base_url}?limit={candidate}&expectedGuard={expected_guard}\"\
+        , probe_path)\n    except TransportFailure as failure:\n        probes.append({\"limit\":candidate,\"httpStatus\"\
+        :failure.status,\"curlExitCode\":failure.code,\"seconds\":round(time.monotonic()-probe_start,3)})\n        if not\
+        \ failure.size_or_resource(): raise\n        continue\n    probe = json.loads(probe_raw)\n    if probe.get(\"snapshotGuard\"\
+        ) != expected_guard or probe.get(\"metadata\") != metadata:\n        raise RuntimeError(\"Snapshot failure during\
+        \ size probe\")\n    if probe.get(\"runtimeMarker\") != gate[\"runtimeMarker\"] or probe.get(\"source\") != \"SAFETY\
+        \ GATE\":\n        raise RuntimeError(\"Runtime failure during size probe\")\n    if len(probe.get(\"alerts\", []))\
+        \ != min(candidate, corpus[\"alerts\"]):\n        raise RuntimeError(\"Incomplete size probe\")\n    chosen_limit\
+        \ = candidate\n    probes.append({\"limit\":candidate,\"httpStatus\":\"200\",\"bytes\":len(probe_raw),\"seconds\"\
+        :round(time.monotonic()-probe_start,3)})\n    break\nif chosen_limit is None: raise RuntimeError(\"No safe export\
+        \ page size\")\nprint(json.dumps({\"chosenPageSize\":chosen_limit,\"probes\":probes}))\nafter = \"\"\nseen_ids = set()\n\
+        seen_references = set()\nordered_ids = []\nmanifest = []\nexported_counts = {\n    \"alertVersions\": 0,\n    \"categories\"\
+        : 0,\n    \"hazards\": 0,\n    \"geographies\": 0,\n    \"originRelations\": 0,\n    \"notifyingRelations\": 0,\n\
+        \    \"actors\": 0,\n    \"dimensionState\": 0,\n}\nsum_version_count = 0\nordinal = 0\n\nwhile True:\n    ordinal\
+        \ += 1\n    url = f\"{base_url}?limit={chosen_limit}&expectedGuard={expected_guard}\"\n    if after:\n        url\
+        \ += f\"&after={quote(after, safe='')}\"\n    page_path = pages_dir / f\"page-{ordinal:04d}.json\"\n    if ordinal\
+        \ == 1:\n        raw = probe_raw\n        page_path.write_bytes(raw)\n    else:\n        raw = curl_get(url, page_path)\n\
+        \    try:\n        body = json.loads(raw)\n    except json.JSONDecodeError as error:\n        raise RuntimeError(f\"\
+        Page {ordinal} is not valid JSON\") from error\n\n    if body.get(\"runtimeMarker\") != gate[\"runtimeMarker\"]:\n\
+        \        raise RuntimeError(\"Runtime changed during export\")\n    if body.get(\"source\") != \"SAFETY GATE\" or\
+        \ body.get(\"after\") != after:\n        raise RuntimeError(f\"Page {ordinal} has unexpected source or cursor\")\n\
+        \    guard = body.get(\"snapshotGuard\")\n    if not isinstance(guard, str) or not guard:\n        raise RuntimeError(f\"\
+        Page {ordinal} has no snapshot guard\")\n    if guard != expected_guard or body.get(\"metadata\") != metadata:\n \
+        \       raise RuntimeError(f\"Snapshot guard or metadata changed on page {ordinal}\")\n\n    page_alerts = body.get(\"\
+        alerts\")\n    if not isinstance(page_alerts, list):\n        raise RuntimeError(f\"Page {ordinal} alerts are invalid\"\
+        )\n    page_ids = []\n    for alert in page_alerts:\n        alert_id = alert.get(\"id\") if isinstance(alert, dict)\
+        \ else None\n        reference = alert.get(\"reference\") if isinstance(alert, dict) else None\n        if not isinstance(alert_id,\
+        \ str) or not alert_id:\n            raise RuntimeError(f\"Page {ordinal} contains an invalid alert ID\")\n      \
+        \  if not isinstance(reference, str) or not reference:\n            raise RuntimeError(f\"Alert {alert_id} contains\
+        \ an invalid reference\")\n        if page_ids and alert_id <= page_ids[-1]:\n            raise RuntimeError(f\"Page\
+        \ {ordinal} IDs are not strictly increasing\")\n        if ordered_ids and alert_id <= ordered_ids[-1]:\n        \
+        \    raise RuntimeError(f\"Page {ordinal} boundary is not strictly increasing\")\n        if alert_id in seen_ids:\n\
+        \            raise RuntimeError(f\"Duplicate alert ID: {alert_id}\")\n        page_ids.append(alert_id)\n        ordered_ids.append(alert_id)\n\
+        \        seen_ids.add(alert_id)\n        seen_references.add(reference)\n        try:\n            sum_version_count\
+        \ += int(alert[\"version_count\"])\n        except (KeyError, TypeError, ValueError) as error:\n            raise\
+        \ RuntimeError(f\"Alert {alert_id} has invalid version_count\") from error\n\n    next_after = body.get(\"nextAfter\"\
+        )\n    has_more = body.get(\"hasMore\")\n    if not isinstance(has_more, bool):\n        raise RuntimeError(f\"Page\
+        \ {ordinal} has invalid hasMore\")\n    expected_next = page_ids[-1] if page_ids else None\n    if next_after != expected_next:\n\
+        \        raise RuntimeError(f\"Page {ordinal} has an invalid nextAfter\")\n    if has_more and (not isinstance(next_after,\
+        \ str) or not next_after or next_after <= after):\n        raise RuntimeError(f\"Page {ordinal} has a missing or non-increasing\
+        \ cursor transition\")\n\n    relation_keys = {\n        \"versions\":\"alertVersions\", \"categories\":\"categories\"\
+        , \"hazards\":\"hazards\",\n        \"geographies\":\"geographies\", \"actors\":\"actors\", \"dimensionStates\":\"\
+        dimensionState\",\n    }\n    for body_key, count_key in relation_keys.items():\n        rows = body.get(body_key)\n\
+        \        if not isinstance(rows, list):\n            raise RuntimeError(f\"Page {ordinal} has invalid {body_key}\"\
+        )\n        if any(row.get(\"alert_id\") not in page_ids for row in rows):\n            raise RuntimeError(\"Relation\
+        \ outside exact alert page\")\n        exported_counts[count_key] += len(rows)\n        if body_key == \"geographies\"\
+        :\n            exported_counts[\"originRelations\"] += sum(row.get(\"role\") == \"origin\" for row in rows)\n    \
+        \        exported_counts[\"notifyingRelations\"] += sum(row.get(\"role\") == \"notifying\" for row in rows)\n\n  \
+        \  manifest.append({\n        \"ordinal\":ordinal,\n        \"after\":after,\n        \"nextAfter\":next_after,\n\
+        \        \"alertCount\":len(page_alerts),\n        \"bytes\":len(raw),\n        \"sha256\":hashlib.sha256(raw).hexdigest(),\n\
+        \    })\n    if not has_more:\n        break\n    after = next_after\n\nif first_metadata != metadata:\n    raise\
+        \ RuntimeError(\"Gate and first-page metadata differ\")\ntotal_alerts = len(ordered_ids)\nif total_alerts != corpus[\"\
+        alerts\"] or len(seen_ids) != corpus[\"uniqueIds\"]:\n    raise RuntimeError(\"Exported alert or unique ID count does\
+        \ not match metadata\")\nif len(seen_references) != corpus[\"uniqueReferences\"]:\n    raise RuntimeError(\"Exported\
+        \ unique reference count does not match metadata\")\nif exported_counts[\"alertVersions\"] != corpus[\"alertVersions\"\
+        ]:\n    raise RuntimeError(\"Exported alert_versions count does not match metadata\")\nif sum_version_count != corpus[\"\
+        sumVersionCount\"]:\n    raise RuntimeError(\"Exported version_count sum does not match metadata\")\nfor key in (\"\
+        categories\", \"hazards\", \"geographies\", \"originRelations\", \"notifyingRelations\",\n            \"actors\",\
+        \ \"dimensionState\"):\n    if exported_counts[key] != dimensions[key]:\n        raise RuntimeError(f\"Exported {key}\
+        \ count does not match metadata\")\n\nmanifest_bytes = (json.dumps(\n    manifest, ensure_ascii=False, sort_keys=True,\
+        \ separators=(\",\", \":\"),\n) + \"\\n\").encode(\"utf-8\")\n(output / \"page-manifest.json\").write_bytes(manifest_bytes)\n\
+        manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()\nsummary = {\n    \"workflowRunId\":run_id,\n    \"chosenPageSize\"\
+        :chosen_limit,\n    \"probeResults\":probes,\n    \"exportDurationSeconds\":round(time.monotonic()-started,3),\n \
+        \   \"globalMetadataCalls\":1+len(probes)+len(manifest)-1,\n    \"globalMetadataCallsAvoidedVsPrior210Pages\":420-(1+len(probes)+len(manifest)-1),\n\
+        \    \"source\":\"SAFETY GATE\",\n    \"snapshotGuard\":expected_guard,\n    \"pages\":len(manifest),\n    \"totalAlerts\"\
+        :total_alerts,\n    \"uniqueAlertIds\":len(seen_ids),\n    \"uniqueReferences\":len(seen_references),\n    \"totalVersionsReported\"\
+        :corpus[\"alertVersions\"],\n    \"totalVersionsExported\":exported_counts[\"alertVersions\"],\n    \"sumVersionCount\"\
+        :sum_version_count,\n    \"firstId\":ordered_ids[0] if ordered_ids else None,\n    \"lastId\":ordered_ids[-1] if ordered_ids\
+        \ else None,\n    \"dimensionCounts\":dimensions,\n    \"exportedDimensionCounts\":exported_counts,\n    \"mappingVersionCounts\"\
+        :mapping_versions,\n    \"latestSafetyGateSync\":operational.get(\"latestSync\"),\n    \"sourceSyncLease\":operational.get(\"\
+        sourceSyncLease\"),\n    \"rebuildMetadata\":operational.get(\"dimensionRebuildState\"),\n    \"rebuildLease\":operational.get(\"\
+        rebuildLease\"),\n    \"pageManifestSha256\":manifest_sha,\n}\nsummary_bytes = (json.dumps(\n    summary, ensure_ascii=False,\
+        \ sort_keys=True, separators=(\",\", \":\"),\n) + \"\\n\").encode(\"utf-8\")\n(output / \"export-summary.json\").write_bytes(summary_bytes)\n\
+        print(json.dumps({\n    \"source\":\"SAFETY GATE\", \"pages\":len(manifest), \"totalAlerts\":total_alerts,\n    \"\
+        chosenPageSize\":chosen_limit,\"exportDurationSeconds\":summary[\"exportDurationSeconds\"],\n    \"totalVersions\"\
+        :exported_counts[\"alertVersions\"], \"snapshotGuard\":expected_guard,\n    \"pageManifestSha256\":manifest_sha,\n\
+        }, sort_keys=True))\nPY\n"
+    - name: Certify fresh semantic compatibility, exact rollback and current checkpoint plan
+      env:
+        NODE_OPTIONS: --max-old-space-size=6144
+      run: "node --input-type=module <<'JS'\nimport assert from 'node:assert/strict';\nimport {readFileSync,writeFileSync,readdirSync}\
+        \ from 'node:fs';\nimport {createHash} from 'node:crypto';\nimport {inflateSync} from 'node:zlib';\nimport {DatabaseSync}\
+        \ from 'node:sqlite';\nconst ref=JSON.parse(inflateSync(Buffer.from('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','base64')));\n\
+        const stable=v=>Array.isArray(v)?'['+v.map(stable).join(',')+']':v&&typeof v==='object'?'{'+Object.entries(v).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>JSON.stringify(k)+':'+stable(v)).join(',')+'}':JSON.stringify(v);\n\
+        const bytes=v=>Buffer.from(stable(v)+'\\n');\nconst sha=v=>createHash('sha256').update(v).digest('hex');\nconst put=(name,v)=>{const\
+        \ b=bytes(v);writeFileSync('export/'+name,b);return sha(b);};\nconst read=name=>JSON.parse(readFileSync('export/'+name));\n\
+        const summary=read('export-summary.json'),manifest=read('page-manifest.json'),gate=read('metadata-gate.json');\nassert.equal(sha(readFileSync('export/page-manifest.json')),summary.pageManifestSha256);\n\
+        const rows={alerts:[],versions:[],categories:[],hazards:[],geographies:[],actors:[],dimensionStates:[]};\nlet cursor='';\n\
+        for(let i=0;i<manifest.length;i++){\n const raw=readFileSync('export/pages/page-'+String(i+1).padStart(4,'0')+'.json');assert.equal(sha(raw),manifest[i].sha256);assert.equal(raw.length,manifest[i].bytes);\n\
+        \ const p=JSON.parse(raw);assert.equal(p.after,cursor);assert.equal(p.snapshotGuard,gate.snapshotGuard);assert.equal(sha(stable(p.metadata)),gate.snapshotGuard);assert.equal(p.runtimeMarker,'work19g-ah-optimized-20260906');\n\
+        \ const set=new Set();for(const a of p.alerts){assert.equal(a.source,'SAFETY GATE');assert.ok(a.id>cursor);cursor=a.id;set.add(a.id);}\n\
+        \ assert.equal(p.nextAfter,p.alerts.at(-1)?.id??null);assert.equal(p.hasMore,i<manifest.length-1);\n for(const k of\
+        \ Object.keys(rows)){assert.ok(Array.isArray(p[k]));if(k!=='alerts')assert.ok(p[k].every(x=>set.has(x.alert_id)));rows[k].push(...p[k]);}\n\
+        }\nconst {alerts,versions,categories,hazards,geographies,actors,dimensionStates}=rows,md=gate.metadata;\nassert.equal(alerts.length,summary.totalAlerts);assert.equal(new\
+        \ Set(alerts.map(a=>a.id)).size,alerts.length);assert.equal(new Set(alerts.map(a=>a.reference)).size,alerts.length);\n\
+        const semantic=alerts.map(a=>({id:a.id,reference:a.reference,contentHash:a.content_hash,versionCount:a.version_count,updatedAt:a.updated_at,detectedAt:a.detected_at})).sort((a,b)=>a.id.localeCompare(b.id));\n\
+        const semanticSha=put('semantic-manifest.json',semantic);\nassert.equal(semanticSha,ref.semanticSha256,'SOURCE_EVOLUTION_REQUIRES_CERTIFICATION:\
+        \ semantic');\nassert.equal(sha(bytes(alerts.map(a=>({id:a.id,reference:a.reference,source:a.source,canonical_json:a.canonical_json,content_hash:a.content_hash})))),ref.targetRelevantSha256,'SOURCE_EVOLUTION_REQUIRES_CERTIFICATION:\
+        \ target input');\nassert.equal(sha(bytes(versions)),ref.alertVersionsSha256,'SOURCE_EVOLUTION_REQUIRES_CERTIFICATION:\
+        \ versions');\nassert.equal(alerts.length,ref.metrics.length);\nassert.equal(md.corpus.sumVersionCount,alerts.reduce((n,a)=>n+a.version_count,0));assert.equal(md.corpus.alertVersions,versions.length);\n\
+        const state=md.operational.dimensionRebuildState;\nassert.equal(md.operational.sourceSyncLease,null);assert.equal(md.operational.rebuildLease,null);\n\
+        assert.equal(state.source,'SAFETY GATE');assert.equal(state.mapping_version,'work19g-ac-v5');assert.equal(state.mode,'apply');assert.ok(['running','completed'].includes(state.status));assert.equal(state.error_count,0);assert.equal(state.lease_owner_id,null);assert.equal(state.lease_expires_at,null);\n\
+        assert.ok(state.cursor_alert_id>='sg:A12/00071/21');assert.ok(state.scanned_count>=1050);assert.ok(alerts.some(a=>a.id===state.cursor_alert_id));\n\
+        assert.ok(Date.parse(md.operational.latestSync.started_at)>Date.parse(state.updated_at),'Natural sync must follow\
+        \ previous checkpoint pause');\nconst byId=new Map(dimensionStates.map(s=>[s.alert_id,s]));assert.equal(byId.size,alerts.length);\n\
+        const freshness={v5:0,v4:0,v2:0,other:0,missing:0,hashMismatch:0};\nconst stale=new Set();\nfor(const a of alerts){const\
+        \ s=byId.get(a.id);if(!s){freshness.missing++;stale.add(a.id);continue;}\n if(s.source_content_hash!==a.content_hash){freshness.hashMismatch++;stale.add(a.id);}\n\
+        \ const v=s.mapping_version;if(v==='work19g-ac-v5')freshness.v5++;else {stale.add(a.id);if(v==='work18-v2')freshness.v2++;else\
+        \ if(v==='work19g-j-v4')freshness.v4++;else freshness.other++;}\n if(a.id<=state.cursor_alert_id)assert.ok(!stale.has(a.id),'Stale\
+        \ alert behind persisted checkpoint');\n}\nassert.equal(freshness.missing,0);assert.equal(freshness.hashMismatch,0);assert.equal(freshness.other,0);assert.equal(md.dimensions.missingState,0);assert.equal(md.dimensions.sourceContentHashMismatches,0);\n\
+        const tableRows={categories,hazards,geographies,actors,dimensionState:dimensionStates};\nconst sorted=xs=>xs.map(x=>Object.fromEntries(Object.entries(x).filter(([k])=>k!=='id'&&k!=='derived_at'))).map(x=>[stable(x),x]).sort(([a],[b])=>a.localeCompare(b)).map(([,x])=>x);\n\
+        const comparable=Object.fromEntries(Object.entries(tableRows).map(([k,v])=>[k,sorted(v)]));\nconst currentSha=put('current-dimension-manifest.json',comparable);\n\
+        for(const [k,v] of Object.entries(tableRows))assert.equal(v.length,md.dimensions[k]);\nconst rollback={source:'SAFETY\
+        \ GATE',...tableRows,dimensionRebuildState:state};const rollbackSha=put('rollback-current-dimensions.json',rollback);\n\
+        const db=new DatabaseSync(':memory:');db.exec('PRAGMA foreign_keys=OFF');for(const sql of Object.values(ref.schema))db.exec(sql);\n\
+        const tables={categories:'alert_categories',hazards:'alert_hazards',geographies:'alert_geographies',actors:'alert_actors',dimensionState:'alert_dimension_state',dimensionRebuildState:'dimension_rebuild_state'};\n\
+        db.exec('BEGIN');for(const [k,t] of Object.entries(tables)){const rr=k==='dimensionRebuildState'?[state]:tableRows[k];for(const\
+        \ row of rr){const keys=Object.keys(row);db.prepare('INSERT INTO '+t+' ('+keys.map(x=>'\"'+x+'\"').join(',')+') VALUES\
+        \ ('+keys.map(()=>'?').join(',')+')').run(...keys.map(x=>row[x]));}}db.exec('COMMIT');\nconst restored={source:'SAFETY\
+        \ GATE'};for(const [k,t] of Object.entries(tables))restored[k]=k==='dimensionRebuildState'?db.prepare('SELECT * FROM\
+        \ '+t).get():db.prepare('SELECT * FROM '+t+' ORDER BY alert_id'+(k==='dimensionState'?'':',id')).all();\nassert.equal(sha(bytes(restored)),rollbackSha,'Full\
+        \ offline rollback restore');\nconst restoredComparable=Object.fromEntries(Object.keys(tableRows).map(k=>[k,sorted(restored[k])]));assert.equal(sha(bytes(restoredComparable)),currentSha);db.close();\n\
+        const proofSha=put('rollback-restore-proof.json',{exact:true,currentDimensionSha256:currentSha,rollbackSha256:rollbackSha,restoredFullSha256:sha(bytes(restored))});\n\
+        const allIndex=new Map(alerts.map((a,i)=>[a.id,i]));const remaining=alerts.filter(a=>a.id>state.cursor_alert_id);const\
+        \ plan=[];let checkpoint=state.cursor_alert_id;\nfor(let start=0;start<=remaining.length;start+=50){const page=remaining.slice(start,start+50);const\
+        \ m=Object.fromEntries(ref.keys.map(k=>[k,0]));let mismatches=0;for(const a of page){if(!stale.has(a.id))continue;mismatches++;ref.keys.forEach((k,i)=>m[k]+=ref.metrics[allIndex.get(a.id)][i]);}\n\
+        \ const nextCheckpoint=page.at(-1)?.id??checkpoint;const done=page.length<50;plan.push({source:'SAFETY GATE',mode:'apply',mappingVersion:'work19g-ac-v5',checkpoint,nextCheckpoint,done,scanned:page.length,...m,mismatches,errors:[]});checkpoint=nextCheckpoint;if(done)break;\n\
+        }\nassert.equal(plan.reduce((n,b)=>n+b.mismatches,0),stale.size);assert.equal(plan[0].checkpoint,state.cursor_alert_id);\n\
+        const planSha=put('apply-plan.json',plan);\nconst cert={schemaVersion:1,certifiedAt:new Date().toISOString(),runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT,source:'SAFETY\
+        \ GATE',runtimeMarker:gate.runtimeMarker,runtimeTree:ref.runtimeTree,runtimeCommit:ref.runtimeCommit,snapshotGuard:gate.snapshotGuard,semanticSha256:semanticSha,targetRelevantSha256:ref.targetRelevantSha256,targetSha256:ref.targetSha256,targetReused:true,corpus:md.corpus,syncStates:md.operational.syncStates,initialRebuildState:state,freshness,planSha256:planSha,rollbackSha256:rollbackSha,currentDimensionSha256:currentSha,rollbackProofSha256:proofSha,pageManifestSha256:summary.pageManifestSha256,naturalSync:read('natural-sync.json')};\n\
+        put('window-certification.json',cert);\nconsole.log(JSON.stringify({certified:true,guard:cert.snapshotGuard,checkpoint:state.cursor_alert_id,freshness,planBatches:plan.length,rollbackExact:true,targetReused:true}));\n\
+        \nJS\n"
+    - name: Upload temporary audit transport
+      uses: actions/upload-artifact@v4
+      with:
+        name: work19g-ah-certified-window-${{ github.run_id }}-${{ github.run_attempt }}
+        path: export/**
+        if-no-files-found: error
+        retention-days: 1
+'on':
+  push:
+    branches:
+    - work/19g-ah-safety-gate-final-rematerialization-transport
+    paths:
+    - .github/workflows/work19g-ah-safety-gate-audit-transport.yml
