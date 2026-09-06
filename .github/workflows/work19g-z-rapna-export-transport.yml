@@ -1,4 +1,4 @@
-name: WORK19G-Z RAPNA export transport
+name: WORK19G-AA RAPNA dimension apply and export
 
 on:
   push:
@@ -10,10 +10,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: work19g-aa-rapna-dimension-apply
+  cancel-in-progress: false
+
 jobs:
-  export:
+  apply-and-export:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -26,7 +30,184 @@ jobs:
           fi
           echo "VIGIA_SYNC_TOKEN available: yes"
 
-      - name: Export exact RAPNA production corpus
+      - name: Apply certified RAPNA rebuild in checkpointed batches
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          VIGIA_RAPNA_APPLY_URL: https://vigia-alertas.csar68.chatgpt.site/api/admin/work19g-aa/rapna-dimension-apply
+          VIGIA_RAPNA_EXPORT_URL: https://vigia-alertas.csar68.chatgpt.site/api/admin/work19g-y/rapna-export
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+
+          apply_url = os.environ["VIGIA_RAPNA_APPLY_URL"]
+          export_url = os.environ["VIGIA_RAPNA_EXPORT_URL"]
+          token = os.environ["VIGIA_SYNC_TOKEN"]
+          temporary = Path(os.environ["RUNNER_TEMP"])
+
+          def curl_request(method, url, destination, max_time):
+              result = subprocess.run([
+                  "curl", "--silent", "--show-error", "--location",
+                  "--request", method,
+                  "--header", f"Authorization: Bearer {token}",
+                  "--max-time", str(max_time),
+                  "--output", str(destination),
+                  "--write-out", "%{http_code}",
+                  url,
+              ], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False)
+              status = result.stdout.decode("ascii", errors="replace").strip()
+              if result.returncode != 0 or status != "200":
+                  print(json.dumps({
+                      "curlExitCode": result.returncode,
+                      "httpStatus": status or None,
+                  }, sort_keys=True), file=sys.stderr)
+                  raise SystemExit(1)
+              try:
+                  body = json.loads(destination.read_bytes())
+              except json.JSONDecodeError as error:
+                  raise RuntimeError("Authenticated endpoint did not return valid JSON") from error
+              if not isinstance(body, dict):
+                  raise RuntimeError("Authenticated endpoint returned an invalid object")
+              return body
+
+          def read_gate(ordinal, require_pre_apply=False):
+              body = curl_request(
+                  "GET", f"{export_url}?limit=1",
+                  temporary / f"work19g-aa-gate-{ordinal:04d}.json", 120,
+              )
+              metadata = body.get("metadata")
+              corpus = metadata.get("corpus") if isinstance(metadata, dict) else None
+              operational = metadata.get("operational") if isinstance(metadata, dict) else None
+              alerts = body.get("alerts")
+              if body.get("source") != "RAPNA" or body.get("after") != "":
+                  raise RuntimeError("RAPNA gate returned an unexpected source or cursor")
+              if not isinstance(body.get("snapshotGuard"), str) or not body["snapshotGuard"]:
+                  raise RuntimeError("RAPNA gate has no snapshot guard")
+              if corpus != {"alerts": 2567, "alertVersions": 2568, "sumVersionCount": 2568}:
+                  raise RuntimeError("RAPNA gate corpus no longer matches the certified baseline")
+              if not isinstance(alerts, list) or len(alerts) != 1:
+                  raise RuntimeError("RAPNA gate returned an unexpected alert count")
+              if body.get("nextAfter") != alerts[0].get("id"):
+                  raise RuntimeError("RAPNA gate returned an invalid next cursor")
+              if not isinstance(operational, dict):
+                  raise RuntimeError("RAPNA gate has invalid operational metadata")
+              if operational.get("sourceSyncLease") is not None:
+                  print(json.dumps({"status": "paused", "reason": "RAPNA source lease active"}, sort_keys=True))
+                  raise SystemExit(78)
+              if operational.get("rebuildLease") is not None:
+                  raise RuntimeError("RAPNA rebuild lease is not clear")
+              latest_sync = operational.get("latestSync")
+              if not isinstance(latest_sync, dict) or latest_sync.get("source") != "RAPNA":
+                  raise RuntimeError("RAPNA latest sync metadata is invalid")
+              if latest_sync.get("status") != "completed" or latest_sync.get("completed_at") is None:
+                  raise RuntimeError("Current-hour RAPNA sync is not completed")
+              started_at = latest_sync.get("started_at")
+              current_hour = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H")
+              if not isinstance(started_at, str) or not started_at.startswith(current_hour):
+                  raise RuntimeError("Current-hour RAPNA sync has not completed")
+              if any(latest_sync.get(key) != 0 for key in ("records_persisted", "new_count", "updated_count")):
+                  raise RuntimeError("Current-hour RAPNA sync changed the certified corpus")
+              if require_pre_apply:
+                  versions = metadata.get("mappingVersions")
+                  if not isinstance(versions, list):
+                      raise RuntimeError("RAPNA mapping metadata is invalid")
+                  states = {
+                      row.get("mapping_version"): row.get("row_count")
+                      for row in versions
+                      if isinstance(row, dict) and row.get("dimension_table") == "dimension_state"
+                  }
+                  if states != {"work18-v2": 2467, "work19g-j-v4": 100}:
+                      raise RuntimeError("RAPNA pre-APPLY mapping state no longer matches certification")
+
+          def require_safe_window():
+              now = datetime.now(timezone.utc)
+              next_schedule = now.replace(minute=23, second=0, microsecond=0)
+              if next_schedule <= now:
+                  next_schedule += timedelta(hours=1)
+              seconds = (next_schedule - now).total_seconds()
+              if seconds < 300:
+                  print(json.dumps({
+                      "status": "paused",
+                      "reason": "RAPNA schedule window",
+                      "secondsToNextSchedule": int(seconds),
+                  }, sort_keys=True))
+                  raise SystemExit(78)
+
+          read_gate(0, require_pre_apply=True)
+          totals = {
+              "calls": 0, "scanned": 0, "candidateRelations": 0,
+              "expectedWrites": 0, "mapped": 0, "unknown": 0,
+              "unmapped": 0, "ambiguous": 0, "duplicates": 0, "mismatches": 0,
+          }
+          previous_next = None
+
+          while True:
+              require_safe_window()
+              read_gate(totals["calls"] + 1)
+              body = curl_request(
+                  "POST", apply_url,
+                  temporary / f"work19g-aa-apply-{totals['calls'] + 1:04d}.json", 240,
+              )
+              required = {
+                  "mappingVersion", "checkpoint", "nextCheckpoint", "done", "scanned",
+                  "candidateRelations", "expectedWrites", "mapped", "unknown", "unmapped",
+                  "ambiguous", "duplicates", "mismatches", "errors",
+              }
+              if set(body) != required or body.get("mappingVersion") != "work19g-j-v4":
+                  raise RuntimeError("RAPNA APPLY response contract mismatch")
+              if not isinstance(body.get("errors"), list) or body["errors"]:
+                  raise RuntimeError("RAPNA APPLY reported errors")
+              if body.get("ambiguous") != 0 or body.get("duplicates") != 0:
+                  raise RuntimeError("RAPNA APPLY reported ambiguous or duplicate relations")
+              for key in ("scanned", "candidateRelations", "expectedWrites", "mapped", "unknown", "unmapped", "mismatches"):
+                  if not isinstance(body.get(key), int) or body[key] < 0:
+                      raise RuntimeError(f"RAPNA APPLY returned invalid {key}")
+              if not isinstance(body.get("done"), bool):
+                  raise RuntimeError("RAPNA APPLY returned invalid done state")
+              if previous_next is not None and body.get("checkpoint") != previous_next:
+                  raise RuntimeError("RAPNA APPLY checkpoint continuity failed")
+              if not body["done"] and (
+                  not isinstance(body.get("nextCheckpoint"), str)
+                  or not body["nextCheckpoint"]
+                  or body["nextCheckpoint"] == body.get("checkpoint")
+              ):
+                  raise RuntimeError("RAPNA APPLY checkpoint did not advance")
+
+              totals["calls"] += 1
+              for key in totals:
+                  if key != "calls":
+                      totals[key] += body[key]
+              previous_next = body.get("nextCheckpoint")
+              print(json.dumps({
+                  "batch": totals["calls"], "scanned": body["scanned"],
+                  "mismatches": body["mismatches"], "done": body["done"],
+              }, sort_keys=True))
+              if body["done"]:
+                  break
+
+          expected_totals = {
+              "calls": 52, "scanned": 2567, "candidateRelations": 12019,
+              "expectedWrites": 24354, "ambiguous": 0, "duplicates": 0,
+              "mismatches": 2467,
+          }
+          for key, expected in expected_totals.items():
+              if totals[key] != expected:
+                  raise RuntimeError(f"RAPNA APPLY total {key} did not match certification")
+          (temporary / "work19g-aa-apply-summary.json").write_text(
+              json.dumps(totals, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps({
+              "status": "apply-completed", "calls": totals["calls"],
+              "scanned": totals["scanned"], "staleRematerialized": totals["mismatches"],
+          }, sort_keys=True))
+          PY
+
+      - name: Export exact post-APPLY RAPNA production corpus
         env:
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
           VIGIA_RAPNA_EXPORT_URL: https://vigia-alertas.csar68.chatgpt.site/api/admin/work19g-y/rapna-export
@@ -47,6 +228,7 @@ jobs:
           base_url = os.environ["VIGIA_RAPNA_EXPORT_URL"]
           token = os.environ["VIGIA_SYNC_TOKEN"]
           run_id = os.environ["GITHUB_RUN_ID"]
+          apply_summary = json.loads((Path(os.environ["RUNNER_TEMP"]) / "work19g-aa-apply-summary.json").read_text())
 
           def curl_get(url, destination):
               result = subprocess.run([
@@ -213,12 +395,51 @@ jobs:
               raise RuntimeError("RAPNA corpus metadata is invalid")
           if not isinstance(operational, dict) or not isinstance(mapping_versions, list):
               raise RuntimeError("RAPNA operational metadata is invalid")
+          if corpus != {"alerts": 2567, "alertVersions": 2568, "sumVersionCount": 2568}:
+              raise RuntimeError("Post-APPLY RAPNA corpus metadata does not match certification")
+          expected_dimensions = {
+              "categories": 2567,
+              "hazards": 2567,
+              "geographies": 5134,
+              "actors": 2219,
+              "dimensionState": 2567,
+          }
+          if dimensions != expected_dimensions:
+              raise RuntimeError("Post-APPLY RAPNA dimension metadata does not match target")
+          state_versions = {
+              row.get("mapping_version"): row.get("row_count")
+              for row in mapping_versions
+              if isinstance(row, dict) and row.get("dimension_table") == "dimension_state"
+          }
+          if state_versions != {"work19g-j-v4": 2567}:
+              raise RuntimeError("Post-APPLY RAPNA mapping versions do not match target")
+          rebuild = operational.get("dimensionRebuildState")
+          required_rebuild = {
+              "source": "RAPNA",
+              "mapping_version": "work19g-j-v4",
+              "status": "completed",
+              "scanned_count": 2567,
+              "candidate_relation_count": 12019,
+              "write_count": 24354,
+              "ambiguous_count": 0,
+              "duplicate_count": 0,
+              "error_count": 0,
+              "lease_owner_id": None,
+              "lease_expires_at": None,
+          }
+          if not isinstance(rebuild, dict):
+              raise RuntimeError("Post-APPLY RAPNA rebuild state is missing")
+          for key, expected in required_rebuild.items():
+              if rebuild.get(key) != expected:
+                  raise RuntimeError(f"Post-APPLY RAPNA rebuild state {key} does not match certification")
 
           total_alerts = len(ordered_ids)
           if total_alerts != corpus.get("alerts"):
               raise RuntimeError("Exported alert count does not match RAPNA metadata")
           if len(seen_ids) != total_alerts:
               raise RuntimeError("Unique alert count does not match exported alert count")
+          if len(manifest) != 52:
+              raise RuntimeError("Post-APPLY RAPNA export did not contain exactly 52 pages")
           if exported_counts["alertVersions"] != corpus.get("alertVersions"):
               raise RuntimeError("Exported alert_versions count does not match RAPNA metadata")
           if sum_version_count != corpus.get("sumVersionCount"):
@@ -258,6 +479,7 @@ jobs:
               "sourceSyncLease": operational.get("sourceSyncLease"),
               "rebuildMetadata": operational.get("dimensionRebuildState"),
               "rebuildLease": operational.get("rebuildLease"),
+              "applyTotals": apply_summary,
               "pageManifestSha256": manifest_sha,
           }
           summary_bytes = (json.dumps(
@@ -280,7 +502,7 @@ jobs:
       - name: Upload private audit transport
         uses: actions/upload-artifact@v4
         with:
-          name: work19g-z-rapna-export-${{ github.run_id }}
+          name: work19g-aa-rapna-post-apply-${{ github.run_id }}
           path: export/**
           if-no-files-found: error
           retention-days: 1
