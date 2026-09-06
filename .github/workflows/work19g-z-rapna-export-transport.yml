@@ -35,10 +35,10 @@ jobs:
           import hashlib
           import json
           import os
+          import subprocess
+          import sys
           from pathlib import Path
-          from urllib.error import HTTPError, URLError
           from urllib.parse import quote
-          from urllib.request import Request, urlopen
 
           output = Path("export")
           pages_dir = output / "pages"
@@ -47,6 +47,59 @@ jobs:
           base_url = os.environ["VIGIA_RAPNA_EXPORT_URL"]
           token = os.environ["VIGIA_SYNC_TOKEN"]
           run_id = os.environ["GITHUB_RUN_ID"]
+
+          def curl_get(url, destination):
+              result = subprocess.run([
+                  "curl",
+                  "--silent",
+                  "--show-error",
+                  "--location",
+                  "--request", "GET",
+                  "--header", f"Authorization: Bearer {token}",
+                  "--max-time", "120",
+                  "--output", str(destination),
+                  "--write-out", "%{http_code}",
+                  url,
+              ], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False)
+              status = result.stdout.decode("ascii", errors="replace").strip()
+              if result.returncode != 0 or status != "200":
+                  print(json.dumps({
+                      "curlExitCode": result.returncode,
+                      "httpStatus": status or None,
+                  }, sort_keys=True), file=sys.stderr)
+                  raise SystemExit(1)
+              return destination.read_bytes()
+
+          gate_path = Path(os.environ["RUNNER_TEMP"]) / "work19g-z-rapna-export-gate.json"
+          gate_raw = curl_get(f"{base_url}?limit=1", gate_path)
+          try:
+              gate = json.loads(gate_raw)
+          except json.JSONDecodeError as error:
+              raise RuntimeError("Authenticated curl gate did not return valid JSON") from error
+          gate_metadata = gate.get("metadata")
+          gate_corpus = gate_metadata.get("corpus") if isinstance(gate_metadata, dict) else None
+          gate_alerts = gate.get("alerts")
+          if gate.get("source") != "RAPNA" or gate.get("after") != "":
+              raise RuntimeError("Authenticated curl gate returned an unexpected source or cursor")
+          if not isinstance(gate.get("snapshotGuard"), str) or not gate["snapshotGuard"]:
+              raise RuntimeError("Authenticated curl gate has no snapshot guard")
+          if not isinstance(gate_corpus, dict) or not isinstance(gate_corpus.get("alerts"), int):
+              raise RuntimeError("Authenticated curl gate has invalid corpus metadata")
+          if not isinstance(gate_metadata.get("dimensions"), dict):
+              raise RuntimeError("Authenticated curl gate has invalid dimension metadata")
+          if not isinstance(gate_metadata.get("mappingVersions"), list):
+              raise RuntimeError("Authenticated curl gate has invalid mapping metadata")
+          if not isinstance(gate_metadata.get("operational"), dict):
+              raise RuntimeError("Authenticated curl gate has invalid operational metadata")
+          if not isinstance(gate_alerts, list) or len(gate_alerts) != (1 if gate_corpus["alerts"] else 0):
+              raise RuntimeError("Authenticated curl gate returned an unexpected alert count")
+          if gate_alerts and not isinstance(gate_alerts[0], dict):
+              raise RuntimeError("Authenticated curl gate returned an invalid alert")
+          gate_next = gate_alerts[0].get("id") if gate_alerts else None
+          if not isinstance(gate_next, str) and gate_next is not None:
+              raise RuntimeError("Authenticated curl gate has invalid nextAfter")
+          if gate.get("nextAfter") != gate_next:
+              raise RuntimeError("Authenticated curl gate has an inconsistent nextAfter")
 
           after = ""
           expected_guard = None
@@ -70,25 +123,8 @@ jobs:
               url = f"{base_url}?limit=50"
               if after:
                   url += f"&after={quote(after, safe='')}"
-              request = Request(
-                  url,
-                  method="GET",
-                  headers={"Authorization": f"Bearer {token}"},
-              )
-              try:
-                  with urlopen(request, timeout=120) as response:
-                      status = response.status
-                      raw = response.read()
-              except HTTPError as error:
-                  raise RuntimeError(f"RAPNA export failed with HTTP {error.code}") from error
-              except URLError as error:
-                  raise RuntimeError("RAPNA export transport failed") from error
-
-              if status != 200:
-                  raise RuntimeError(f"RAPNA export returned unexpected HTTP {status}")
-
               page_path = pages_dir / f"page-{ordinal:04d}.json"
-              page_path.write_bytes(raw)
+              raw = curl_get(url, page_path)
               try:
                   body = json.loads(raw)
               except json.JSONDecodeError as error:
