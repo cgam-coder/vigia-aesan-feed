@@ -18,7 +18,7 @@ concurrency:
 jobs:
   export:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -37,21 +37,34 @@ jobs:
         run: |
           python3 - <<'PY'
           import json, os, subprocess, time
+          from datetime import datetime, timezone
+          from pathlib import Path
+          began = datetime.now(timezone.utc)
           def read(url):
               r = subprocess.run(["curl","--silent","--show-error","--fail","--max-time","30","-H","Authorization: Bearer "+os.environ["GH_TOKEN"],url],capture_output=True,check=True)
               return json.loads(r.stdout)
           base = "https://api.github.com/repos/cgam-coder/vigia-aesan-feed"
+          selected = None
           while True:
-              run = read(base+"/actions/runs/34052715972")
-              if run["event"] != "schedule": raise RuntimeError("Not a natural scheduled run")
-              if run["status"] == "completed":
-                  if run["conclusion"] != "success": raise RuntimeError("Natural sync failed")
-                  break
+              runs = read(base+"/actions/runs?per_page=100")["workflow_runs"]
+              sg = [r for r in runs if r["workflow_id"] == 339316486]
+              candidates = [r for r in sg if r["event"] == "schedule"
+                  and datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")) > began]
+              if selected is None and candidates:
+                  selected = min(candidates, key=lambda r:r["created_at"])["id"]
+              if selected is not None:
+                  run = read(base+"/actions/runs/"+str(selected))
+                  if run["event"] != "schedule": raise RuntimeError("Not a natural scheduled run")
+                  if run["status"] == "completed":
+                      if run["conclusion"] != "success": raise RuntimeError("Natural sync failed")
+                      if any(r["status"] != "completed" for r in sg):
+                          raise RuntimeError("Safety Gate workflow is still queued or active")
+                      break
               time.sleep(20)
-          runs = read(base+"/actions/runs?per_page=100")["workflow_runs"]
-          if any(r["workflow_id"] == 339316486 and r["status"] != "completed" for r in runs):
-              raise RuntimeError("Safety Gate workflow is still queued or active")
-          print(json.dumps({k:run.get(k) for k in ("id","event","status","conclusion","run_started_at","updated_at")}))
+          evidence = {k:run.get(k) for k in ("id","event","status","conclusion","created_at","run_started_at","updated_at")}
+          evidence["transportWaitBeganAt"] = began.isoformat()
+          Path(os.environ["RUNNER_TEMP"], "natural-sync.json").write_text(json.dumps(evidence))
+          print(json.dumps(evidence))
           PY
 
       - name: Export exact Safety Gate production corpus
@@ -65,6 +78,8 @@ jobs:
           import os
           import subprocess
           import sys
+          import re
+          import time
           from datetime import datetime, timezone
           from pathlib import Path
           from urllib.parse import quote
@@ -77,6 +92,12 @@ jobs:
           token = os.environ["VIGIA_SYNC_TOKEN"]
           run_id = os.environ["GITHUB_RUN_ID"]
 
+          started = time.monotonic()
+          class TransportFailure(Exception):
+              def __init__(self, code, status):
+                  self.code, self.status = code, status
+              def size_or_resource(self):
+                  return self.status in ("413", "500", "502", "503", "504", "507") or (self.code in (18, 28) and self.status in ("000", "200"))
           def curl_get(url, destination):
               result = subprocess.run([
                   "curl", "--silent", "--show-error", "--location",
@@ -93,11 +114,11 @@ jobs:
                       "curlExitCode": result.returncode,
                       "httpStatus": status or None,
                   }, sort_keys=True), file=sys.stderr)
-                  raise SystemExit(1)
+                  raise TransportFailure(result.returncode, status)
               return destination.read_bytes()
 
           gate_path = Path(os.environ["RUNNER_TEMP"]) / "work19g-ah-safety-gate-export-gate.json"
-          gate_raw = curl_get(f"{base_url}?limit=1", gate_path)
+          gate_raw = curl_get(f"{base_url}?metadataOnly=1", gate_path)
           try:
               gate = json.loads(gate_raw)
           except json.JSONDecodeError as error:
@@ -108,12 +129,11 @@ jobs:
           dimensions = metadata.get("dimensions") if isinstance(metadata, dict) else None
           operational = metadata.get("operational") if isinstance(metadata, dict) else None
           mapping_versions = metadata.get("mappingVersions") if isinstance(metadata, dict) else None
-          alerts = gate.get("alerts")
-          if gate.get("runtimeMarker") != "work19g-ah-eff9f9b-20260906-1845":
+          if gate.get("runtimeMarker") != "work19g-ah-optimized-20260906":
               raise RuntimeError("Temporary runtime marker mismatch")
-          if gate.get("source") != "SAFETY GATE" or gate.get("after") != "":
+          if gate.get("source") != "SAFETY GATE":
               raise RuntimeError("Safety Gate gate returned an unexpected source or cursor")
-          if not isinstance(gate.get("snapshotGuard"), str) or not gate["snapshotGuard"]:
+          if not isinstance(gate.get("snapshotGuard"), str) or not re.fullmatch("[0-9a-f]{64}", gate["snapshotGuard"]):
               raise RuntimeError("Safety Gate gate has no snapshot guard")
           if not isinstance(corpus, dict) or any(not isinstance(corpus.get(key), int) for key in (
               "alerts", "uniqueIds", "uniqueReferences", "alertVersions", "sumVersionCount",
@@ -143,15 +163,39 @@ jobs:
           completed_age = (datetime.now(timezone.utc) - completed).total_seconds()
           if completed_age < -60 or completed_age > 20 * 60:
               raise RuntimeError("No recently completed natural Safety Gate sync is available")
-          if not isinstance(alerts, list) or len(alerts) != (1 if corpus["alerts"] else 0):
-              raise RuntimeError("Safety Gate gate returned an unexpected alert count")
-          gate_next = alerts[0].get("id") if alerts else None
-          if gate.get("nextAfter") != gate_next:
-              raise RuntimeError("Safety Gate gate has an inconsistent nextAfter")
-
+          natural = json.loads(Path(os.environ["RUNNER_TEMP"], "natural-sync.json").read_text())
+          natural_start = datetime.fromisoformat(natural["run_started_at"].replace("Z", "+00:00"))
+          sync_start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+          if sync_start < natural_start or completed < sync_start:
+              raise RuntimeError("Metadata does not identify the observed natural sync")
+          (output / "metadata-gate.json").write_bytes(gate_raw)
+          (output / "natural-sync.json").write_text(json.dumps(natural))
+          expected_guard = gate["snapshotGuard"]
+          first_metadata = metadata
+          probe_path = Path(os.environ["RUNNER_TEMP"]) / "work19g-ah-probe.json"
+          probes = []
+          chosen_limit = None
+          for candidate in (500, 250, 100):
+              probe_start = time.monotonic()
+              try:
+                  probe_raw = curl_get(f"{base_url}?limit={candidate}&expectedGuard={expected_guard}", probe_path)
+              except TransportFailure as failure:
+                  probes.append({"limit":candidate,"httpStatus":failure.status,"curlExitCode":failure.code,"seconds":round(time.monotonic()-probe_start,3)})
+                  if not failure.size_or_resource(): raise
+                  continue
+              probe = json.loads(probe_raw)
+              if probe.get("snapshotGuard") != expected_guard or probe.get("metadata") != metadata:
+                  raise RuntimeError("Snapshot failure during size probe")
+              if probe.get("runtimeMarker") != gate["runtimeMarker"] or probe.get("source") != "SAFETY GATE":
+                  raise RuntimeError("Runtime failure during size probe")
+              if len(probe.get("alerts", [])) != min(candidate, corpus["alerts"]):
+                  raise RuntimeError("Incomplete size probe")
+              chosen_limit = candidate
+              probes.append({"limit":candidate,"httpStatus":"200","bytes":len(probe_raw),"seconds":round(time.monotonic()-probe_start,3)})
+              break
+          if chosen_limit is None: raise RuntimeError("No safe export page size")
+          print(json.dumps({"chosenPageSize":chosen_limit,"probes":probes}))
           after = ""
-          expected_guard = None
-          first_metadata = None
           seen_ids = set()
           seen_references = set()
           ordered_ids = []
@@ -171,11 +215,15 @@ jobs:
 
           while True:
               ordinal += 1
-              url = f"{base_url}?limit=100"
+              url = f"{base_url}?limit={chosen_limit}&expectedGuard={expected_guard}"
               if after:
                   url += f"&after={quote(after, safe='')}"
               page_path = pages_dir / f"page-{ordinal:04d}.json"
-              raw = curl_get(url, page_path)
+              if ordinal == 1:
+                  raw = probe_raw
+                  page_path.write_bytes(raw)
+              else:
+                  raw = curl_get(url, page_path)
               try:
                   body = json.loads(raw)
               except json.JSONDecodeError as error:
@@ -188,11 +236,8 @@ jobs:
               guard = body.get("snapshotGuard")
               if not isinstance(guard, str) or not guard:
                   raise RuntimeError(f"Page {ordinal} has no snapshot guard")
-              if expected_guard is None:
-                  expected_guard = guard
-                  first_metadata = body.get("metadata")
-              elif guard != expected_guard:
-                  raise RuntimeError(f"Snapshot guard changed on page {ordinal}")
+              if guard != expected_guard or body.get("metadata") != metadata:
+                  raise RuntimeError(f"Snapshot guard or metadata changed on page {ordinal}")
 
               page_alerts = body.get("alerts")
               if not isinstance(page_alerts, list):
@@ -238,6 +283,8 @@ jobs:
                   rows = body.get(body_key)
                   if not isinstance(rows, list):
                       raise RuntimeError(f"Page {ordinal} has invalid {body_key}")
+                  if any(row.get("alert_id") not in page_ids for row in rows):
+                      raise RuntimeError("Relation outside exact alert page")
                   exported_counts[count_key] += len(rows)
                   if body_key == "geographies":
                       exported_counts["originRelations"] += sum(row.get("role") == "origin" for row in rows)
@@ -278,6 +325,11 @@ jobs:
           manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
           summary = {
               "workflowRunId":run_id,
+              "chosenPageSize":chosen_limit,
+              "probeResults":probes,
+              "exportDurationSeconds":round(time.monotonic()-started,3),
+              "globalMetadataCalls":1+len(probes)+len(manifest)-1,
+              "globalMetadataCallsAvoidedVsPrior210Pages":420-(1+len(probes)+len(manifest)-1),
               "source":"SAFETY GATE",
               "snapshotGuard":expected_guard,
               "pages":len(manifest),
@@ -304,6 +356,7 @@ jobs:
           (output / "export-summary.json").write_bytes(summary_bytes)
           print(json.dumps({
               "source":"SAFETY GATE", "pages":len(manifest), "totalAlerts":total_alerts,
+              "chosenPageSize":chosen_limit,"exportDurationSeconds":summary["exportDurationSeconds"],
               "totalVersions":exported_counts["alertVersions"], "snapshotGuard":expected_guard,
               "pageManifestSha256":manifest_sha,
           }, sort_keys=True))
@@ -316,3 +369,4 @@ jobs:
           path: export/**
           if-no-files-found: error
           retention-days: 1
+
