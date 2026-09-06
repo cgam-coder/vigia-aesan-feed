@@ -1,0 +1,250 @@
+name: WORK19G-Z RAPNA export transport
+
+on:
+  push:
+    branches:
+      - work/19g-z-rapna-export-transport
+    paths:
+      - .github/workflows/work19g-z-rapna-export-transport.yml
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify existing sync token
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          if [ -z "${VIGIA_SYNC_TOKEN}" ]; then
+            exit 1
+          fi
+          echo "VIGIA_SYNC_TOKEN available: yes"
+
+      - name: Export exact RAPNA production corpus
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          VIGIA_RAPNA_EXPORT_URL: https://vigia-alertas.csar68.chatgpt.site/api/admin/work19g-y/rapna-export
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import quote
+          from urllib.request import Request, urlopen
+
+          output = Path("export")
+          pages_dir = output / "pages"
+          pages_dir.mkdir(parents=True, exist_ok=False)
+
+          base_url = os.environ["VIGIA_RAPNA_EXPORT_URL"]
+          token = os.environ["VIGIA_SYNC_TOKEN"]
+          run_id = os.environ["GITHUB_RUN_ID"]
+
+          after = ""
+          expected_guard = None
+          first_metadata = None
+          seen_ids = set()
+          ordered_ids = []
+          manifest = []
+          exported_counts = {
+              "alertVersions": 0,
+              "categories": 0,
+              "hazards": 0,
+              "geographies": 0,
+              "actors": 0,
+              "dimensionState": 0,
+          }
+          sum_version_count = 0
+          ordinal = 0
+
+          while True:
+              ordinal += 1
+              url = f"{base_url}?limit=50"
+              if after:
+                  url += f"&after={quote(after, safe='')}"
+              request = Request(
+                  url,
+                  method="GET",
+                  headers={"Authorization": f"Bearer {token}"},
+              )
+              try:
+                  with urlopen(request, timeout=120) as response:
+                      status = response.status
+                      raw = response.read()
+              except HTTPError as error:
+                  raise RuntimeError(f"RAPNA export failed with HTTP {error.code}") from error
+              except URLError as error:
+                  raise RuntimeError("RAPNA export transport failed") from error
+
+              if status != 200:
+                  raise RuntimeError(f"RAPNA export returned unexpected HTTP {status}")
+
+              page_path = pages_dir / f"page-{ordinal:04d}.json"
+              page_path.write_bytes(raw)
+              try:
+                  body = json.loads(raw)
+              except json.JSONDecodeError as error:
+                  raise RuntimeError(f"Page {ordinal} is not valid JSON") from error
+
+              if body.get("source") != "RAPNA":
+                  raise RuntimeError(f"Page {ordinal} has unexpected source")
+              if body.get("after") != after:
+                  raise RuntimeError(f"Page {ordinal} does not echo the requested cursor")
+
+              guard = body.get("snapshotGuard")
+              if not isinstance(guard, str) or not guard:
+                  raise RuntimeError(f"Page {ordinal} has no snapshot guard")
+              if expected_guard is None:
+                  expected_guard = guard
+                  first_metadata = body.get("metadata")
+              elif guard != expected_guard:
+                  raise RuntimeError(f"Snapshot guard changed on page {ordinal}")
+
+              alerts = body.get("alerts")
+              if not isinstance(alerts, list):
+                  raise RuntimeError(f"Page {ordinal} alerts are invalid")
+              page_ids = []
+              for alert in alerts:
+                  alert_id = alert.get("id") if isinstance(alert, dict) else None
+                  if not isinstance(alert_id, str) or not alert_id:
+                      raise RuntimeError(f"Page {ordinal} contains an invalid alert ID")
+                  if page_ids and alert_id <= page_ids[-1]:
+                      raise RuntimeError(f"Page {ordinal} IDs are not strictly increasing")
+                  if ordered_ids and alert_id <= ordered_ids[-1]:
+                      raise RuntimeError(f"Page {ordinal} boundary is not strictly increasing")
+                  if alert_id in seen_ids:
+                      raise RuntimeError(f"Duplicate alert ID: {alert_id}")
+                  page_ids.append(alert_id)
+                  ordered_ids.append(alert_id)
+                  seen_ids.add(alert_id)
+                  try:
+                      sum_version_count += int(alert["version_count"])
+                  except (KeyError, TypeError, ValueError) as error:
+                      raise RuntimeError(f"Alert {alert_id} has invalid version_count") from error
+
+              next_after = body.get("nextAfter")
+              has_more = body.get("hasMore")
+              if not isinstance(has_more, bool):
+                  raise RuntimeError(f"Page {ordinal} has invalid hasMore")
+              expected_next = page_ids[-1] if page_ids else None
+              if next_after != expected_next:
+                  raise RuntimeError(f"Page {ordinal} has an invalid nextAfter")
+              if has_more and (not isinstance(next_after, str) or not next_after or next_after <= after):
+                  raise RuntimeError(f"Page {ordinal} has a missing or non-increasing cursor transition")
+
+              relation_keys = {
+                  "versions": "alertVersions",
+                  "categories": "categories",
+                  "hazards": "hazards",
+                  "geographies": "geographies",
+                  "actors": "actors",
+                  "dimensionStates": "dimensionState",
+              }
+              for body_key, count_key in relation_keys.items():
+                  rows = body.get(body_key)
+                  if not isinstance(rows, list):
+                      raise RuntimeError(f"Page {ordinal} has invalid {body_key}")
+                  exported_counts[count_key] += len(rows)
+
+              manifest.append({
+                  "ordinal": ordinal,
+                  "after": after,
+                  "nextAfter": next_after,
+                  "alertCount": len(alerts),
+                  "bytes": len(raw),
+                  "sha256": hashlib.sha256(raw).hexdigest(),
+              })
+
+              if not has_more:
+                  break
+              after = next_after
+
+          if not isinstance(first_metadata, dict):
+              raise RuntimeError("RAPNA metadata is missing")
+          corpus = first_metadata.get("corpus")
+          dimensions = first_metadata.get("dimensions")
+          operational = first_metadata.get("operational")
+          mapping_versions = first_metadata.get("mappingVersions")
+          if not isinstance(corpus, dict) or not isinstance(dimensions, dict):
+              raise RuntimeError("RAPNA corpus metadata is invalid")
+          if not isinstance(operational, dict) or not isinstance(mapping_versions, list):
+              raise RuntimeError("RAPNA operational metadata is invalid")
+
+          total_alerts = len(ordered_ids)
+          if total_alerts != corpus.get("alerts"):
+              raise RuntimeError("Exported alert count does not match RAPNA metadata")
+          if len(seen_ids) != total_alerts:
+              raise RuntimeError("Unique alert count does not match exported alert count")
+          if exported_counts["alertVersions"] != corpus.get("alertVersions"):
+              raise RuntimeError("Exported alert_versions count does not match RAPNA metadata")
+          if sum_version_count != corpus.get("sumVersionCount"):
+              raise RuntimeError("Exported version_count sum does not match RAPNA metadata")
+          for key in ("categories", "hazards", "geographies", "actors", "dimensionState"):
+              if exported_counts[key] != dimensions.get(key):
+                  raise RuntimeError(f"Exported {key} count does not match RAPNA metadata")
+
+          manifest_bytes = (json.dumps(
+              manifest,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ) + "\n").encode("utf-8")
+          (output / "page-manifest.json").write_bytes(manifest_bytes)
+          manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
+
+          summary = {
+              "workflowRunId": run_id,
+              "source": "RAPNA",
+              "snapshotGuard": expected_guard,
+              "pages": len(manifest),
+              "totalAlerts": total_alerts,
+              "totalVersionsReported": corpus["alertVersions"],
+              "totalVersionsExported": exported_counts["alertVersions"],
+              "sumVersionCount": sum_version_count,
+              "uniqueAlertIds": len(seen_ids),
+              "firstId": ordered_ids[0] if ordered_ids else None,
+              "lastId": ordered_ids[-1] if ordered_ids else None,
+              "dimensionCounts": dimensions,
+              "exportedDimensionCounts": {
+                  key: exported_counts[key]
+                  for key in ("categories", "hazards", "geographies", "actors", "dimensionState")
+              },
+              "mappingVersionCounts": mapping_versions,
+              "latestRapnaSync": operational.get("latestSync"),
+              "sourceSyncLease": operational.get("sourceSyncLease"),
+              "rebuildMetadata": operational.get("dimensionRebuildState"),
+              "rebuildLease": operational.get("rebuildLease"),
+              "pageManifestSha256": manifest_sha,
+          }
+          summary_bytes = (json.dumps(
+              summary,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ) + "\n").encode("utf-8")
+          (output / "export-summary.json").write_bytes(summary_bytes)
+          print(json.dumps({
+              "source": "RAPNA",
+              "pages": len(manifest),
+              "totalAlerts": total_alerts,
+              "totalVersions": exported_counts["alertVersions"],
+              "snapshotGuard": expected_guard,
+              "pageManifestSha256": manifest_sha,
+          }, sort_keys=True))
+          PY
+
+      - name: Upload private audit transport
+        uses: actions/upload-artifact@v4
+        with:
+          name: work19g-z-rapna-export-${{ github.run_id }}
+          path: export/**
+          if-no-files-found: error
+          retention-days: 1
