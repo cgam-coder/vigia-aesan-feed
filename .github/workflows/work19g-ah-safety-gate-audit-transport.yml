@@ -3,7 +3,7 @@ name: WORK19G-AH Safety Gate read-only audit export
 on:
   push:
     branches:
-      - work/19g-ab-safety-gate-audit-transport
+      - work/19g-ah-safety-gate-final-rematerialization-transport
     paths:
       - .github/workflows/work19g-ah-safety-gate-audit-transport.yml
 
