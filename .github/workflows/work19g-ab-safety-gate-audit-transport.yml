@@ -1,0 +1,290 @@
+name: WORK19G-AB Safety Gate read-only audit export
+
+on:
+  push:
+    branches:
+      - work/19g-ab-safety-gate-audit-transport
+    paths:
+      - .github/workflows/work19g-ab-safety-gate-audit-transport.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: work19g-ab-safety-gate-audit-transport
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify existing sync token
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          if [ -z "${VIGIA_SYNC_TOKEN}" ]; then
+            exit 1
+          fi
+          echo "VIGIA_SYNC_TOKEN available: yes"
+
+      - name: Export exact Safety Gate production corpus
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          VIGIA_SAFETY_GATE_EXPORT_URL: https://vigia-alertas.csar68.chatgpt.site/api/admin/work19g-ab/safety-gate-export
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          import sys
+          from datetime import datetime, timezone
+          from pathlib import Path
+          from urllib.parse import quote
+
+          output = Path("export")
+          pages_dir = output / "pages"
+          pages_dir.mkdir(parents=True, exist_ok=False)
+
+          base_url = os.environ["VIGIA_SAFETY_GATE_EXPORT_URL"]
+          token = os.environ["VIGIA_SYNC_TOKEN"]
+          run_id = os.environ["GITHUB_RUN_ID"]
+
+          def curl_get(url, destination):
+              result = subprocess.run([
+                  "curl", "--silent", "--show-error", "--location",
+                  "--request", "GET",
+                  "--header", f"Authorization: Bearer {token}",
+                  "--max-time", "180",
+                  "--output", str(destination),
+                  "--write-out", "%{http_code}",
+                  url,
+              ], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False)
+              status = result.stdout.decode("ascii", errors="replace").strip()
+              if result.returncode != 0 or status != "200":
+                  print(json.dumps({
+                      "curlExitCode": result.returncode,
+                      "httpStatus": status or None,
+                  }, sort_keys=True), file=sys.stderr)
+                  raise SystemExit(1)
+              return destination.read_bytes()
+
+          gate_path = Path(os.environ["RUNNER_TEMP"]) / "work19g-ab-safety-gate-export-gate.json"
+          gate_raw = curl_get(f"{base_url}?limit=1", gate_path)
+          try:
+              gate = json.loads(gate_raw)
+          except json.JSONDecodeError as error:
+              raise RuntimeError("Authenticated curl gate did not return valid JSON") from error
+
+          metadata = gate.get("metadata")
+          corpus = metadata.get("corpus") if isinstance(metadata, dict) else None
+          dimensions = metadata.get("dimensions") if isinstance(metadata, dict) else None
+          operational = metadata.get("operational") if isinstance(metadata, dict) else None
+          mapping_versions = metadata.get("mappingVersions") if isinstance(metadata, dict) else None
+          alerts = gate.get("alerts")
+          if gate.get("source") != "SAFETY GATE" or gate.get("after") != "":
+              raise RuntimeError("Safety Gate gate returned an unexpected source or cursor")
+          if not isinstance(gate.get("snapshotGuard"), str) or not gate["snapshotGuard"]:
+              raise RuntimeError("Safety Gate gate has no snapshot guard")
+          if not isinstance(corpus, dict) or any(not isinstance(corpus.get(key), int) for key in (
+              "alerts", "uniqueIds", "uniqueReferences", "alertVersions", "sumVersionCount",
+          )):
+              raise RuntimeError("Safety Gate gate has invalid corpus metadata")
+          if not isinstance(dimensions, dict) or any(not isinstance(dimensions.get(key), int) for key in (
+              "categories", "hazards", "geographies", "originRelations", "notifyingRelations",
+              "actors", "dimensionState", "missingState", "sourceContentHashMismatches",
+          )):
+              raise RuntimeError("Safety Gate gate has invalid dimension metadata")
+          if not isinstance(mapping_versions, list) or not isinstance(operational, dict):
+              raise RuntimeError("Safety Gate gate has invalid mapping or operational metadata")
+          if operational.get("sourceSyncLease") is not None:
+              raise RuntimeError("Safety Gate source lease is not clear")
+          if operational.get("rebuildLease") is not None:
+              raise RuntimeError("Safety Gate rebuild lease is not clear")
+          latest_sync = operational.get("latestSync")
+          if not isinstance(latest_sync, dict) or latest_sync.get("source") != "SAFETY GATE":
+              raise RuntimeError("Safety Gate latest sync metadata is invalid")
+          if latest_sync.get("status") != "completed" or latest_sync.get("completed_at") is None:
+              raise RuntimeError("Safety Gate latest sync is not completed")
+          started_at = latest_sync.get("started_at")
+          completed_at = latest_sync.get("completed_at")
+          if not isinstance(started_at, str) or not isinstance(completed_at, str):
+              raise RuntimeError("Safety Gate latest sync timestamps are invalid")
+          completed = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+          completed_age = (datetime.now(timezone.utc) - completed).total_seconds()
+          if completed_age < -60 or completed_age > 20 * 60:
+              raise RuntimeError("No recently completed natural Safety Gate sync is available")
+          if not isinstance(alerts, list) or len(alerts) != (1 if corpus["alerts"] else 0):
+              raise RuntimeError("Safety Gate gate returned an unexpected alert count")
+          gate_next = alerts[0].get("id") if alerts else None
+          if gate.get("nextAfter") != gate_next:
+              raise RuntimeError("Safety Gate gate has an inconsistent nextAfter")
+
+          after = ""
+          expected_guard = None
+          first_metadata = None
+          seen_ids = set()
+          seen_references = set()
+          ordered_ids = []
+          manifest = []
+          exported_counts = {
+              "alertVersions": 0,
+              "categories": 0,
+              "hazards": 0,
+              "geographies": 0,
+              "originRelations": 0,
+              "notifyingRelations": 0,
+              "actors": 0,
+              "dimensionState": 0,
+          }
+          sum_version_count = 0
+          ordinal = 0
+
+          while True:
+              ordinal += 1
+              url = f"{base_url}?limit=100"
+              if after:
+                  url += f"&after={quote(after, safe='')}"
+              page_path = pages_dir / f"page-{ordinal:04d}.json"
+              raw = curl_get(url, page_path)
+              try:
+                  body = json.loads(raw)
+              except json.JSONDecodeError as error:
+                  raise RuntimeError(f"Page {ordinal} is not valid JSON") from error
+
+              if body.get("source") != "SAFETY GATE" or body.get("after") != after:
+                  raise RuntimeError(f"Page {ordinal} has unexpected source or cursor")
+              guard = body.get("snapshotGuard")
+              if not isinstance(guard, str) or not guard:
+                  raise RuntimeError(f"Page {ordinal} has no snapshot guard")
+              if expected_guard is None:
+                  expected_guard = guard
+                  first_metadata = body.get("metadata")
+              elif guard != expected_guard:
+                  raise RuntimeError(f"Snapshot guard changed on page {ordinal}")
+
+              page_alerts = body.get("alerts")
+              if not isinstance(page_alerts, list):
+                  raise RuntimeError(f"Page {ordinal} alerts are invalid")
+              page_ids = []
+              for alert in page_alerts:
+                  alert_id = alert.get("id") if isinstance(alert, dict) else None
+                  reference = alert.get("reference") if isinstance(alert, dict) else None
+                  if not isinstance(alert_id, str) or not alert_id:
+                      raise RuntimeError(f"Page {ordinal} contains an invalid alert ID")
+                  if not isinstance(reference, str) or not reference:
+                      raise RuntimeError(f"Alert {alert_id} contains an invalid reference")
+                  if page_ids and alert_id <= page_ids[-1]:
+                      raise RuntimeError(f"Page {ordinal} IDs are not strictly increasing")
+                  if ordered_ids and alert_id <= ordered_ids[-1]:
+                      raise RuntimeError(f"Page {ordinal} boundary is not strictly increasing")
+                  if alert_id in seen_ids:
+                      raise RuntimeError(f"Duplicate alert ID: {alert_id}")
+                  page_ids.append(alert_id)
+                  ordered_ids.append(alert_id)
+                  seen_ids.add(alert_id)
+                  seen_references.add(reference)
+                  try:
+                      sum_version_count += int(alert["version_count"])
+                  except (KeyError, TypeError, ValueError) as error:
+                      raise RuntimeError(f"Alert {alert_id} has invalid version_count") from error
+
+              next_after = body.get("nextAfter")
+              has_more = body.get("hasMore")
+              if not isinstance(has_more, bool):
+                  raise RuntimeError(f"Page {ordinal} has invalid hasMore")
+              expected_next = page_ids[-1] if page_ids else None
+              if next_after != expected_next:
+                  raise RuntimeError(f"Page {ordinal} has an invalid nextAfter")
+              if has_more and (not isinstance(next_after, str) or not next_after or next_after <= after):
+                  raise RuntimeError(f"Page {ordinal} has a missing or non-increasing cursor transition")
+
+              relation_keys = {
+                  "versions":"alertVersions", "categories":"categories", "hazards":"hazards",
+                  "geographies":"geographies", "actors":"actors", "dimensionStates":"dimensionState",
+              }
+              for body_key, count_key in relation_keys.items():
+                  rows = body.get(body_key)
+                  if not isinstance(rows, list):
+                      raise RuntimeError(f"Page {ordinal} has invalid {body_key}")
+                  exported_counts[count_key] += len(rows)
+                  if body_key == "geographies":
+                      exported_counts["originRelations"] += sum(row.get("role") == "origin" for row in rows)
+                      exported_counts["notifyingRelations"] += sum(row.get("role") == "notifying" for row in rows)
+
+              manifest.append({
+                  "ordinal":ordinal,
+                  "after":after,
+                  "nextAfter":next_after,
+                  "alertCount":len(page_alerts),
+                  "bytes":len(raw),
+                  "sha256":hashlib.sha256(raw).hexdigest(),
+              })
+              if not has_more:
+                  break
+              after = next_after
+
+          if first_metadata != metadata:
+              raise RuntimeError("Gate and first-page metadata differ")
+          total_alerts = len(ordered_ids)
+          if total_alerts != corpus["alerts"] or len(seen_ids) != corpus["uniqueIds"]:
+              raise RuntimeError("Exported alert or unique ID count does not match metadata")
+          if len(seen_references) != corpus["uniqueReferences"]:
+              raise RuntimeError("Exported unique reference count does not match metadata")
+          if exported_counts["alertVersions"] != corpus["alertVersions"]:
+              raise RuntimeError("Exported alert_versions count does not match metadata")
+          if sum_version_count != corpus["sumVersionCount"]:
+              raise RuntimeError("Exported version_count sum does not match metadata")
+          for key in ("categories", "hazards", "geographies", "originRelations", "notifyingRelations",
+                      "actors", "dimensionState"):
+              if exported_counts[key] != dimensions[key]:
+                  raise RuntimeError(f"Exported {key} count does not match metadata")
+
+          manifest_bytes = (json.dumps(
+              manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+          ) + "\n").encode("utf-8")
+          (output / "page-manifest.json").write_bytes(manifest_bytes)
+          manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
+          summary = {
+              "workflowRunId":run_id,
+              "source":"SAFETY GATE",
+              "snapshotGuard":expected_guard,
+              "pages":len(manifest),
+              "totalAlerts":total_alerts,
+              "uniqueAlertIds":len(seen_ids),
+              "uniqueReferences":len(seen_references),
+              "totalVersionsReported":corpus["alertVersions"],
+              "totalVersionsExported":exported_counts["alertVersions"],
+              "sumVersionCount":sum_version_count,
+              "firstId":ordered_ids[0] if ordered_ids else None,
+              "lastId":ordered_ids[-1] if ordered_ids else None,
+              "dimensionCounts":dimensions,
+              "exportedDimensionCounts":exported_counts,
+              "mappingVersionCounts":mapping_versions,
+              "latestSafetyGateSync":operational.get("latestSync"),
+              "sourceSyncLease":operational.get("sourceSyncLease"),
+              "rebuildMetadata":operational.get("dimensionRebuildState"),
+              "rebuildLease":operational.get("rebuildLease"),
+              "pageManifestSha256":manifest_sha,
+          }
+          summary_bytes = (json.dumps(
+              summary, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+          ) + "\n").encode("utf-8")
+          (output / "export-summary.json").write_bytes(summary_bytes)
+          print(json.dumps({
+              "source":"SAFETY GATE", "pages":len(manifest), "totalAlerts":total_alerts,
+              "totalVersions":exported_counts["alertVersions"], "snapshotGuard":expected_guard,
+              "pageManifestSha256":manifest_sha,
+          }, sort_keys=True))
+          PY
+
+      - name: Upload temporary audit transport
+        uses: actions/upload-artifact@v4
+        with:
+          name: work19g-ab-safety-gate-export-${{ github.run_id }}
+          path: export/**
+          if-no-files-found: error
+          retention-days: 1
