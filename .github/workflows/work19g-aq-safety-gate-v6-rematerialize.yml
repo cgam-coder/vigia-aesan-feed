@@ -1,0 +1,241 @@
+name: WORK19G-AQ Safety Gate v6 rematerialization
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Transport phase
+        required: true
+        default: pre_export
+        type: choice
+        options:
+          - pre_export
+          - apply
+          - final_export
+      expected_guard:
+        description: Exact pre-apply snapshot guard (required for apply)
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vigia-safety-gate-recent
+  cancel-in-progress: false
+
+jobs:
+  transport:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+      WORK19G_AQ_ORIGIN: https://vigia-alertas.csar68.chatgpt.site
+      WORK19G_AQ_MODE: ${{ inputs.mode }}
+      WORK19G_AQ_EXPECTED_GUARD: ${{ inputs.expected_guard }}
+      WORK19G_AQ_EVIDENCE: work19g-aq-evidence
+    steps:
+      - name: Export or apply through the temporary AQ seam
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$WORK19G_AQ_EVIDENCE"
+          node <<'NODE'
+          const { createHash } = require("node:crypto");
+          const { mkdirSync, writeFileSync } = require("node:fs");
+          const { join } = require("node:path");
+
+          const origin = process.env.WORK19G_AQ_ORIGIN.replace(/\/+$/u, "");
+          const token = process.env.VIGIA_SYNC_TOKEN ?? "";
+          const mode = process.env.WORK19G_AQ_MODE;
+          const expectedGuard = process.env.WORK19G_AQ_EXPECTED_GUARD ?? "";
+          const evidence = process.env.WORK19G_AQ_EVIDENCE;
+          const exportPath = "/api/admin/work19g-aq/safety-gate-export";
+          const applyPath = "/api/admin/work19g-aq/safety-gate-dimension-apply";
+          const marker = "work19g-aq-v48-v6-rematerialization";
+          const v6 = "work19g-ai-v6";
+          const ordinal = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+          const stable = (value) => {
+            if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
+            if (value && typeof value === "object") {
+              return `{${Object.entries(value).sort(([a], [b]) => ordinal(a, b))
+                .map(([key, item]) => `${JSON.stringify(key)}:${stable(item)}`).join(",")}}`;
+            }
+            return JSON.stringify(value);
+          };
+          const shaObject = (value) => createHash("sha256").update(Buffer.from(stable(value))).digest("hex");
+          const writeJson = (name, value) => writeFileSync(join(evidence, name), `${stable(value)}\n`);
+          const liveLease = (lease) => {
+            if (!lease) return false;
+            const parsed = Date.parse(String(lease.expires_at ?? lease.expiresAt ?? ""));
+            return !Number.isFinite(parsed) || parsed > Date.now();
+          };
+          const assert = (condition, message) => { if (!condition) throw new Error(message); };
+          const assertIdle = (metadata, label) => {
+            assert(!liveLease(metadata.operational.sourceSyncLease), `${label}: live source lease`);
+            assert(!liveLease(metadata.operational.rebuildLease), `${label}: live rebuild lease`);
+          };
+          async function request(path, options = {}, timeoutMs = 120000) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+              const response = await fetch(`${origin}${path}`, {
+                redirect: "manual",
+                ...options,
+                headers: { Authorization: `Bearer ${token}`, ...(options.headers ?? {}) },
+                signal: controller.signal,
+              });
+              const raw = Buffer.from(await response.arrayBuffer());
+              let body;
+              try { body = JSON.parse(raw.toString("utf8")); }
+              catch { body = { invalidJson: true, text: raw.toString("utf8").slice(0, 1000) }; }
+              return { response, raw, body };
+            } finally { clearTimeout(timer); }
+          }
+          async function metadata(label) {
+            const result = await request(`${exportPath}?metadataOnly=1`);
+            assert(result.response.status === 200, `${label}: metadata HTTP ${result.response.status}`);
+            assert(result.body.runtimeMarker === marker, `${label}: wrong runtime marker`);
+            assert(result.body.source === "SAFETY GATE", `${label}: wrong source`);
+            assert(result.body.snapshotGuard === shaObject(result.body.metadata), `${label}: bad guard`);
+            assertIdle(result.body.metadata, label);
+            return result;
+          }
+          async function exportAll(label) {
+            const root = join(evidence, label);
+            const pages = join(root, "pages");
+            mkdirSync(pages, { recursive: true });
+            const first = await metadata(`${label}-initial`);
+            writeFileSync(join(root, "metadata-gate.raw.json"), first.raw);
+            writeJson(join(label, "metadata-gate.json"), first.body);
+            const bundle = createHash("sha256");
+            bundle.update(Buffer.from(`metadata:${first.raw.byteLength}:`));
+            bundle.update(first.raw);
+            const manifest = [];
+            let alerts = 0;
+            let versions = 0;
+            let sumVersionCount = 0;
+            const ids = new Set();
+            const references = new Set();
+            const dimensions = { categories: 0, hazards: 0, geographies: 0, actors: 0, dimensionStates: 0 };
+            let after = "";
+            for (let pageNumber = 1; pageNumber <= 1000; pageNumber += 1) {
+              const result = await request(`${exportPath}?limit=500&after=${encodeURIComponent(after)}`);
+              assert(result.response.status === 200, `${label}: page ${pageNumber} HTTP ${result.response.status}`);
+              const page = result.body;
+              assert(page.runtimeMarker === marker && page.source === "SAFETY GATE", `${label}: page identity`);
+              assert(page.after === after, `${label}: page cursor mismatch`);
+              assert(page.snapshotGuard === first.body.snapshotGuard, `${label}: guard changed`);
+              assert(stable(page.metadata) === stable(first.body.metadata), `${label}: metadata changed`);
+              const pageIds = new Set();
+              for (const alert of page.alerts) {
+                assert(alert.source === "SAFETY GATE", `${label}: foreign alert source`);
+                assert(ordinal(alert.id, after) > 0, `${label}: non-monotonic alert id`);
+                assert(!ids.has(alert.id), `${label}: duplicate ${alert.id}`);
+                ids.add(alert.id); references.add(alert.reference); pageIds.add(alert.id);
+                after = alert.id; alerts += 1; sumVersionCount += Number(alert.version_count);
+              }
+              for (const key of Object.keys(dimensions)) {
+                assert(page[key].every((row) => pageIds.has(row.alert_id)), `${label}: foreign ${key} row`);
+                dimensions[key] += page[key].length;
+              }
+              versions += page.versions.length;
+              assert(page.nextAfter === (page.alerts.at(-1)?.id ?? null), `${label}: next cursor mismatch`);
+              const filename = `page-${String(pageNumber).padStart(4, "0")}.json`;
+              writeFileSync(join(pages, filename), result.raw);
+              const digest = createHash("sha256").update(result.raw).digest("hex");
+              manifest.push({ ordinal: pageNumber, filename, after: page.after, nextAfter: page.nextAfter,
+                alertCount: page.alerts.length, bytes: result.raw.byteLength, sha256: digest });
+              bundle.update(Buffer.from(`page:${pageNumber}:${result.raw.byteLength}:`)); bundle.update(result.raw);
+              if (!page.hasMore) break;
+              assert(page.alerts.length > 0 && pageNumber < 1000, `${label}: pagination did not terminate`);
+            }
+            const last = await metadata(`${label}-final`);
+            assert(last.body.snapshotGuard === first.body.snapshotGuard, `${label}: final guard changed`);
+            assert(stable(last.body.metadata) === stable(first.body.metadata), `${label}: final metadata changed`);
+            const corpus = first.body.metadata.corpus;
+            const expectedDimensions = first.body.metadata.dimensions;
+            assert(alerts === corpus.alerts && ids.size === corpus.uniqueIds && references.size === corpus.uniqueReferences,
+              `${label}: corpus count mismatch`);
+            assert(versions === corpus.alertVersions && sumVersionCount === corpus.sumVersionCount,
+              `${label}: version count mismatch`);
+            assert(dimensions.categories === expectedDimensions.categories && dimensions.hazards === expectedDimensions.hazards
+              && dimensions.geographies === expectedDimensions.geographies && dimensions.actors === expectedDimensions.actors
+              && dimensions.dimensionStates === expectedDimensions.dimensionState, `${label}: dimension count mismatch`);
+            writeJson(join(label, "page-manifest.json"), manifest);
+            writeJson(join(label, "export-summary.json"), {
+              label, runtimeMarker: marker, snapshotGuard: first.body.snapshotGuard,
+              rawExportBundleSha256: bundle.digest("hex"), pages: manifest.length,
+              corpus, dimensions: expectedDimensions, mappingVersions: first.body.metadata.mappingVersions,
+              operational: first.body.metadata.operational,
+            });
+          }
+          async function applyAll() {
+            assert(expectedGuard, "apply requires expected_guard");
+            const before = await metadata("pre-apply-guard");
+            assert(before.body.snapshotGuard === expectedGuard, "pre-apply snapshot guard changed");
+            writeJson("pre-apply-guard.json", before.body);
+            const responses = [];
+            for (let batch = 1; batch <= 1000; batch += 1) {
+              let result;
+              try { result = await request(applyPath, { method: "POST" }); }
+              catch (error) {
+                let observation;
+                try { const gate = await request(`${exportPath}?metadataOnly=1`); observation = { status: gate.response.status, body: gate.body }; }
+                catch (readError) { observation = { error: String(readError) }; }
+                writeJson("apply-transport-uncertainty.json", { batch, error: String(error), authoritativeReadOnlyObservation: observation });
+                throw new Error(`APPLY batch ${batch} transport uncertain; mutation stopped`);
+              }
+              writeFileSync(join(evidence, `apply-${String(batch).padStart(4, "0")}.raw.json`), result.raw);
+              assert(result.response.status === 200, `APPLY batch ${batch} HTTP ${result.response.status}: ${stable(result.body)}`);
+              const report = result.body;
+              assert(report.source === "SAFETY GATE" && report.mode === "apply", `APPLY batch ${batch}: identity`);
+              assert(report.mappingVersion === v6, `APPLY batch ${batch}: mapping`);
+              assert(Array.isArray(report.errors) && report.errors.length === 0, `APPLY batch ${batch}: errors`);
+              responses.push(report); writeJson("apply-progress.json", { responses });
+              if (report.done) break;
+              assert(batch < 1000, "APPLY did not terminate");
+            }
+            assert(responses[0]?.checkpoint === null, "first v5-to-v6 checkpoint must be null");
+            assert(responses.at(-1)?.done === true, "APPLY did not complete");
+            const after = await metadata("post-apply");
+            const totals = {
+              batches: responses.length,
+              scanned: responses.reduce((n, row) => n + row.scanned, 0),
+              rematerializedMismatches: responses.reduce((n, row) => n + row.mismatches, 0),
+              candidateRelations: responses.reduce((n, row) => n + row.candidateRelations, 0),
+              writes: responses.reduce((n, row) => n + row.expectedWrites, 0),
+              errors: responses.reduce((n, row) => n + row.errors.length, 0),
+              first: responses[0], last: responses.at(-1), postMetadata: after.body,
+            };
+            writeJson("apply-summary.json", totals);
+          }
+          (async () => {
+            if (!token) throw new Error("VIGIA_SYNC_TOKEN is absent");
+            if (mode === "pre_export" || mode === "final_export") await exportAll(mode.replace("_", "-"));
+            else if (mode === "apply") await applyAll();
+            else throw new Error(`Unsupported mode ${mode}`);
+          })().catch((error) => { console.error(error); process.exitCode = 1; });
+          NODE
+
+      - name: Package deterministic evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$WORK19G_AQ_EVIDENCE"
+          tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner -cf work19g-aq-evidence.tar "$WORK19G_AQ_EVIDENCE"
+          gzip -n -f work19g-aq-evidence.tar
+          sha256sum work19g-aq-evidence.tar.gz > work19g-aq-evidence.tar.gz.sha256
+
+      - name: Upload complete evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: work19g-aq-${{ inputs.mode }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            work19g-aq-evidence.tar.gz
+            work19g-aq-evidence.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 30
