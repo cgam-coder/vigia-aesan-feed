@@ -20,7 +20,10 @@ jobs:
       VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
-      - name: Smoke deployed read plane
+      # Preflight <= 120s, mutation <= 420s, diagnostic <= 30s.
+      # The 600s job retains 30s for parsing and shutdown.
+      - name: Bounded read-plane and authorization preflight
+        timeout-minutes: 2
         run: |
           root_code="$(curl --silent --show-error --location --max-time 30 \
             --output "${RUNNER_TEMP}/vigia-root.html" --write-out '%{http_code}' \
@@ -39,9 +42,6 @@ jobs:
             }
             console.log(JSON.stringify({ rootStatus, alertsStatus, schemaVersion:body.schemaVersion, mode:body.mode, alerts:body.alerts.length }));
           ' "${root_code}" "${alerts_code}" "${RUNNER_TEMP}/vigia-alerts.json"
-
-      - name: Control-plane authorization preflight
-        run: |
           if [ -z "${VIGIA_SYNC_TOKEN}" ]; then
             echo "VIGIA_SYNC_TOKEN is missing"
             exit 1
@@ -73,9 +73,6 @@ jobs:
             ' "${no_token_code}" "${wrong_token_code}" "${correct_token_code}" "${source}" \
               "${RUNNER_TEMP}/${route}-authorized.json"
           done
-
-      - name: Verify read-only GET contracts
-        run: |
           for route in aesan safety-gate rapna oecd; do
             observe_code="$(curl --silent --show-error --location --max-time 30 \
               --output "${RUNNER_TEMP}/${route}-observe.json" --write-out '%{http_code}' \
@@ -108,35 +105,52 @@ jobs:
           VIGIA_SAFETY_GATE_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/safety-gate/sync
         run: |
           response_file="${RUNNER_TEMP}/safety-gate-sync.json"
-          http_code="$(curl --silent --show-error --location \
-            --request POST \
+          mutation_exit=0
+          # -q disables implicit curlrc options; no redirect or transport retry
+          # may replay this mutation. A timeout remains a failed workflow.
+          http_code="$(curl -q --silent --show-error --request POST \
             --header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}" \
-            --retry 2 --retry-delay 3 --retry-all-errors \
-            --max-time 480 --output "${response_file}" --write-out '%{http_code}' \
-            "${VIGIA_SAFETY_GATE_SYNC_URL}?mode=recent")"
-          node -e '
-            const fs = require("node:fs");
-            const status = Number(process.argv[1]);
-            const body = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-            if (status === 401 || status >= 500 || body?.state?.status === "failed") {
-              throw new Error(body?.state?.lastError || `Safety Gate sync failed with HTTP ${status}`);
-            }
-            if (![200, 202].includes(status) || !body?.state || body.state.source !== "SAFETY GATE" || body.state.mode !== "recent") {
-              throw new Error("Unexpected VIGIA Safety Gate response");
-            }
-            if (body.state.lastError) throw new Error(body.state.lastError);
-            if (body.state.status === "completed" && (body.state.leaseOwnerId || body.state.leaseMode || body.state.leaseExpiresAt)) {
-              throw new Error("Safety Gate completed without releasing its lease state");
-            }
-            if (!["completed", "skipped"].includes(body.state.status)) throw new Error(`Unexpected Safety Gate state ${body.state.status}`);
-            console.log(JSON.stringify({
-              status: body.state.status,
-              pagesScanned: body.state.pagesScanned,
-              recordsObserved: body.state.recordsObserved,
-              newCount: body.state.newCount,
-              updatedCount: body.state.updatedCount,
-              detailFailures: body.state.detailFailures,
-              lastError: body.state.lastError,
-              skipped: body.skipped || null,
-            }));
-          ' "${http_code}" "${response_file}"
+            --max-time 420 --output "${response_file}" --write-out '%{http_code}' \
+            "${VIGIA_SAFETY_GATE_SYNC_URL}?mode=recent")" || mutation_exit=$?
+          if [ "${mutation_exit}" -eq 0 ]; then
+            node -e '
+              const fs = require("node:fs");
+              const status = Number(process.argv[1]);
+              const body = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+              const state = body?.state;
+              if (status !== 200 || state?.source !== "SAFETY GATE" || state?.mode !== "recent" || state?.status !== "completed" || body.skipped != null) {
+                throw new Error(`Safety Gate did not complete: HTTP ${status}, status=${state?.status}, skipped=${body?.skipped ?? state?.lastSkipReason ?? null}`);
+              }
+              if (state.lastError !== null) throw new Error("Safety Gate lastError must be null");
+              if (state.leaseOwnerId !== null || state.leaseMode !== null || state.leaseExpiresAt !== null) {
+                throw new Error("Safety Gate completed without clearing its lease state");
+              }
+              const started = typeof state.startedAt === "string" ? Date.parse(state.startedAt) : NaN;
+              const completed = typeof state.completedAt === "string" ? Date.parse(state.completedAt) : NaN;
+              if (!Number.isFinite(started) || !Number.isFinite(completed) || completed < started) {
+                throw new Error("Safety Gate completion timestamps are absent, invalid or reversed");
+              }
+              console.log(JSON.stringify({ status:state.status, pagesScanned:state.pagesScanned,
+                recordsObserved:state.recordsObserved, newCount:state.newCount,
+                updatedCount:state.updatedCount, startedAt:state.startedAt,
+                completedAt:state.completedAt, leaseReleased:true }));
+            ' "${http_code}" "${response_file}" || mutation_exit=$?
+          fi
+          if [ "${mutation_exit}" -ne 0 ]; then
+            echo "Safety Gate mutation failed: exit=${mutation_exit}, HTTP=${http_code}"
+            observation_file="${RUNNER_TEMP}/safety-gate-failure-observation.json"
+            # One read-only diagnostic; its outcome cannot change mutation_exit.
+            if observe_code="$(curl -q --silent --show-error --request GET --max-time 30 \
+              --output "${observation_file}" --write-out '%{http_code}' \
+              "${VIGIA_SAFETY_GATE_SYNC_URL}?observe=1")"; then
+              node -e '
+                const fs = require("node:fs");
+                const body = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+                console.log(JSON.stringify({ diagnosticHttp:Number(process.argv[1]),
+                  recent:body?.recent ?? null, lease:body?.lease ?? null }));
+              ' "${observe_code}" "${observation_file}" || true
+            else
+              echo "Read-only observation failed; mutation failure remains authoritative"
+            fi
+            exit "${mutation_exit}"
+          fi
