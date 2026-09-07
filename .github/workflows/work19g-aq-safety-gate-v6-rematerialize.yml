@@ -121,7 +121,10 @@ jobs:
             const dimensions = { categories: 0, hazards: 0, geographies: 0, actors: 0, dimensionStates: 0 };
             let after = "";
             for (let pageNumber = 1; pageNumber <= 1000; pageNumber += 1) {
-              const result = await request(`${exportPath}?limit=500&after=${encodeURIComponent(after)}`);
+              const result = await request(`${exportPath}?limit=50&after=${encodeURIComponent(after)}`);
+              if (result.response.status !== 200) {
+                writeFileSync(join(root, `page-${String(pageNumber).padStart(4, "0")}.error.raw.json`), result.raw);
+              }
               assert(result.response.status === 200, `${label}: page ${pageNumber} HTTP ${result.response.status}`);
               const page = result.body;
               assert(page.runtimeMarker === marker && page.source === "SAFETY GATE", `${label}: page identity`);
