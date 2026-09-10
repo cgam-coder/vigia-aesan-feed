@@ -4,7 +4,7 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-09-10T12:09:19.278Z",
+  "generatedAt": "2026-09-10T12:31:49.442Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
     "totalAlerts": 128,
@@ -72,7 +72,7 @@
       "url": "https://www.aesan.gob.es/alertas/2026_67",
       "publishedAt": "2026-09-08T22:00:00.000Z",
       "detectedAt": "2026-09-09T16:27:14.879Z",
-      "updatedAt": "2026-09-10T12:09:19.278Z",
+      "updatedAt": "2026-09-10T12:31:49.442Z",
       "contentHash": "0aa2b1f372e1833ae6d96e4af0ffaf8194348494eb588eb3a66b8a33270a295b",
       "versionCount": 2,
       "isUpdate": false
