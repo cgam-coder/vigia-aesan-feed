@@ -329,17 +329,37 @@ test("usa fallback de ruta explícito y adopta después UUID sin duplicar el ID 
   assert.equal(promoted.versionCount, 1);
 });
 
-test("el feed candidato conserva unicidad completa de identidad, página e ID", async () => {
-  const feed = JSON.parse(await readFile(new URL("../feed.json", import.meta.url), "utf8"));
+test("el contrato candidato conserva unicidad completa de identidad, página, ID y referencia", () => {
+  const identity = sourceIdentityForHtml(correctionHtml("ES2026/543"), correctionCard("ES2026/543").url);
+  const first = parseDetail(correctionHtml("ES2026/243"), correctionCard("ES2026/243"), null,
+    "2026-09-09T16:27:14.879Z", identity);
+  const previous = previousForCard([first], correctionCard("ES2026/543"), identity);
+  const corrected = parseDetail(correctionHtml("ES2026/543"), correctionCard("ES2026/543"), previous,
+    "2026-09-10T10:39:37.314Z", identity);
+  const unchanged = Array.from({ length:126 }, (_, index) => ({
+    id:`aesan:fixture-${index}`,
+    reference:`ES2025/${String(index).padStart(3, "0")}`,
+    sourceRecordId:`00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    sourceRecordIdType:"idAlert",
+    source:"AESAN",
+    title:`Publicación fixture ${index}`,
+    url:`https://www.aesan.gob.es/alertas/2025_${index}`,
+    publishedAt:"2025-01-01T00:00:00.000Z",
+    detectedAt:"2025-01-01T00:00:00.000Z",
+    updatedAt:"2025-01-01T00:00:00.000Z",
+    contentHash:`fixture-${index}`,
+    versionCount:1,
+  }));
+  const feed = assembleFeed({ alerts:[] }, [...unchanged, corrected], "2026-09-10T10:39:37.314Z");
   assert.equal(feed.alerts.length, 127);
-  for (const field of ["id", "sourceRecordId", "url"]) {
+  for (const field of ["id", "sourceRecordId", "url", "reference"]) {
     assert.equal(new Set(feed.alerts.map((alert) => alert[field])).size, feed.alerts.length, field);
   }
-  const corrected = feed.alerts.find((alert) => alert.url.endsWith("/alertas/2026_67"));
-  assert.equal(corrected.id, "aesan:ES2026/243");
-  assert.equal(corrected.reference, "ES2026/543");
-  assert.equal(corrected.sourceRecordId, correctedIdentity);
-  assert.deepEqual(corrected.previousReferences, ["ES2026/243"]);
-  assert.equal(corrected.referenceHistory.length, 1);
-  assert.equal(corrected.versionCount, 2);
+  const publication = feed.alerts.find((alert) => alert.url.endsWith("/alertas/2026_67"));
+  assert.equal(publication.id, "aesan:ES2026/243");
+  assert.equal(publication.reference, "ES2026/543");
+  assert.equal(publication.sourceRecordId, correctedIdentity);
+  assert.deepEqual(publication.previousReferences, ["ES2026/243"]);
+  assert.equal(publication.referenceHistory.length, 1);
+  assert.equal(publication.versionCount, 2);
 });
