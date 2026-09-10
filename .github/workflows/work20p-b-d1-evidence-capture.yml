@@ -1,0 +1,47 @@
+name: WORK 20P-B read-only D1 evidence capture
+
+on:
+  push:
+    branches:
+      - work/20p-b-d1-evidence-capture
+    paths:
+      - .github/workflows/work20p-b-d1-evidence-capture.yml
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Capture authenticated read-only evidence
+        env:
+          EVIDENCE_URL: https://nagamealert.com/api/internal/work20p-b/aesan-identity-evidence
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${VIGIA_SYNC_TOKEN}"
+          evidence_file="${RUNNER_TEMP}/work20p-b-aesan-d1-evidence.json"
+          status="$(curl --silent --show-error --request GET \
+            --header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}" \
+            --output "${evidence_file}" --write-out '%{http_code}' \
+            "${EVIDENCE_URL}")"
+          test "${status}" = "200"
+          node -e '
+            const fs = require("node:fs");
+            const path = process.argv[1];
+            const body = JSON.parse(fs.readFileSync(path, "utf8"));
+            const expected = ["alerts", "alert_versions", "alert_dimension_state", "alert_geographies", "alert_categories", "alert_hazards", "alert_actors", "source_sync_locks", "source_sync_state"];
+            if (!expected.every((key) => Array.isArray(body[key]))) throw new Error("Incomplete evidence payload");
+            if (body.alerts.length !== 2) throw new Error("Expected exactly two alert rows");
+            console.log(JSON.stringify({ rowCounts:body.rowCounts, targetAlertIds:body.targetAlertIds }));
+          ' "${evidence_file}"
+          sha256sum "${evidence_file}"
+      - name: Upload exact evidence JSON
+        uses: actions/upload-artifact@v4
+        with:
+          name: work20p-b-aesan-d1-evidence
+          path: ${{ runner.temp }}/work20p-b-aesan-d1-evidence.json
+          if-no-files-found: error
+          retention-days: 30
