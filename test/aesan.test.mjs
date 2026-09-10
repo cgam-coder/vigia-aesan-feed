@@ -4,6 +4,10 @@ import { readFile } from "node:fs/promises";
 import {
   assembleFeed,
   consolidateListCards,
+  extractMaterialParagraphs,
+  extractOfficialDates,
+  extractOfficialResources,
+  extractPublishedFields,
   isOfficialAesanAlertUrl,
   notifyingTextFor,
   parseDetail,
@@ -69,6 +73,74 @@ test("normaliza los campos de una ficha oficial", () => {
   assert.match(alert.scope, /distribución inicial/i);
   assert.match(alert.action, /se recomienda/i);
   assert.equal(alert.url, "https://www.aesan.gob.es/alertas/2026_62");
+});
+
+test("conserva título, puntuación, mayúsculas, etiquetas y valores oficiales exactos", () => {
+  const html = `<html><head><meta name="content-date" content="2026-09-08T22:00:00Z"></head><body>
+    <h1 class="aesan-title">Alerta EXACTA: texto fuente. (Ref. ES2026/543)</h1>
+    <div class="post-container aesan-bgText"><p>Resumen duplicado que no pertenece al cuerpo.</p></div>
+    <div class="post-container">
+      <p>Primer párrafo oficial, con puntuación EXACTA.</p>
+      <p>Los datos del producto implicado son:</p>
+      <ul><li>Nombre del producto: Melatonin Time Release</li><li>Codigo de barras: <i>858047007021</i></li><li>Teperatura: Ambiente</li><li>Campo futuro legítimo: Valor; con punto.</li></ul>
+      <p>Segundo párrafo oficial.</p>
+      <figure><img alt="Producto alertado" src="/dam/jcr:abc/producto.png"></figure>
+      <p><a href="/dam/jcr:def/ficha.pdf">Ficha técnica oficial</a></p>
+      <a href="https://third-party.example/documento.pdf">Enlace externo</a>
+    </div><a href="/alertas/buscador-alertas">Volver</a></body></html>`;
+  const parsed = parseDetail(html, { ...parseListCards(listing)[0], title:"Título de listado", reference:"ES2026/543", url:"https://www.aesan.gob.es/alertas/2026_67" }, null, "2026-09-10T10:00:00.000Z");
+  assert.equal(parsed.officialTitle, "Alerta EXACTA: texto fuente. (Ref. ES2026/543)");
+  assert.deepEqual(parsed.publishedFields.map(({ label, value }) => ({ label, value })), [
+    { label:"Nombre del producto", value:"Melatonin Time Release" },
+    { label:"Codigo de barras", value:"858047007021" },
+    { label:"Teperatura", value:"Ambiente" },
+    { label:"Campo futuro legítimo", value:"Valor; con punto." },
+  ]);
+  assert.deepEqual(parsed.materialParagraphs.map(({ value }) => value), [
+    "Primer párrafo oficial, con puntuación EXACTA.", "Segundo párrafo oficial.",
+  ]);
+  assert.deepEqual(parsed.resources.map(({ kind, label }) => ({ kind, label })), [
+    { kind:"image", label:"Producto alertado" }, { kind:"document", label:"Ficha técnica oficial" },
+  ]);
+  assert.equal(parsed.sourceRecordSchemaVersion, 2);
+  assert.match(parsed.sourceRecordHash, /^[0-9a-f]{64}$/u);
+});
+
+test("la extracción material preserva orden, grupos, fechas y solo recursos AESAN", () => {
+  const article = `<h1 class="aesan-title">Título</h1><div class="pageInfo__date"><span>calendar_today</span><span>09/09/2026</span></div>
+    <div class="post-container"><p>Fecha y hora: 09/09/2026 10:30</p><p>Párrafo uno.</p>
+    <ul><li>EAN: 123</li></ul><p>Párrafo dos.<br>CONTINÚA EXACTO.</p><ul><li>Tipo de envase: Caja</li></ul>
+    <img src="/dam/jcr:image/uno.jpg"><img src="https://www.aesan.gob.es/dam/jcr:image/dos.jpg">
+    <a href="/informacion/material">Material AESAN</a><a href="https://evil.example/a">Ruido</a></div>`;
+  assert.deepEqual(extractPublishedFields(article).map(({ label, value, context }) => ({ label, value, context })), [
+    { label:"EAN", value:"123", context:"list:0" }, { label:"Tipo de envase", value:"Caja", context:"list:1" },
+  ]);
+  assert.deepEqual(extractMaterialParagraphs(article).map(({ value }) => value), ["Párrafo uno.", "Párrafo dos.\nCONTINÚA EXACTO."]);
+  assert.deepEqual(extractOfficialDates("", article).map(({ label, value }) => ({ label, value })), [
+    { label:null, value:"09/09/2026" }, { label:"Fecha y hora", value:"09/09/2026 10:30" },
+  ]);
+  assert.deepEqual(extractOfficialResources(article, "https://www.aesan.gob.es/alertas/2026_67").map(({ kind, label }) => ({ kind, label })), [
+    { kind:"image", label:null }, { kind:"image", label:null }, { kind:"link", label:"Material AESAN" },
+  ]);
+});
+
+test("el primer baseline enriquecido no fabrica una actualización oficial", () => {
+  const card = parseListCards(listing)[0];
+  const legacy = parseDetail(detail, card, null, "2026-08-14T10:00:00.000Z");
+  const previous = { ...legacy };
+  delete previous.sourceRecordHash;
+  delete previous.sourceRecordSchemaVersion;
+  delete previous.officialTitle;
+  delete previous.publishedFields;
+  delete previous.materialParagraphs;
+  delete previous.resources;
+  delete previous.officialDates;
+  const replay = parseDetail(detail, card, previous, "2026-08-15T10:00:00.000Z");
+  assert.equal(replay.contentHash, previous.contentHash);
+  assert.equal(replay.versionCount, previous.versionCount);
+  assert.equal(replay.updatedAt, previous.updatedAt);
+  assert.equal(replay.detectedAt, previous.detectedAt);
+  assert.equal(replay.sourceRecordSchemaVersion, 2);
 });
 
 const notifyingFixture = async (name) => readFile(new URL(`./fixtures/${name}`, import.meta.url), "utf8");

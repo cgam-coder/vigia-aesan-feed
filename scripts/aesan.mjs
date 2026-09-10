@@ -54,6 +54,128 @@ const absoluteOfficialUrl = (value) => {
   }
 };
 
+const openingTag = (block = "") => block.match(/^<[^>]+>/u)?.[0] ?? "";
+
+const elementBlocks = (html, tagName) => {
+  const blocks = [];
+  const opening = new RegExp(`<${tagName}\\b[^>]*>`, "gi");
+  for (const match of html.matchAll(opening)) {
+    const token = new RegExp(`<\\/?${tagName}\\b[^>]*>`, "gi");
+    token.lastIndex = match.index;
+    let depth = 0;
+    let end = -1;
+    for (let current = token.exec(html); current; current = token.exec(html)) {
+      depth += current[0].startsWith("</") ? -1 : 1;
+      if (depth === 0) {
+        end = token.lastIndex;
+        break;
+      }
+    }
+    if (end > match.index) blocks.push({ html:html.slice(match.index, end), index:match.index });
+  }
+  return blocks;
+};
+
+const classNames = (tag) => new Set(attribute(tag, "class").split(/\s+/u).filter(Boolean));
+
+const materialArticleBody = (articleHtml) => {
+  const candidates = elementBlocks(articleHtml, "div").filter(({ html }) => {
+    const names = classNames(openingTag(html));
+    return names.has("post-container") && !names.has("aesan-bgText");
+  });
+  return candidates.length ? candidates.map(({ html }) => html).join("\n") : articleHtml;
+};
+
+const exactFieldPair = (value) => {
+  const text = stripHtml(value);
+  const match = text.match(/^([^:\n]{2,120})\s*:\s*([\s\S]+)$/u);
+  return match ? { label:match[1].trim(), value:match[2].trim() } : null;
+};
+
+export function extractPublishedFields(articleHtml) {
+  const body = materialArticleBody(articleHtml);
+  const fields = [];
+  const lists = elementBlocks(body, "ul");
+  for (let group = 0; group < lists.length; group += 1) {
+    const pairs = elementBlocks(lists[group].html, "li").map(({ html }) => exactFieldPair(html)).filter(Boolean);
+    if (!pairs.length) continue;
+    for (let position = 0; position < pairs.length; position += 1) {
+      fields.push({
+        ...pairs[position],
+        sourceField:`article.productData[${group}].field[${position}]`,
+        order:fields.length,
+        section:"product_data",
+        context:`list:${group}`,
+      });
+    }
+  }
+  return fields;
+}
+
+const normalizedComparableText = (value) => stripHtml(value).replace(/[\s“”'".,;:()\[\]]+/gu, "").toLocaleLowerCase("es");
+
+export function extractMaterialParagraphs(articleHtml) {
+  const body = materialArticleBody(articleHtml);
+  const paragraphs = [];
+  const listItemRanges = elementBlocks(body, "li").map(({ html, index }) => ({ start:index, end:index + html.length }));
+  for (const { html, index } of elementBlocks(body, "p")) {
+    if (listItemRanges.some(({ start, end }) => index > start && index < end)) continue;
+    const value = stripHtml(html);
+    if (!value || /^Los datos de(?:l| los) productos? implicados? son\s*:?$/iu.test(value) ||
+        /^Se adjunta(?:n)? (?:una |las )?im[aá]gen(?:es)? disponible(?:s)?\.?$/iu.test(value) || /^Fecha y hora\s*:/iu.test(value)) continue;
+    const links = [...html.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/gi)].map((match) => stripHtml(match[1])).filter(Boolean);
+    if (links.length && normalizedComparableText(value) === normalizedComparableText(links.join(" "))) continue;
+    paragraphs.push({ value, sourceField:`article.body.p[${paragraphs.length}]`, order:paragraphs.length, section:"publication" });
+  }
+  return paragraphs;
+}
+
+export function extractOfficialResources(articleHtml, officialUrl) {
+  const body = materialArticleBody(articleHtml);
+  const resources = [];
+  const seen = new Set();
+  const append = (resource) => {
+    if (!resource.url || seen.has(resource.url)) return;
+    seen.add(resource.url);
+    resources.push({ ...resource, order:resources.length });
+  };
+  for (const match of body.matchAll(/<img\b[^>]*>/gi)) {
+    const tag = match[0];
+    const url = absoluteOfficialUrl(attribute(tag, "src"));
+    if (!url || !/\/dam\/jcr:/iu.test(new URL(url).pathname)) continue;
+    append({ kind:"image", url, label:attribute(tag, "alt") || null, sourceField:`article.image[${resources.length}]` });
+  }
+  for (const { html } of elementBlocks(body, "a")) {
+    const tag = openingTag(html);
+    const url = absoluteOfficialUrl(attribute(tag, "href"));
+    const label = stripHtml(html);
+    if (!url || url === officialUrl || /\/alertas\/buscador-alertas\/?$/iu.test(new URL(url).pathname) || !label) continue;
+    append({
+      kind:/\.pdf(?:$|[?#])/iu.test(url) ? "document" : "link",
+      url,
+      label,
+      sourceField:`article.link[${resources.length}]`,
+    });
+  }
+  return resources;
+}
+
+export function extractOfficialDates(html, articleHtml) {
+  const dates = [];
+  const pageInfo = elementBlocks(articleHtml, "div").find(({ html:block }) => classNames(openingTag(block)).has("pageInfo__date"));
+  const pageDate = stripHtml(pageInfo?.html ?? "").match(/\b\d{2}\/\d{2}\/20\d{2}\b/u)?.[0] ?? "";
+  if (pageDate) dates.push({ label:null, value:pageDate, sourceField:"pageInfo.date", order:dates.length });
+  const body = materialArticleBody(articleHtml);
+  for (const { html:block } of elementBlocks(body, "p")) {
+    const value = stripHtml(block);
+    const match = value.match(/^(Fecha y hora)\s*:\s*([\s\S]+)$/iu);
+    if (!match) continue;
+    const candidate = { label:match[1], value:match[2].trim(), sourceField:`article.date[${dates.length}]`, order:dates.length };
+    if (!dates.some((date) => date.label === candidate.label && date.value === candidate.value)) dates.push(candidate);
+  }
+  return dates;
+}
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export const officialPagePath = (value) => {
@@ -357,11 +479,19 @@ export function parseDetail(html, card, previous = null, detectedAt = new Date()
   const lotText = findField(fields, ["numero de lote", "nº de lote", "n° de lote", "lote", "lotes"]);
   const category = categoryFor(title, "", articleText);
   const productClass = productClassFor(product, title, category);
-  const image = [...articleHtml.matchAll(/<img\b([^>]*)>/gi)].map((match) => absoluteOfficialUrl(attribute(match[1], "src")))
-    .find((url) => url && /\/dam\/jcr:/i.test(url)) ?? null;
+  const officialTitle = title;
+  const publishedFields = extractPublishedFields(articleHtml);
+  const materialParagraphs = extractMaterialParagraphs(articleHtml);
+  const resources = extractOfficialResources(articleHtml, card.url);
+  const officialDates = extractOfficialDates(html, articleHtml);
+  const image = resources.find(({ kind }) => kind === "image")?.url ?? null;
   const publishedAt = contentDate(html) || card.publishedAt;
-  const contentHash = digest({ title, articleText, image, publishedAt });
-  const changed = previous?.contentHash && previous.contentHash !== contentHash;
+  const sourceRecordHash = digest({ officialTitle, publishedFields, materialParagraphs, resources, officialDates });
+  const previousSourceRecordHash = typeof previous?.sourceRecordHash === "string" && /^[0-9a-f]{64}$/iu.test(previous.sourceRecordHash)
+    ? previous.sourceRecordHash
+    : null;
+  const changed = Boolean(previous?.contentHash && previousSourceRecordHash && previousSourceRecordHash !== sourceRecordHash);
+  const contentHash = changed ? sourceRecordHash : previous?.contentHash || sourceRecordHash;
   const identity = suppliedIdentity ?? sourceIdentityForHtml(html, card.url);
   const referenceHistory = normalizedReferenceHistory([
     ...(previous?.referenceHistory ?? []),
@@ -372,6 +502,8 @@ export function parseDetail(html, card, previous = null, detectedAt = new Date()
     reference,
     sourceRecordId:identity.sourceRecordId,
     sourceRecordIdType:identity.sourceRecordIdType,
+    sourceRecordSchemaVersion:2,
+    sourceRecordHash,
     previousReferences:previousReferencesFor(referenceHistory, reference),
     referenceHistory,
     source:"AESAN",
@@ -394,6 +526,11 @@ export function parseDetail(html, card, previous = null, detectedAt = new Date()
     action:actionFor(articleText),
     lots:listLots(lotText),
     imageUrl:image,
+    officialTitle,
+    publishedFields,
+    materialParagraphs,
+    resources,
+    officialDates,
     url:card.url,
     publishedAt,
     detectedAt:previous?.detectedAt || detectedAt,
@@ -415,6 +552,7 @@ export function cardFallback(card, previous = null, detectedAt = new Date().toIS
     reference:card.reference || `AESAN/${new URL(card.url).pathname.split("/").filter(Boolean).at(-1)}`,
     sourceRecordId:`official_page_path:${pagePath}`,
     sourceRecordIdType:"official_page_path",
+    sourceRecordSchemaVersion:2, sourceRecordHash:contentHash,
     previousReferences:[], referenceHistory:[],
     source:"AESAN", type:"Alimentaria", priority:inferPriority(card.title), title:card.title,
     product, brand:"", productClass:productClassFor(product, card.title, card.category), productKey:normalizeEntityKey(product), brandKey:"",
@@ -422,6 +560,7 @@ export function cardFallback(card, previous = null, detectedAt = new Date().toIS
     hazard:inferHazard(card.title), origin:originFor(card.title, new Map()),
     scope:card.category === "allergens" ? "Colectivo alérgico o intolerante indicado por AESAN" : "Población general · publicación oficial AESAN",
     action:"Consultar las medidas y recomendaciones incluidas en la ficha oficial de AESAN.", lots:[], imageUrl:null,
+    officialTitle:card.title, publishedFields:[], materialParagraphs:[], resources:[], officialDates:[],
     url:card.url, publishedAt:card.publishedAt, detectedAt, updatedAt:card.publishedAt || detectedAt,
     contentHash, versionCount:1, isUpdate:/ampliaci[oó]n|actualizaci[oó]n|correcci[oó]n/i.test(card.title),
   };
