@@ -427,7 +427,11 @@ export function cardFallback(card, previous = null, detectedAt = new Date().toIS
   };
 }
 
-const feedSignature = (feed) => JSON.stringify({ source:feed.source, archive:feed.archive, alerts:feed.alerts });
+const feedSignature = (feed) => JSON.stringify({
+  source:feed.source,
+  archive:{ ...feed.archive, lastFullSyncAt:null },
+  alerts:feed.alerts,
+});
 
 export function assembleFeed(currentFeed, currentAlerts, now = new Date().toISOString(), options = {}) {
   const identityPaths = new Map();
@@ -492,7 +496,7 @@ export function assembleFeed(currentFeed, currentAlerts, now = new Date().toISOS
       : currentFeed?.archive?.legacyIndexesScanned ?? options.legacyIndexesScanned ?? null,
   };
   const next = { schemaVersion:1, source:{ name:"AESAN", url:AESAN_LIST_URL }, generatedAt:now, archive, alerts };
-  if (currentFeed?.generatedAt && feedSignature(currentFeed) === feedSignature(next)) return { ...next, generatedAt:currentFeed.generatedAt };
+  if (currentFeed?.generatedAt && feedSignature(currentFeed) === feedSignature(next)) return currentFeed;
   return next;
 }
 

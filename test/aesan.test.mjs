@@ -146,6 +146,16 @@ test("no cambia generatedAt cuando el contenido permanece idéntico", () => {
   assert.equal(second.generatedAt, first.generatedAt);
 });
 
+test("un replay full-history sin cambios conserva el feed completo", () => {
+  const current = assembleFeed({ alerts:[] }, [], "2026-09-10T10:00:00.000Z", {
+    fullSync:true, pagesScanned:9, legacyIndexesScanned:0,
+  });
+  const replay = assembleFeed(current, [], "2026-09-10T10:15:00.000Z", {
+    fullSync:true, pagesScanned:9, legacyIndexesScanned:0,
+  });
+  assert.deepEqual(replay, current);
+});
+
 test("no mezcla dos páginas simultáneas bajo una identidad de fallback", () => {
   const card = parseListCards(listing)[0];
   const original = parseDetail(detail, card, null, "2026-08-14T10:00:00.000Z");
