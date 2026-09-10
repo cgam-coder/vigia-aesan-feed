@@ -1,7 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { assembleFeed, consolidateListCards, isOfficialAesanAlertUrl, notifyingTextFor, parseDetail, parseLegacyListCards, parseListCards, productClassFor, stripHtml } from "../scripts/aesan.mjs";
+import {
+  assembleFeed,
+  consolidateListCards,
+  isOfficialAesanAlertUrl,
+  notifyingTextFor,
+  parseDetail,
+  parseLegacyListCards,
+  parseListCards,
+  previousForCard,
+  productClassFor,
+  sourceIdentityForHtml,
+  stripHtml,
+} from "../scripts/aesan.mjs";
 
 const listing = `
 <html><body><div class="aesan-section__row">
@@ -134,7 +146,7 @@ test("no cambia generatedAt cuando el contenido permanece idéntico", () => {
   assert.equal(second.generatedAt, first.generatedAt);
 });
 
-test("consolida una ampliación y su ficha original bajo una referencia", () => {
+test("no mezcla dos páginas simultáneas bajo una identidad de fallback", () => {
   const card = parseListCards(listing)[0];
   const original = parseDetail(detail, card, null, "2026-08-14T10:00:00.000Z");
   const update = {
@@ -144,11 +156,8 @@ test("consolida una ampliación y su ficha original bajo una referencia", () => 
     isUpdate:true,
     contentHash:"updated-content",
   };
-  const feed = assembleFeed({ alerts:[] }, [original, update], "2026-08-14T10:00:00.000Z");
-  assert.equal(feed.alerts.length, 1);
-  assert.equal(feed.alerts[0].url, update.url);
-  assert.equal(feed.alerts[0].versionCount, 2);
-  assert.equal(feed.alerts[0].isUpdate, true);
+  assert.throws(() => assembleFeed({ alerts:[] }, [original, update], "2026-08-14T10:00:00.000Z"),
+    /presente en varias páginas/i);
 });
 
 test("elige una sola ficha, la más reciente, antes de normalizar una referencia", () => {
@@ -201,7 +210,10 @@ test("conserva más de sesenta alertas en el archivo", () => {
   const alerts = Array.from({ length:75 }, (_, index) => ({
     id:`aesan:ES2025/${index}`,
     reference:`ES2025/${index}`,
+    sourceRecordId:`00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    sourceRecordIdType:"idAlert",
     source:"AESAN",
+    url:`https://www.aesan.gob.es/alertas/2025_${index}`,
     publishedAt:new Date(Date.UTC(2025, 0, index + 1)).toISOString(),
     detectedAt:"2026-08-14T10:00:00.000Z",
     versionCount:1,
@@ -211,4 +223,123 @@ test("conserva más de sesenta alertas en el archivo", () => {
   assert.equal(feed.alerts.length, 75);
   assert.equal(feed.archive.totalAlerts, 75);
   assert.equal(feed.archive.pagesScanned, 25);
+});
+
+const correctedIdentity = "60ab5444-518c-4084-b2aa-e00541270e58";
+const correctionCard = (reference) => ({
+  url:"https://www.aesan.gob.es/alertas/2026_67",
+  title:`Alerta por melatonina (Ref. ${reference})`,
+  reference,
+  publishedAt:"2026-09-08T22:00:00.000Z",
+  category:"supplements",
+});
+const correctionHtml = (reference, idAlert = correctedIdentity) => `<html><head>
+  ${idAlert === null ? "" : `<meta name="idAlert" content="${idAlert}">`}
+  <meta name="content-date" content="2026-09-08T22:00:00.000Z">
+  </head><body><h1 class="aesan-title">Alerta por melatonina (Ref. ${reference})</h1>
+  <p>Contenido oficial material estable.</p><a href="/alertas/buscador-alertas">Volver</a></body></html>`;
+
+test("la corrección 243 a 543 conserva una entidad, el ID interno y dos estados semánticos", () => {
+  const firstIdentity = sourceIdentityForHtml(correctionHtml("ES2026/243"), correctionCard("ES2026/243").url);
+  const first = parseDetail(correctionHtml("ES2026/243"), correctionCard("ES2026/243"), null,
+    "2026-09-09T16:27:14.879Z", firstIdentity);
+  const secondIdentity = sourceIdentityForHtml(correctionHtml("ES2026/543"), correctionCard("ES2026/543").url);
+  const previous = previousForCard([first], correctionCard("ES2026/543"), secondIdentity);
+  const second = parseDetail(correctionHtml("ES2026/543"), correctionCard("ES2026/543"), previous,
+    "2026-09-10T10:39:37.314Z", secondIdentity);
+  assert.equal(first.sourceRecordId, correctedIdentity);
+  assert.equal(second.id, "aesan:ES2026/243");
+  assert.equal(second.reference, "ES2026/543");
+  assert.deepEqual(second.previousReferences, ["ES2026/243"]);
+  assert.equal(second.referenceHistory.length, 1);
+  assert.equal(second.referenceHistory[0].contentHash, first.contentHash);
+  assert.equal(second.versionCount, 2);
+  assert.equal(second.updatedAt, "2026-09-10T10:39:37.314Z");
+  assert.equal(second.isUpdate, false);
+  assert.notEqual(second.contentHash, first.contentHash);
+  const feed = assembleFeed({ alerts:[first] }, [second], "2026-09-10T10:39:37.314Z");
+  assert.equal(feed.alerts.length, 1);
+});
+
+test("repetir 543 no cambia hash, versión, updatedAt ni generatedAt", () => {
+  const identity = sourceIdentityForHtml(correctionHtml("ES2026/543"), correctionCard("ES2026/543").url);
+  const firstVersion = parseDetail(correctionHtml("ES2026/243"), correctionCard("ES2026/243"), null,
+    "2026-09-09T16:27:14.879Z", identity);
+  const current = parseDetail(correctionHtml("ES2026/543"), correctionCard("ES2026/543"), firstVersion,
+    "2026-09-10T10:39:37.314Z", identity);
+  const replayPrevious = previousForCard([current], correctionCard("ES2026/543"), identity);
+  const replay = parseDetail(correctionHtml("ES2026/543"), correctionCard("ES2026/543"), replayPrevious,
+    "2026-09-10T12:47:56.602Z", identity);
+  assert.equal(replay.contentHash, current.contentHash);
+  assert.equal(replay.versionCount, 2);
+  assert.equal(replay.updatedAt, current.updatedAt);
+  assert.deepEqual(replay.referenceHistory, current.referenceHistory);
+  const firstFeed = assembleFeed({ alerts:[] }, [current], "2026-09-10T10:39:37.314Z");
+  const replayFeed = assembleFeed(firstFeed, [replay], "2026-09-10T12:47:56.602Z");
+  assert.equal(replayFeed.generatedAt, firstFeed.generatedAt);
+});
+
+test("colapsa de forma determinista el duplicado legado 243/543 sin una tercera versión", () => {
+  const identity = sourceIdentityForHtml(correctionHtml("ES2026/543"), correctionCard("ES2026/543").url);
+  const old = parseDetail(correctionHtml("ES2026/243"), correctionCard("ES2026/243"), null,
+    "2026-09-09T16:27:14.879Z", identity);
+  const corrected = {
+    ...parseDetail(correctionHtml("ES2026/543"), correctionCard("ES2026/543"), old,
+      "2026-09-10T10:39:37.314Z", identity),
+    id:"aesan:ES2026/543",
+  };
+  const previous = previousForCard([old, corrected], correctionCard("ES2026/543"), identity);
+  const replay = parseDetail(correctionHtml("ES2026/543"), correctionCard("ES2026/543"), previous,
+    "2026-09-10T12:47:56.602Z", identity);
+  const feed = assembleFeed({ alerts:[old, corrected] }, [replay], "2026-09-10T12:47:56.602Z");
+  assert.equal(feed.alerts.length, 1);
+  assert.equal(feed.alerts[0].id, old.id);
+  assert.equal(feed.alerts[0].versionCount, 2);
+  assert.equal(feed.alerts[0].referenceHistory.length, 1);
+});
+
+test("falla cerrado ante referencia compartida por UUID distintos o UUID compartido por páginas distintas", () => {
+  const base = parseDetail(correctionHtml("ES2026/543"), correctionCard("ES2026/543"), null,
+    "2026-09-10T10:39:37.314Z");
+  assert.throws(() => assembleFeed({ alerts:[] }, [base, {
+    ...base, id:"aesan:conflict", url:"https://www.aesan.gob.es/alertas/2026_98",
+    sourceRecordId:"9ec7a359-320e-4d55-bfaa-daa4d4e6920d",
+  }]), /referencia.+identidades distintas/i);
+  assert.throws(() => assembleFeed({ alerts:[] }, [base, {
+    ...base, id:"aesan:other-page", reference:"ES2026/999", url:"https://www.aesan.gob.es/alertas/2026_99",
+  }]), /varias páginas/i);
+});
+
+test("usa fallback de ruta explícito y adopta después UUID sin duplicar el ID interno", () => {
+  const fallbackHtml = correctionHtml("ES2026/243", null);
+  const fallbackIdentity = sourceIdentityForHtml(fallbackHtml, correctionCard("ES2026/243").url);
+  assert.deepEqual(fallbackIdentity, {
+    sourceRecordId:"official_page_path:/alertas/2026_67",
+    sourceRecordIdType:"official_page_path",
+    officialPagePath:"/alertas/2026_67",
+  });
+  const fallback = parseDetail(fallbackHtml, correctionCard("ES2026/243"), null,
+    "2026-09-09T16:27:14.879Z", fallbackIdentity);
+  const uuidIdentity = sourceIdentityForHtml(correctionHtml("ES2026/243"), correctionCard("ES2026/243").url);
+  const previous = previousForCard([fallback], correctionCard("ES2026/243"), uuidIdentity);
+  const promoted = parseDetail(correctionHtml("ES2026/243"), correctionCard("ES2026/243"), previous,
+    "2026-09-10T10:00:00.000Z", uuidIdentity);
+  assert.equal(promoted.id, fallback.id);
+  assert.equal(promoted.sourceRecordId, correctedIdentity);
+  assert.equal(promoted.versionCount, 1);
+});
+
+test("el feed candidato conserva unicidad completa de identidad, página e ID", async () => {
+  const feed = JSON.parse(await readFile(new URL("../feed.json", import.meta.url), "utf8"));
+  assert.equal(feed.alerts.length, 127);
+  for (const field of ["id", "sourceRecordId", "url"]) {
+    assert.equal(new Set(feed.alerts.map((alert) => alert[field])).size, feed.alerts.length, field);
+  }
+  const corrected = feed.alerts.find((alert) => alert.url.endsWith("/alertas/2026_67"));
+  assert.equal(corrected.id, "aesan:ES2026/243");
+  assert.equal(corrected.reference, "ES2026/543");
+  assert.equal(corrected.sourceRecordId, correctedIdentity);
+  assert.deepEqual(corrected.previousReferences, ["ES2026/243"]);
+  assert.equal(corrected.referenceHistory.length, 1);
+  assert.equal(corrected.versionCount, 2);
 });

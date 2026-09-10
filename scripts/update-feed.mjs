@@ -10,6 +10,7 @@ import {
   parseDetail,
   parseListCards,
   previousForCard,
+  sourceIdentityForHtml,
 } from "./aesan.mjs";
 
 const OUTPUT_PATH = resolve(process.env.OUTPUT_PATH || "feed.json");
@@ -163,14 +164,18 @@ async function main() {
 
   let detailFailures = 0;
   const alerts = await mapLimit(cards, 3, async (card) => {
-    const previous = previousForCard(current.alerts ?? [], card);
+    let html;
     try {
-      return parseDetail(await fetchHtml(card.url), card, previous, now);
+      html = await fetchHtml(card.url);
     } catch (error) {
       detailFailures += 1;
       console.warn(`Ficha no disponible ${card.url}: ${error instanceof Error ? error.message : "error desconocido"}`);
+      const previous = previousForCard(current.alerts ?? [], card);
       return cardFallback(card, previous, now);
     }
+    const identity = sourceIdentityForHtml(html, card.url);
+    const previous = previousForCard(current.alerts ?? [], card, identity);
+    return parseDetail(html, card, previous, now, identity);
   });
 
   const feed = assembleFeed(current, alerts, now, {

@@ -54,6 +54,65 @@ const absoluteOfficialUrl = (value) => {
   }
 };
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export const officialPagePath = (value) => {
+  const url = absoluteOfficialUrl(value);
+  return url ? new URL(url).pathname.replace(/\/+$/u, "") || "/" : null;
+};
+
+export function sourceIdentityForHtml(html, officialUrl) {
+  const tag = html.match(/<meta\b[^>]*\bname\s*=\s*["']idAlert["'][^>]*>/i)?.[0] ?? "";
+  const idAlert = attribute(tag, "content");
+  const pagePath = officialPagePath(officialUrl);
+  if (!pagePath) throw new Error(`URL oficial AESAN no válida para identidad: ${officialUrl}`);
+  if (idAlert) {
+    if (!UUID_PATTERN.test(idAlert)) throw new Error(`idAlert AESAN no válido en ${pagePath}`);
+    return { sourceRecordId:idAlert.toLowerCase(), sourceRecordIdType:"idAlert", officialPagePath:pagePath };
+  }
+  return {
+    sourceRecordId:`official_page_path:${pagePath}`,
+    sourceRecordIdType:"official_page_path",
+    officialPagePath:pagePath,
+  };
+}
+
+const identityForAlert = (alert) => {
+  const pagePath = officialPagePath(alert.url);
+  if (!pagePath) throw new Error(`Alerta AESAN con URL oficial no válida: ${alert.url}`);
+  const sourceRecordId = typeof alert.sourceRecordId === "string" && alert.sourceRecordId.trim()
+    ? alert.sourceRecordId.trim()
+    : `official_page_path:${pagePath}`;
+  const sourceRecordIdType = alert.sourceRecordIdType === "idAlert" ? "idAlert" : "official_page_path";
+  return { sourceRecordId, sourceRecordIdType, officialPagePath:pagePath };
+};
+
+const historyEntry = (alert) => ({
+  reference:alert.reference,
+  title:alert.title,
+  contentHash:alert.contentHash,
+});
+
+const normalizedReferenceHistory = (entries, current = null) => {
+  const unique = new Map();
+  for (const entry of entries ?? []) {
+    if (!entry || typeof entry.reference !== "string" || typeof entry.title !== "string" ||
+        typeof entry.contentHash !== "string" || !entry.reference || !entry.title || !entry.contentHash) continue;
+    const key = `${entry.reference}\u0000${entry.contentHash}`;
+    if (current && entry.reference === current.reference && entry.contentHash === current.contentHash) continue;
+    if (!unique.has(key)) unique.set(key, {
+      reference:entry.reference,
+      title:entry.title,
+      contentHash:entry.contentHash,
+    });
+  }
+  return [...unique.values()];
+};
+
+const previousReferencesFor = (history, currentReference) => [...new Set(history
+  .map((entry) => entry.reference)
+  .filter((reference) => reference && reference !== currentReference))];
+
 export function isOfficialAesanAlertUrl(value) {
   const url = absoluteOfficialUrl(value);
   if (!url) return false;
@@ -284,7 +343,7 @@ const contentDate = (html) => {
   return value && !Number.isNaN(new Date(value).getTime()) ? new Date(value).toISOString() : null;
 };
 
-export function parseDetail(html, card, previous = null, detectedAt = new Date().toISOString()) {
+export function parseDetail(html, card, previous = null, detectedAt = new Date().toISOString(), suppliedIdentity = null) {
   const articleHtml = articleFragment(html);
   const articleText = stripHtml(articleHtml);
   const notifyingText = notifyingTextFor(articleText);
@@ -303,9 +362,18 @@ export function parseDetail(html, card, previous = null, detectedAt = new Date()
   const publishedAt = contentDate(html) || card.publishedAt;
   const contentHash = digest({ title, articleText, image, publishedAt });
   const changed = previous?.contentHash && previous.contentHash !== contentHash;
+  const identity = suppliedIdentity ?? sourceIdentityForHtml(html, card.url);
+  const referenceHistory = normalizedReferenceHistory([
+    ...(previous?.referenceHistory ?? []),
+    ...(previous && changed ? [historyEntry(previous)] : []),
+  ], { reference, contentHash });
   const normalized = {
-    id:`aesan:${reference}`,
+    id:previous?.id || `aesan:${reference}`,
     reference,
+    sourceRecordId:identity.sourceRecordId,
+    sourceRecordIdType:identity.sourceRecordIdType,
+    previousReferences:previousReferencesFor(referenceHistory, reference),
+    referenceHistory,
     source:"AESAN",
     type:"Alimentaria",
     priority:inferPriority(title),
@@ -341,9 +409,13 @@ export function cardFallback(card, previous = null, detectedAt = new Date().toIS
   if (previous) return { ...previous, notifyingText:previous.notifyingText ?? "" };
   const contentHash = digest(card);
   const product = titleProduct(card.title);
+  const pagePath = officialPagePath(card.url);
   return {
     id:`aesan:${card.reference || new URL(card.url).pathname.split("/").filter(Boolean).at(-1)}`,
     reference:card.reference || `AESAN/${new URL(card.url).pathname.split("/").filter(Boolean).at(-1)}`,
+    sourceRecordId:`official_page_path:${pagePath}`,
+    sourceRecordIdType:"official_page_path",
+    previousReferences:[], referenceHistory:[],
     source:"AESAN", type:"Alimentaria", priority:inferPriority(card.title), title:card.title,
     product, brand:"", productClass:productClassFor(product, card.title, card.category), productKey:normalizeEntityKey(product), brandKey:"",
     provider:"", providerKey:"", providerRole:"", providerEvidence:"", notifyingText:"",
@@ -358,14 +430,38 @@ export function cardFallback(card, previous = null, detectedAt = new Date().toIS
 const feedSignature = (feed) => JSON.stringify({ source:feed.source, archive:feed.archive, alerts:feed.alerts });
 
 export function assembleFeed(currentFeed, currentAlerts, now = new Date().toISOString(), options = {}) {
+  const identityPaths = new Map();
+  const pathIdentities = new Map();
+  const referenceIdentities = new Map();
+  for (const alert of currentAlerts) {
+    const identity = identityForAlert(alert);
+    const previousPath = identityPaths.get(identity.sourceRecordId);
+    if (previousPath && previousPath !== identity.officialPagePath) {
+      throw new Error(`Identidad AESAN ${identity.sourceRecordId} presente en varias páginas: ${previousPath}, ${identity.officialPagePath}`);
+    }
+    identityPaths.set(identity.sourceRecordId, identity.officialPagePath);
+    if (identity.sourceRecordIdType === "idAlert") {
+      const previousIdentity = pathIdentities.get(identity.officialPagePath);
+      if (previousIdentity && previousIdentity !== identity.sourceRecordId) {
+        throw new Error(`Página AESAN ${identity.officialPagePath} asociada a UUID incompatibles`);
+      }
+      pathIdentities.set(identity.officialPagePath, identity.sourceRecordId);
+    }
+    const previousReferenceIdentity = referenceIdentities.get(alert.reference);
+    if (previousReferenceIdentity && previousReferenceIdentity !== identity.sourceRecordId) {
+      throw new Error(`Referencia AESAN ${alert.reference} asociada a identidades distintas`);
+    }
+    referenceIdentities.set(alert.reference, identity.sourceRecordId);
+  }
   const unique = new Map();
   const alertOrder = (a, b) =>
     (b.publishedAt || b.detectedAt || "").localeCompare(a.publishedAt || a.detectedAt || "") ||
     a.id.localeCompare(b.id);
   for (const alert of [...currentAlerts].sort(alertOrder)) {
-    const selected = unique.get(alert.id);
-    if (!selected) unique.set(alert.id, alert);
-    else unique.set(alert.id, {
+    const identity = identityForAlert(alert);
+    const selected = unique.get(identity.sourceRecordId);
+    if (!selected) unique.set(identity.sourceRecordId, alert);
+    else unique.set(identity.sourceRecordId, {
       ...selected,
       isUpdate:selected.isUpdate || alert.isUpdate,
       versionCount:Math.max(selected.versionCount || 1, alert.versionCount || 1, 2),
@@ -373,7 +469,13 @@ export function assembleFeed(currentFeed, currentAlerts, now = new Date().toISOS
   }
   const activeAlerts = [...unique.values()];
   const activeIds = new Set(activeAlerts.map((alert) => alert.id));
-  const archived = (currentFeed?.alerts ?? []).filter((alert) => !activeIds.has(alert.id));
+  const activePaths = new Set(activeAlerts.map((alert) => officialPagePath(alert.url)).filter(Boolean));
+  const activeSourceRecordIds = new Set(activeAlerts.map((alert) => identityForAlert(alert).sourceRecordId));
+  const archived = (currentFeed?.alerts ?? []).filter((alert) => {
+    if (activeIds.has(alert.id)) return false;
+    const identity = identityForAlert(alert);
+    return !activeSourceRecordIds.has(identity.sourceRecordId) && !activePaths.has(identity.officialPagePath);
+  });
   const alerts = [...activeAlerts, ...archived].sort(alertOrder);
   const dated = alerts.map((alert) => alert.publishedAt).filter(Boolean).sort();
   const archive = {
@@ -394,5 +496,45 @@ export function assembleFeed(currentFeed, currentAlerts, now = new Date().toISOS
   return next;
 }
 
-export const previousForCard = (alerts, card) => alerts.find((alert) => alert.url === card.url) ??
-  alerts.find((alert) => card.reference && alert.reference === card.reference) ?? null;
+export function previousForCard(alerts, card, suppliedIdentity = null) {
+  const pagePath = officialPagePath(card.url);
+  if (!pagePath) return null;
+  const identity = suppliedIdentity;
+  const explicitMatches = identity ? alerts.filter((alert) => {
+    if (typeof alert.sourceRecordId !== "string" || !alert.sourceRecordId.trim()) return false;
+    return alert.sourceRecordId === identity.sourceRecordId;
+  }) : [];
+  const pageMatches = alerts.filter((alert) => officialPagePath(alert.url) === pagePath);
+  const candidates = explicitMatches.length ? explicitMatches : pageMatches;
+  if (!candidates.length) return alerts.find((alert) => card.reference && alert.reference === card.reference) ?? null;
+
+  if (identity) {
+    const conflicting = pageMatches.find((alert) => alert.sourceRecordIdType === "idAlert" &&
+      alert.sourceRecordId && alert.sourceRecordId !== identity.sourceRecordId);
+    if (conflicting) throw new Error(`La página ${pagePath} cambió de UUID AESAN`);
+  }
+  const distinctPaths = new Set(candidates.map((alert) => officialPagePath(alert.url)));
+  if (distinctPaths.size !== 1) throw new Error("Una identidad AESAN aparece en múltiples páginas oficiales");
+
+  const ordered = [...candidates].sort((left, right) =>
+    (left.detectedAt || "").localeCompare(right.detectedAt || "") || left.id.localeCompare(right.id));
+  const survivor = ordered[0];
+  const matchingReference = candidates.filter((alert) => card.reference && alert.reference === card.reference);
+  if (matchingReference.length > 1) throw new Error(`Referencia AESAN duplicada para ${pagePath}`);
+  const current = matchingReference[0] ?? [...candidates].sort((left, right) =>
+    (right.updatedAt || "").localeCompare(left.updatedAt || "") || right.id.localeCompare(left.id))[0];
+  const history = normalizedReferenceHistory([
+    ...candidates.flatMap((alert) => alert.referenceHistory ?? []),
+    ...candidates.filter((alert) => alert !== current).map(historyEntry),
+  ], current);
+  return {
+    ...current,
+    id:survivor.id,
+    detectedAt:survivor.detectedAt || current.detectedAt,
+    sourceRecordId:identity?.sourceRecordId ?? current.sourceRecordId,
+    sourceRecordIdType:identity?.sourceRecordIdType ?? current.sourceRecordIdType,
+    referenceHistory:history,
+    previousReferences:previousReferencesFor(history, current.reference),
+    versionCount:Math.max(1 + history.length, ...candidates.map((alert) => alert.versionCount || 1)),
+  };
+}
