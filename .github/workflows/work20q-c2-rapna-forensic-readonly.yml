@@ -1,0 +1,193 @@
+name: TEMP RAPNA CURRENT C2 forensic read-only verification
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  authenticated-read-only-forensics:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'work/20q-c2-rapna-forensic-readonly-auth'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Run fixed RAPNA CURRENT forensic verification
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${VIGIA_SYNC_TOKEN}"
+          endpoint="https://nagamealert.com/api/rapna/sync"
+          report_dir="${RUNNER_TEMP}/work20q-c2"
+          mkdir -p "${report_dir}"
+
+          request() {
+            label="$1"
+            method="$2"
+            query="$3"
+            expected="$4"
+            with_auth="${5:-yes}"
+            headers=()
+            if [ "${with_auth}" = "yes" ]; then headers+=(--header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}"); fi
+            code="$(curl --silent --show-error --location --request "${method}" --max-time 480 \
+              "${headers[@]}" --output "${report_dir}/${label}.json" --write-out '%{http_code}' \
+              "${endpoint}?${query}")"
+            if [ "${code}" != "${expected}" ]; then
+              echo "${label}: unexpected HTTP ${code}; expected ${expected}" >&2
+              exit 1
+            fi
+          }
+
+          request preflight POST 'mode=preflight' 200
+          request observe-before GET 'observe=1' 200
+          request dryrun-unauthenticated POST 'mode=current-dry-run&year=2021' 401 no
+          request replay-unauthenticated POST 'mode=current-replay&batchSize=1' 401 no
+          request replay-no-confirm POST 'mode=current-replay&batchSize=1' 400
+          request replay-no-snapshot POST 'mode=current-replay&batchSize=1&confirm=RAPNA_CURRENT_ONLY' 400
+
+          for year in 2021 2022 2023 2024 2025 2026; do
+            request "dryrun-${year}" POST "mode=current-dry-run&year=${year}" 200
+          done
+          request observe-after GET 'observe=1' 200
+
+          node - "${report_dir}" <<'NODE'
+          const crypto = require("node:crypto");
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const directory = process.argv[2];
+          const read = (name) => JSON.parse(fs.readFileSync(path.join(directory, `${name}.json`), "utf8"));
+          const stable = (value) => Array.isArray(value) ? value.map(stable)
+            : value && typeof value === "object"
+              ? Object.fromEntries(Object.entries(value).sort(([a],[b]) => a.localeCompare(b)).map(([key, child]) => [key, stable(child)]))
+              : value;
+          const equal = (left, right) => JSON.stringify(stable(left)) === JSON.stringify(stable(right));
+          const years = [2021, 2022, 2023, 2024, 2025, 2026];
+          const expectedPlan = years.map((year) => ({ archive:"current", year }));
+          const bodies = years.map((year) => read(`dryrun-${year}`));
+          const reports = bodies.map(({ report }) => report);
+          for (let index=0; index<years.length; index+=1) {
+            const body=bodies[index];
+            const report=reports[index];
+            if (!report || report.year!==years[index] || !equal(report.plan, expectedPlan)) throw new Error(`Invalid CURRENT-only report ${years[index]}`);
+            if (!body.zeroWrite?.verified || !equal(body.zeroWrite.before, body.zeroWrite.after)) throw new Error(`Per-year zero-write failed ${years[index]}`);
+            if (!report.changes.every((change) => Array.isArray(change.canonicalChangedPaths) &&
+              Array.isArray(change.sourceRecordChangedPaths) && Array.isArray(change.semanticChangedPaths) &&
+              Array.isArray(change.legacyChangedPaths))) throw new Error(`Forensic paths unavailable ${years[index]}`);
+          }
+
+          const before = read("observe-before");
+          const after = read("observe-after");
+          for (const key of ["recent", "backfill", "currentReplay", "lease", "snapshot", "controlFingerprint"]) {
+            if (!equal(before[key], after[key])) throw new Error(`Global zero-write mismatch: ${key}`);
+          }
+
+          const numeric = [
+            "incomingRecords", "storedMatches", "missingStored", "storedNotPresentIncoming", "unchanged",
+            "ghostExpansionRepair", "pluralLabelRepair", "observationRefresh", "overlaps",
+            "genuineSemanticChange", "unexpected", "invalidRecords", "duplicateRecords", "pagesScanned",
+            "storedIsUpdateTrue", "incomingIsUpdateTrue", "isUpdateFlagChanges", "isUpdateTrueToFalse",
+            "isUpdateFalseToTrue", "pluralLabelCandidates", "pluralAlreadyRepaired", "pluralPending", "pluralHashChanges",
+          ];
+          const sum = (key) => reports.reduce((total, report) => total + Number(report[key] || 0), 0);
+          const aggregate = Object.fromEntries(numeric.map((key) => [key, sum(key)]));
+          const changes = reports.flatMap((report) => report.changes.map((change) => ({ year:report.year, ...change })));
+          const unexpected = changes.filter(({classification}) => classification === "unexpected");
+
+          const patternMap = new Map();
+          for (const change of unexpected) {
+            const key=JSON.stringify(change.canonicalChangedPaths);
+            const current=patternMap.get(key) ?? { paths:change.canonicalChangedPaths, count:0, years:new Set(), references:[] };
+            current.count+=1;
+            current.years.add(change.year);
+            if (current.references.length<8) current.references.push(change.reference);
+            patternMap.set(key,current);
+          }
+          const changedPathPatterns=[...patternMap.values()].map(({paths,count,years,references}) => ({
+            paths, count, years:[...years].sort(), representativeReferences:references,
+          })).sort((a,b) => b.count-a.count || JSON.stringify(a.paths).localeCompare(JSON.stringify(b.paths)));
+
+          const combinationFor = (change) => {
+            if (change.metadataOnly) return "metadata-only";
+            const tags=[];
+            if (change.repairKinds.includes("ghost-expansion")) tags.push("ghost");
+            if (change.repairKinds.includes("plural-label")) tags.push("plural");
+            if (change.repairKinds.includes("observation-metadata")) tags.push("observation");
+            if (change.metadataRefresh) tags.push("metadata");
+            if (!tags.length) return change.classification;
+            return tags.join("+");
+          };
+          const combinationCounts={};
+          for (const change of changes) {
+            const key=combinationFor(change);
+            combinationCounts[key]=(combinationCounts[key]||0)+1;
+          }
+
+          const manifest=unexpected.map((change) => ({
+            year:change.year,
+            reference:change.reference,
+            changedPaths:change.canonicalChangedPaths,
+            semanticChangedPaths:change.semanticChangedPaths,
+            legacyChangedPaths:change.legacyChangedPaths,
+            expected:"source-record-metadata-refresh",
+          })).sort((a,b) => a.year-b.year || a.reference.localeCompare(b.reference,"en"));
+          const manifestSha256=crypto.createHash("sha256").update(JSON.stringify(stable(manifest))).digest("hex");
+
+          const layerCounts = {
+            identity:unexpected.filter((c)=>c.semanticChangedPaths.some((p)=>p.startsWith("identity"))).length,
+            headline:unexpected.filter((c)=>c.semanticChangedPaths.some((p)=>p.startsWith("headline"))).length,
+            dates:unexpected.filter((c)=>c.semanticChangedPaths.some((p)=>p.startsWith("dates"))).length,
+            lifecycle:unexpected.filter((c)=>c.semanticChangedPaths.some((p)=>p.startsWith("lifecycle"))).length,
+            product:unexpected.filter((c)=>c.semanticChangedPaths.some((p)=>p.startsWith("product"))).length,
+            operators:unexpected.filter((c)=>c.semanticChangedPaths.some((p)=>p.startsWith("operators"))).length,
+            geography:unexpected.filter((c)=>c.semanticChangedPaths.some((p)=>p.startsWith("geography"))).length,
+            risk:unexpected.filter((c)=>c.semanticChangedPaths.some((p)=>p.startsWith("risk"))).length,
+            resources:unexpected.filter((c)=>c.semanticChangedPaths.some((p)=>p.startsWith("resources"))).length,
+            publishedRecord:unexpected.filter((c)=>c.semanticChangedPaths.some((p)=>p.startsWith("publishedRecord"))).length,
+            legacyAlertColumns:unexpected.filter((c)=>c.legacyChangedPaths.length>0).length,
+            sourceRecord:unexpected.filter((c)=>c.sourceRecordChangedPaths.length>0).length,
+          };
+          const result={
+            plan:expectedPlan,
+            perYear:reports.map((report)=>Object.fromEntries(["year",...numeric].map((key)=>[key,report[key]]))),
+            aggregate,
+            forensic:{
+              unexpectedCompared:unexpected.length,
+              patternCount:changedPathPatterns.length,
+              changedPathPatterns,
+              layerCounts,
+              metadataOnly:unexpected.filter((c)=>c.metadataOnly).length,
+              publishedProjectionEqual:unexpected.filter((c)=>c.publishedProjectionEqual).length,
+              semanticPathEmpty:unexpected.filter((c)=>c.semanticChangedPaths.length===0).length,
+              legacyPathEmpty:unexpected.filter((c)=>c.legacyChangedPaths.length===0).length,
+              sameHash:unexpected.filter((c)=>c.beforeContentHash===c.afterContentHash).length,
+              sameUpdateFlag:unexpected.filter((c)=>c.beforeIsUpdate===c.afterIsUpdate).length,
+              manifest:{ count:manifest.length, sha256:manifestSha256 },
+            },
+            overlap:{
+              metadataRefreshDetected:changes.filter((c)=>c.metadataRefresh).length,
+              metadataOnly:changes.filter((c)=>c.metadataOnly).length,
+              combinations:combinationCounts,
+            },
+            zeroWrite:{
+              verified:true,
+              beforeSha256:crypto.createHash("sha256").update(JSON.stringify(stable(before.controlFingerprint))).digest("hex"),
+              afterSha256:crypto.createHash("sha256").update(JSON.stringify(stable(after.controlFingerprint))).digest("hex"),
+            },
+          };
+          console.log("WORK20Q_C2_FORENSIC " + JSON.stringify(result));
+          for (let index=0; index<manifest.length; index+=25) {
+            console.log(`WORK20Q_C2_MANIFEST_${index/25+1} ` + JSON.stringify(manifest.slice(index,index+25)));
+          }
+
+          if (!unexpected.length || unexpected.length!==aggregate.unexpected) throw new Error("Unexpected corpus reconciliation failed");
+          if (unexpected.some((c)=>!c.metadataOnly || !c.publishedProjectionEqual || c.semanticChangedPaths.length || c.legacyChangedPaths.length)) {
+            throw new Error("At least one unexpected record is not strict metadata-only");
+          }
+          if (aggregate.genuineSemanticChange || aggregate.missingStored || aggregate.storedNotPresentIncoming ||
+            aggregate.invalidRecords || aggregate.duplicateRecords) throw new Error("CURRENT corpus contains blocking drift");
+          NODE
