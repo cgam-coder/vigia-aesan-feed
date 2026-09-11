@@ -18,27 +18,27 @@ jobs:
     steps:
       - name: Run final RAPNA CURRENT zero-write verification
         env:
-          VIGIA_SYNC_TOKEN: \${{ secrets.VIGIA_SYNC_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           set -euo pipefail
-          test -n "\${VIGIA_SYNC_TOKEN}"
+          test -n "${VIGIA_SYNC_TOKEN}"
           endpoint="https://nagamealert.com/api/rapna/sync"
-          report_dir="\${RUNNER_TEMP}/work20q-c2-final"
-          mkdir -p "\${report_dir}"
+          report_dir="${RUNNER_TEMP}/work20q-c2-final"
+          mkdir -p "${report_dir}"
 
           request() {
             label="$1"
             method="$2"
             query="$3"
             expected="$4"
-            with_auth="\${5:-yes}"
+            with_auth="${5:-yes}"
             headers=()
-            if [ "\${with_auth}" = "yes" ]; then headers+=(--header "Authorization: Bearer \${VIGIA_SYNC_TOKEN}"); fi
-            code="$(curl --silent --show-error --location --request "\${method}" --max-time 480 \
-              "\${headers[@]}" --output "\${report_dir}/\${label}.json" --write-out '%{http_code}' \
-              "\${endpoint}?\${query}")"
-            if [ "\${code}" != "\${expected}" ]; then
-              echo "\${label}: unexpected HTTP \${code}; expected \${expected}" >&2
+            if [ "${with_auth}" = "yes" ]; then headers+=(--header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}"); fi
+            code="$(curl --silent --show-error --location --request "${method}" --max-time 480 \
+              "${headers[@]}" --output "${report_dir}/${label}.json" --write-out '%{http_code}' \
+              "${endpoint}?${query}")"
+            if [ "${code}" != "${expected}" ]; then
+              echo "${label}: unexpected HTTP ${code}; expected ${expected}" >&2
               exit 1
             fi
           }
@@ -51,11 +51,11 @@ jobs:
           request replay-no-snapshot POST 'mode=current-replay&batchSize=1&confirm=RAPNA_CURRENT_ONLY' 400
 
           for year in 2021 2022 2023 2024 2025 2026; do
-            request "dryrun-\${year}" POST "mode=current-dry-run&year=\${year}" 200
+            request "dryrun-${year}" POST "mode=current-dry-run&year=${year}" 200
           done
           request observe-after GET 'observe=1' 200
 
-          node - "\${report_dir}" <<'NODE'
+          node - "${report_dir}" <<'NODE'
           const crypto = require("node:crypto");
           const fs = require("node:fs");
           const path = require("node:path");
