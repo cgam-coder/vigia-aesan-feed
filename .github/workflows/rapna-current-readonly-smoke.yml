@@ -121,9 +121,6 @@ jobs:
           ];
           const sum = (key) => reports.reduce((total, report) => total + Number(report[key] || 0), 0);
           const aggregate = Object.fromEntries(numeric.map((key) => [key, sum(key)]));
-          if (aggregate.unexpected !== 0) throw new Error(`Unexpected RAPNA changes: ${aggregate.unexpected}`);
-          if (aggregate.invalidRecords !== 0 || aggregate.duplicateRecords !== 0) throw new Error("Invalid or duplicate RAPNA CURRENT records");
-
           const changes = reports.flatMap((report) => report.changes.map((change) => ({ year:report.year, ...change })));
           const byReference = new Map(changes.map((change) => [change.reference, change]));
           const watched = reports.flatMap((report) => report.watchedRecords.map((change) => ({ year:report.year, ...change })));
@@ -165,6 +162,7 @@ jobs:
               .map((reference) => [reference, lookup(reference)])),
             genuineSourceChanges:genuine,
             unexpectedChanges:unexpected,
+            unlistedUnexpectedCount:aggregate.unexpected-unexpected.length,
             fullChangeSet:{ count:changes.length, sha256:changedDigest },
             zeroWrite:{
               verified:true,
@@ -174,4 +172,6 @@ jobs:
             },
           };
           console.log("WORK20Q_C1_RESULT " + JSON.stringify(result));
+          if (aggregate.unexpected !== 0) throw new Error(`Unexpected RAPNA changes: ${aggregate.unexpected}`);
+          if (aggregate.invalidRecords !== 0 || aggregate.duplicateRecords !== 0) throw new Error("Invalid or duplicate RAPNA CURRENT records");
           NODE
