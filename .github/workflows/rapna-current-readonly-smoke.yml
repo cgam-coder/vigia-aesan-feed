@@ -127,9 +127,13 @@ jobs:
           const watchedByReference = new Map(watched.map((change) => [change.reference, change]));
           const lookup = (reference) => byReference.get(reference) || watchedByReference.get(reference) || null;
           const pluralResidualReferences = ["64/2025","244/2024","189/2024","245/2023","465/2022","360/2022","263/2022"];
-          const pluralPendingChanges = changes.filter(({repairKinds}) => repairKinds.includes("plural-label"));
-          const genuine = changes.filter(({classification}) => classification === "genuine-source-change");
-          const unexpected = changes.filter(({classification}) => classification === "unexpected");
+          const compactChange = ({year,reference,classification,repairKinds,beforeContentHash,afterContentHash,
+            beforeIsUpdate,afterIsUpdate,beforeVersionCount,derivedFieldChanges}) => ({ year, reference, classification,
+            repairKinds, beforeContentHash, afterContentHash, beforeIsUpdate, afterIsUpdate, beforeVersionCount,
+            derivedFieldChanges });
+          const pluralPendingChanges = changes.filter(({repairKinds}) => repairKinds.includes("plural-label")).map(compactChange);
+          const genuine = changes.filter(({classification}) => classification === "genuine-source-change").map(compactChange);
+          const unexpected = changes.filter(({classification}) => classification === "unexpected").map(compactChange);
           const changedDigest = crypto.createHash("sha256").update(JSON.stringify(stable(changes))).digest("hex");
           const currentStored = aggregate.storedMatches + aggregate.storedNotPresentIncoming;
           const rapnaCount = Number(before.controlFingerprint.rapnaCount);
@@ -156,12 +160,12 @@ jobs:
               pending:aggregate.pluralPending,
               hashesChanging:aggregate.pluralHashChanges,
               residuals:Object.fromEntries(pluralResidualReferences.map((reference) => [reference, lookup(reference)])),
-              pendingChanges:pluralPendingChanges,
+              pendingChangeCount:pluralPendingChanges.length,
             },
             observations:Object.fromEntries(["220/2024","64/2026","75/2026","76/2026","78/2026","81/2026"]
               .map((reference) => [reference, lookup(reference)])),
-            genuineSourceChanges:genuine,
-            unexpectedChanges:unexpected,
+            genuineSourceChangeCount:genuine.length,
+            unexpectedChangeCount:unexpected.length,
             unlistedUnexpectedCount:aggregate.unexpected-unexpected.length,
             fullChangeSet:{ count:changes.length, sha256:changedDigest },
             zeroWrite:{
@@ -171,7 +175,15 @@ jobs:
               after:after.controlFingerprint,
             },
           };
-          console.log("WORK20Q_C1_RESULT " + JSON.stringify(result));
+          console.log("WORK20Q_C1_SUMMARY " + JSON.stringify(result));
+          const emitChunks = (label, values) => {
+            for (let index=0; index<values.length; index+=20) {
+              console.log(`${label}_${index/20+1} ` + JSON.stringify(values.slice(index,index+20)));
+            }
+          };
+          emitChunks("WORK20Q_C1_PLURAL", pluralPendingChanges);
+          emitChunks("WORK20Q_C1_GENUINE", genuine);
+          emitChunks("WORK20Q_C1_UNEXPECTED", unexpected);
           if (aggregate.unexpected !== 0) throw new Error(`Unexpected RAPNA changes: ${aggregate.unexpected}`);
           if (aggregate.invalidRecords !== 0 || aggregate.duplicateRecords !== 0) throw new Error("Invalid or duplicate RAPNA CURRENT records");
           NODE
