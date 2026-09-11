@@ -112,7 +112,7 @@ jobs:
           })).sort((a,b) => b.count-a.count || JSON.stringify(a.paths).localeCompare(JSON.stringify(b.paths)));
 
           const combinationFor = (change) => {
-            if (change.metadataOnly) return "metadata-only";
+            if (change.metadataClassificationEligible) return "metadata-only";
             const tags=[];
             if (change.repairKinds.includes("ghost-expansion")) tags.push("ghost");
             if (change.repairKinds.includes("plural-label")) tags.push("plural");
@@ -161,6 +161,13 @@ jobs:
               changedPathPatterns,
               layerCounts,
               metadataOnly:unexpected.filter((c)=>c.metadataOnly).length,
+              metadataClassificationEligible:unexpected.filter((c)=>c.metadataClassificationEligible).length,
+              preservedLegacyUpdatedAtOnly:unexpected.filter((c)=>c.legacyChangedPaths.length===1 && c.legacyChangedPaths[0]==="updatedAt").length,
+              legacyUpdatedAtComparisons:unexpected.filter((c)=>c.legacyUpdatedAtComparison).map((c)=>({
+                year:c.year,
+                reference:c.reference,
+                ...c.legacyUpdatedAtComparison,
+              })),
               publishedProjectionEqual:unexpected.filter((c)=>c.publishedProjectionEqual).length,
               semanticPathEmpty:unexpected.filter((c)=>c.semanticChangedPaths.length===0).length,
               legacyPathEmpty:unexpected.filter((c)=>c.legacyChangedPaths.length===0).length,
@@ -185,8 +192,9 @@ jobs:
           }
 
           if (!unexpected.length || unexpected.length!==aggregate.unexpected) throw new Error("Unexpected corpus reconciliation failed");
-          if (unexpected.some((c)=>!c.metadataOnly || !c.publishedProjectionEqual || c.semanticChangedPaths.length || c.legacyChangedPaths.length)) {
-            throw new Error("At least one unexpected record is not strict metadata-only");
+          if (unexpected.some((c)=>!c.metadataClassificationEligible || !c.publishedProjectionEqual || c.semanticChangedPaths.length ||
+            c.legacyChangedPaths.some((path)=>path!=="updatedAt"))) {
+            throw new Error("At least one unexpected record is not metadata-only or preserved-updatedAt-only");
           }
           if (aggregate.genuineSemanticChange || aggregate.missingStored || aggregate.storedNotPresentIncoming ||
             aggregate.invalidRecords || aggregate.duplicateRecords) throw new Error("CURRENT corpus contains blocking drift");
