@@ -181,9 +181,13 @@ jobs:
               console.log(`${label}_${index/20+1} ` + JSON.stringify(values.slice(index,index+20)));
             }
           };
-          emitChunks("WORK20Q_C1_PLURAL", pluralPendingChanges);
-          emitChunks("WORK20Q_C1_GENUINE", genuine);
-          emitChunks("WORK20Q_C1_UNEXPECTED", unexpected);
+          emitChunks("WORK20Q_C1_UNEXPECTED", unexpected.map((change) => ({
+            year:change.year,
+            reference:change.reference,
+            sameHash:change.beforeContentHash===change.afterContentHash,
+            sameUpdateFlag:change.beforeIsUpdate===change.afterIsUpdate,
+            changedDerivedFields:Object.entries(change.derivedFieldChanges).filter(([,value])=>value).map(([key])=>key),
+          })));
           if (aggregate.unexpected !== 0) throw new Error(`Unexpected RAPNA changes: ${aggregate.unexpected}`);
           if (aggregate.invalidRecords !== 0 || aggregate.duplicateRecords !== 0) throw new Error("Invalid or duplicate RAPNA CURRENT records");
           NODE
