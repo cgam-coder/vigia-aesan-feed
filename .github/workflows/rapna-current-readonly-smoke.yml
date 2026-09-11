@@ -1,0 +1,177 @@
+name: TEMP RAPNA CURRENT read-only production verification
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  authenticated-read-only-proof:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'work/20q-c1-rapna-readonly-auth-smoke'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Run fixed RAPNA CURRENT read-only verification
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${VIGIA_SYNC_TOKEN}"
+          endpoint="https://nagamealert.com/api/rapna/sync"
+          report_dir="${RUNNER_TEMP}/work20q-c1"
+          mkdir -p "${report_dir}"
+
+          request() {
+            label="$1"
+            method="$2"
+            query="$3"
+            expected="$4"
+            code="$(curl --silent --show-error --location --request "${method}" --max-time 480 \
+              --header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}" \
+              --output "${report_dir}/${label}.json" --write-out '%{http_code}' \
+              "${endpoint}?${query}")"
+            if [ "${code}" != "${expected}" ]; then
+              echo "${label}: unexpected HTTP ${code}; expected ${expected}" >&2
+              exit 1
+            fi
+          }
+
+          request preflight POST 'mode=preflight' 200
+          node -e '
+            const fs=require("node:fs");
+            const body=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+            if (body.authorized!==true || body.source!=="RAPNA") throw new Error("Invalid RAPNA preflight response");
+          ' "${report_dir}/preflight.json"
+
+          request observe-before GET 'observe=1' 200
+
+          request legacy-injection POST 'mode=current-dry-run&year=2026&archive=legacy' 400
+          request replay-no-confirm POST 'mode=current-replay&batchSize=1' 400
+          request replay-no-snapshot POST 'mode=current-replay&batchSize=1&confirm=RAPNA_CURRENT_ONLY' 400
+          node -e '
+            const fs=require("node:fs");
+            const read=(name)=>JSON.parse(fs.readFileSync(`${process.argv[1]}/${name}.json`,"utf8"));
+            if (!/Parámetros no permitidos/u.test(read("legacy-injection").error||"")) throw new Error("Legacy injection did not fail at parameter validation");
+            if (!/RAPNA_CURRENT_ONLY requerida/u.test(read("replay-no-confirm").error||"")) throw new Error("Replay did not fail before confirmation");
+            if (!/snapshotId explícito requerido/u.test(read("replay-no-snapshot").error||"")) throw new Error("Replay did not fail before snapshot lookup");
+          ' "${report_dir}"
+
+          request dryrun-2021 POST 'mode=current-dry-run&year=2021' 200
+          node -e '
+            const fs=require("node:fs");
+            const body=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+            const expected=[2021,2022,2023,2024,2025,2026];
+            const plan=body.report?.plan;
+            if (!Array.isArray(plan) || JSON.stringify(plan.map(({year})=>year))!==JSON.stringify(expected) || plan.some(({archive})=>archive!=="current")) {
+              throw new Error("Live RAPNA CURRENT plan is not exactly current:2021-2026; HOLD");
+            }
+          ' "${report_dir}/dryrun-2021.json"
+
+          for year in 2022 2023 2024 2025 2026; do
+            request "dryrun-${year}" POST "mode=current-dry-run&year=${year}" 200
+          done
+
+          request observe-after GET 'observe=1' 200
+
+          node - "${report_dir}" <<'NODE'
+          const crypto = require("node:crypto");
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const directory = process.argv[2];
+          const read = (name) => JSON.parse(fs.readFileSync(path.join(directory, `${name}.json`), "utf8"));
+          const stable = (value) => Array.isArray(value) ? value.map(stable)
+            : value && typeof value === "object"
+              ? Object.fromEntries(Object.entries(value).sort(([a],[b]) => a.localeCompare(b)).map(([key, child]) => [key, stable(child)]))
+              : value;
+          const equal = (left, right) => JSON.stringify(stable(left)) === JSON.stringify(stable(right));
+          const containsLegacy = (value) => Array.isArray(value) ? value.some(containsLegacy)
+            : value && typeof value === "object"
+              ? Object.entries(value).some(([key, child]) => key === "archive" && child === "legacy" || containsLegacy(child))
+              : false;
+          const years = [2021, 2022, 2023, 2024, 2025, 2026];
+          const expectedPlan = years.map((year) => ({ archive:"current", year }));
+          const bodies = years.map((year) => read(`dryrun-${year}`));
+          const reports = bodies.map(({ report }) => report);
+          for (let index=0; index<years.length; index+=1) {
+            const body=bodies[index];
+            const report=reports[index];
+            if (!report || report.year!==years[index] || !equal(report.plan, expectedPlan)) throw new Error(`Invalid report contract for ${years[index]}`);
+            if (!body.zeroWrite?.verified || !equal(body.zeroWrite.before, body.zeroWrite.after)) throw new Error(`Zero-write failed for ${years[index]}`);
+            if (containsLegacy(report)) throw new Error(`LEGACY material detected in ${years[index]} report`);
+          }
+
+          const before = read("observe-before");
+          const after = read("observe-after");
+          for (const key of ["recent", "backfill", "currentReplay", "lease", "snapshot", "controlFingerprint"]) {
+            if (!equal(before[key], after[key])) throw new Error(`Global zero-write mismatch: ${key}`);
+          }
+          if (!before.controlFingerprint || !after.controlFingerprint) throw new Error("Missing RAPNA control fingerprint");
+
+          const numeric = [
+            "incomingRecords", "storedMatches", "missingStored", "storedNotPresentIncoming", "unchanged",
+            "ghostExpansionRepair", "pluralLabelRepair", "observationRefresh", "overlaps",
+            "genuineSemanticChange", "unexpected", "invalidRecords", "duplicateRecords", "pagesScanned",
+            "storedIsUpdateTrue", "incomingIsUpdateTrue", "isUpdateFlagChanges", "isUpdateTrueToFalse",
+            "isUpdateFalseToTrue", "pluralLabelCandidates", "pluralAlreadyRepaired", "pluralPending", "pluralHashChanges",
+          ];
+          const sum = (key) => reports.reduce((total, report) => total + Number(report[key] || 0), 0);
+          const aggregate = Object.fromEntries(numeric.map((key) => [key, sum(key)]));
+          if (aggregate.unexpected !== 0) throw new Error(`Unexpected RAPNA changes: ${aggregate.unexpected}`);
+          if (aggregate.invalidRecords !== 0 || aggregate.duplicateRecords !== 0) throw new Error("Invalid or duplicate RAPNA CURRENT records");
+
+          const changes = reports.flatMap((report) => report.changes.map((change) => ({ year:report.year, ...change })));
+          const byReference = new Map(changes.map((change) => [change.reference, change]));
+          const watched = reports.flatMap((report) => report.watchedRecords.map((change) => ({ year:report.year, ...change })));
+          const watchedByReference = new Map(watched.map((change) => [change.reference, change]));
+          const lookup = (reference) => byReference.get(reference) || watchedByReference.get(reference) || null;
+          const pluralResidualReferences = ["64/2025","244/2024","189/2024","245/2023","465/2022","360/2022","263/2022"];
+          const pluralPendingChanges = changes.filter(({repairKinds}) => repairKinds.includes("plural-label"));
+          const genuine = changes.filter(({classification}) => classification === "genuine-source-change");
+          const unexpected = changes.filter(({classification}) => classification === "unexpected");
+          const changedDigest = crypto.createHash("sha256").update(JSON.stringify(stable(changes))).digest("hex");
+          const currentStored = aggregate.storedMatches + aggregate.storedNotPresentIncoming;
+          const rapnaCount = Number(before.controlFingerprint.rapnaCount);
+          const ghostNoRealExpansion = aggregate.incomingRecords - aggregate.incomingIsUpdateTrue;
+          const ghostPending = aggregate.isUpdateTrueToFalse;
+          const result = {
+            preflight:{ authorized:true, source:"RAPNA" },
+            negativeSmokes:{ legacyInjection:400, replayWithoutConfirm:400, replayWithoutSnapshot:400 },
+            plan:expectedPlan,
+            perYear:reports.map((report) => Object.fromEntries(["year",...numeric].map((key) => [key, report[key]]))),
+            aggregate,
+            dataset:{ currentStored, legacyStored:rapnaCount-currentStored, rapnaCount },
+            ghostExpansion:{
+              storedIsUpdateTrue:aggregate.storedIsUpdateTrue,
+              realExpansionFlags:aggregate.incomingIsUpdateTrue,
+              noRealExpansion:ghostNoRealExpansion,
+              pendingGhostFlags:ghostPending,
+              alreadyCorrectedGhostFlags:ghostNoRealExpansion-ghostPending,
+              examples:{ "153/2026":lookup("153/2026"), "76/2026":lookup("76/2026") },
+            },
+            pluralLabels:{
+              originalSetCandidates:aggregate.pluralLabelCandidates,
+              alreadyRepaired:aggregate.pluralAlreadyRepaired,
+              pending:aggregate.pluralPending,
+              hashesChanging:aggregate.pluralHashChanges,
+              residuals:Object.fromEntries(pluralResidualReferences.map((reference) => [reference, lookup(reference)])),
+              pendingChanges:pluralPendingChanges,
+            },
+            observations:Object.fromEntries(["220/2024","64/2026","75/2026","76/2026","78/2026","81/2026"]
+              .map((reference) => [reference, lookup(reference)])),
+            genuineSourceChanges:genuine,
+            unexpectedChanges:unexpected,
+            fullChangeSet:{ count:changes.length, sha256:changedDigest },
+            zeroWrite:{
+              verified:true,
+              state:{ recent:before.recent, backfill:before.backfill, currentReplay:before.currentReplay, lease:before.lease, snapshot:before.snapshot },
+              before:before.controlFingerprint,
+              after:after.controlFingerprint,
+            },
+          };
+          console.log("WORK20Q_C1_RESULT " + JSON.stringify(result));
+          NODE
