@@ -1,0 +1,181 @@
+name: TEMP RAPNA CURRENT C3 replay
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: work-20q-c3-rapna-current-replay
+  cancel-in-progress: false
+
+jobs:
+  rapna-current-replay:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == 'main' &&
+      github.head_ref == 'work/20q-c3-rapna-current-replay-prod'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Verify and replay RAPNA CURRENT only
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "${GITHUB_RUN_ATTEMPT}" = "1"
+          test -n "${VIGIA_SYNC_TOKEN}"
+
+          endpoint="https://nagamealert.com/api/rapna/sync"
+          snapshot_id="rapna-pre-current-replay-2026-09-11T13-33-58.602Z-b088e294-8331-4f49-93a4-4fb2409432e6"
+          expected_checksum="e8163626595715d066763c15538d8850d86dfb4ec7780ccab0ab399d15967a4c"
+          expected_source_checksum="548fdd34c5de1a816ab97a86849920af34f68b303a13e971a13928a067e6825e"
+          report_dir="${RUNNER_TEMP}/work20q-c3"
+          mkdir -p "${report_dir}"
+
+          request() {
+            local label="$1"
+            local method="$2"
+            local query="$3"
+            local expected="$4"
+            local metrics code elapsed
+            metrics="$(curl --silent --show-error --location --request "${method}" --max-time 900 \
+              --header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}" \
+              --output "${report_dir}/${label}.json" --write-out '%{http_code} %{time_total}' \
+              "${endpoint}?${query}")"
+            code="${metrics%% *}"
+            elapsed="${metrics#* }"
+            case ",${expected}," in
+              *,${code},*) ;;
+              *) echo "${label}: unexpected HTTP ${code}; expected ${expected}" >&2; return 1 ;;
+            esac
+            echo "WORK20Q_C3_REQUEST label=${label} http=${code} seconds=${elapsed}"
+          }
+
+          request preflight POST 'mode=preflight' 200
+          request observe-pre GET 'observe=1' 200
+          request audit-pre GET 'audit=1' 200
+          node - "${report_dir}" "${snapshot_id}" <<'NODE'
+          const fs=require("node:fs"),path=require("node:path");
+          const dir=process.argv[2],snapshotId=process.argv[3];
+          const read=(name)=>JSON.parse(fs.readFileSync(path.join(dir,name+".json"),"utf8"));
+          const observe=read("observe-pre"),audit=read("audit-pre").audit;
+          if(observe.lease!==null) throw new Error("RAPNA lease active before preflight");
+          if(observe.currentReplay!==null) throw new Error("currentReplay is not null before C3");
+          const snapshot=observe.currentSnapshot;
+          if(!snapshot||snapshot.snapshotId!==snapshotId||snapshot.status!=="ready"||snapshot.purpose!=="pre-current-replay"||
+             snapshot.formatVersion!==2||snapshot.sourceAlertCount!==1480||snapshot.versionCount!==1481||
+             snapshot.chunkCount!==61||snapshot.completed!==true) throw new Error("Certified V2 snapshot is not READY");
+          const counts=audit.counts;
+          if(counts.rapnaAlerts!==2567||counts.rapnaUniqueReferences!==2567||counts.rapnaVersions!==2568||
+             counts.rapnaVersionCountSum!==2568) throw new Error("RAPNA baseline count drift");
+          if(Object.values(audit.integrity).some((value)=>Number(value)!==0)) throw new Error("RAPNA integrity drift");
+          console.log("WORK20Q_C3_PREFLIGHT "+JSON.stringify({snapshotId,lease:observe.lease,currentReplay:observe.currentReplay,
+            currentSnapshot:snapshot,counts,integrity:audit.integrity,legacy:counts.rapnaAlerts-1480}));
+          NODE
+
+          for year in 2021 2022 2023 2024 2025 2026; do
+            request "dryrun-pre-${year}" POST "mode=current-dry-run&year=${year}" 200
+          done
+          node - "${report_dir}" <<'NODE'
+          const fs=require("node:fs"),path=require("node:path"),dir=process.argv[2],years=[2021,2022,2023,2024,2025,2026];
+          const bodies=years.map((year)=>JSON.parse(fs.readFileSync(path.join(dir,"dryrun-pre-"+year+".json"),"utf8")));
+          if(bodies.some((body)=>body.zeroWrite?.verified!==true)) throw new Error("Pre-replay dry-run is not zero-write");
+          const reports=bodies.map((body)=>body.report),sum=(key)=>reports.reduce((total,item)=>total+Number(item[key]||0),0);
+          const exact={incomingRecords:1480,storedMatches:1480,missingStored:0,storedNotPresentIncoming:0,
+            ghostExpansionRepair:1357,pluralLabelRepair:102,observationRefresh:1,sourceRecordMetadataRefresh:123,
+            metadataRefreshDetected:1479,genuineSemanticChange:0,unexpected:0,invalidRecords:0,duplicateRecords:0};
+          for(const [key,value] of Object.entries(exact)) if(sum(key)!==value) throw new Error("Pre-replay drift "+key+"="+sum(key));
+          console.log("WORK20Q_C3_DRYRUN_PRE "+JSON.stringify(exact));
+          NODE
+
+          request snapshot-verify POST "mode=current-snapshot-verify&snapshotId=${snapshot_id}" 200
+          node - "${report_dir}/snapshot-verify.json" "${snapshot_id}" "${expected_checksum}" "${expected_source_checksum}" <<'NODE'
+          const body=require(process.argv[2]),snapshotId=process.argv[3],checksum=process.argv[4],sourceChecksum=process.argv[5];
+          const v=body.verification;
+          if(!v||v.snapshotId!==snapshotId||v.status!=="ready"||v.purpose!=="pre-current-replay"||v.formatVersion!==2||
+             v.sourceAlertCount!==1480||v.versionCount!==1481||v.chunkCount!==61||v.checksum!==checksum||
+             v.sourceDataChecksum!==sourceChecksum||v.sourceMatches!==true) throw new Error("Paged snapshot/source checksum verification failed");
+          console.log("WORK20Q_C3_VERIFY "+JSON.stringify(v));
+          NODE
+
+          request observe-write-gate GET 'observe=1' 200
+          node - "${report_dir}/observe-write-gate.json" "${snapshot_id}" <<'NODE'
+          const b=require(process.argv[2]),snapshotId=process.argv[3];
+          if(b.lease!==null||b.currentReplay!==null||b.currentSnapshot?.snapshotId!==snapshotId||b.currentSnapshot?.status!=="ready")
+            throw new Error("Final write gate changed after paged verification");
+          NODE
+
+          previous_observed=0
+          years=(2021 2022 2023 2024 2025 2026)
+          for step in 1 2 3 4 5 6; do
+            year="${years[$((step-1))]}"
+            request "replay-${step}" POST "mode=current-replay&snapshotId=${snapshot_id}&batchSize=1&confirm=RAPNA_CURRENT_ONLY" 200
+            observed="$(node - "${report_dir}/replay-${step}.json" "${step}" "${year}" "${previous_observed}" <<'NODE'
+          const body=require(process.argv[2]),step=Number(process.argv[3]),year=Number(process.argv[4]),previous=Number(process.argv[5]);
+          const state=body.state;
+          if(!state||state.source!=="RAPNA"||state.mode!=="current-replay") throw new Error("Invalid replay state");
+          const expectedStatus=step===6?"completed":"partial",expectedCoverage=step===6?"official-index-complete":"partial";
+          if(state.status!==expectedStatus||state.coverage!==expectedCoverage||state.cursor!==step||state.totalUnits!==6||
+             state.cursorKey!=="current:"+year) throw new Error("Replay cursor/status invariant failed");
+          if(state.newCount!==0||state.updatedCount!==0||state.recordsPersisted!==0||state.pageErrors!==0||
+             state.detailFailures!==0||state.lastError!==null) throw new Error("Replay persistence/error invariant failed");
+          if(state.recordsObserved<=previous||state.recordsObserved>1480||(step===6&&state.recordsObserved!==1480))
+            throw new Error("Replay observed-count invariant failed");
+          process.stdout.write(String(state.recordsObserved));
+          NODE
+          )"
+            previous_observed="${observed}"
+            request "observe-step-${step}" GET 'observe=1' 200
+            node - "${report_dir}/observe-step-${step}.json" "${snapshot_id}" "${step}" "${year}" <<'NODE'
+          const b=require(process.argv[2]),snapshotId=process.argv[3],step=Number(process.argv[4]),year=Number(process.argv[5]);
+          const replay=b.currentReplay,snapshot=b.currentSnapshot;
+          if(b.lease!==null||!replay||replay.cursor!==step||replay.cursorKey!=="current:"+year||replay.newCount!==0||replay.updatedCount!==0)
+            throw new Error("Persisted replay/lease invariant failed after step "+step);
+          const expected=step===6?"backfill-completed":"backfill-running";
+          if(snapshot?.snapshotId!==snapshotId||snapshot?.status!==expected) throw new Error("Snapshot state invariant failed after step "+step);
+          console.log("WORK20Q_C3_STEP "+JSON.stringify({step,year,status:replay.status,cursor:replay.cursor,
+            observed:replay.recordsObserved,newCount:replay.newCount,updatedCount:replay.updatedCount,snapshotStatus:snapshot.status}));
+          NODE
+          done
+
+          request audit-post GET 'audit=1' 200
+          for year in 2021 2022 2023 2024 2025 2026; do
+            request "dryrun-post-${year}" POST "mode=current-dry-run&year=${year}" 200
+          done
+          request observe-post GET 'observe=1' 200
+          node - "${report_dir}" "${snapshot_id}" <<'NODE'
+          const fs=require("node:fs"),path=require("node:path"),dir=process.argv[2],snapshotId=process.argv[3],years=[2021,2022,2023,2024,2025,2026];
+          const read=(name)=>JSON.parse(fs.readFileSync(path.join(dir,name+".json"),"utf8"));
+          const before=read("audit-pre").audit,after=read("audit-post").audit,observe=read("observe-post");
+          const bodies=years.map((year)=>read("dryrun-post-"+year));
+          if(bodies.some((body)=>body.zeroWrite?.verified!==true)) throw new Error("Post-replay dry-run is not zero-write");
+          const reports=bodies.map((body)=>body.report),sum=(key)=>reports.reduce((total,item)=>total+Number(item[key]||0),0);
+          const exact={incomingRecords:1480,storedMatches:1480,missingStored:0,storedNotPresentIncoming:0,unchanged:1480,
+            ghostExpansionRepair:0,pluralLabelRepair:0,observationRefresh:0,sourceRecordMetadataRefresh:0,
+            metadataRefreshDetected:0,genuineSemanticChange:0,unexpected:0,invalidRecords:0,duplicateRecords:0};
+          for(const [key,value] of Object.entries(exact)) if(sum(key)!==value) throw new Error("Post-replay invariant "+key+"="+sum(key));
+          for(const key of ["rapnaAlerts","rapnaUniqueReferences","rapnaVersions","rapnaVersionCountSum"])
+            if(before.counts[key]!==after.counts[key]) throw new Error("RAPNA count changed: "+key);
+          if(after.counts.rapnaAlerts!==2567||after.counts.rapnaUniqueReferences!==2567||after.counts.rapnaVersions!==2568||
+             after.counts.rapnaVersionCountSum!==2568) throw new Error("Final RAPNA counts differ from certified baseline");
+          if(Object.values(after.integrity).some((value)=>Number(value)!==0)) throw new Error("Final integrity violation");
+          const replay=observe.currentReplay,snapshot=observe.currentSnapshot;
+          if(observe.lease!==null||!replay||replay.status!=="completed"||replay.cursor!==6||replay.totalUnits!==6||
+             replay.recordsObserved!==1480||replay.recordsPersisted!==0||replay.newCount!==0||replay.updatedCount!==0||
+             replay.pageErrors!==0||replay.detailFailures!==0||replay.lastError!==null||replay.coverage!=="official-index-complete")
+            throw new Error("Final currentReplay invariant failed");
+          if(snapshot?.snapshotId!==snapshotId||snapshot?.status!=="backfill-completed") throw new Error("Final snapshot state failed");
+          console.log("WORK20Q_C3_FINAL "+JSON.stringify({snapshotId,replayStatus:replay.status,cursor:replay.cursor,
+            totalUnits:replay.totalUnits,recordsObserved:replay.recordsObserved,recordsPersisted:replay.recordsPersisted,
+            newCount:replay.newCount,updatedCount:replay.updatedCount,coverage:replay.coverage,
+            snapshotStatus:snapshot.status,current:sum("storedMatches"),legacy:after.counts.rapnaAlerts-sum("storedMatches"),
+            counts:after.counts,integrity:after.integrity,pendingRepairs:{ghost:sum("ghostExpansionRepair"),
+              plural:sum("pluralLabelRepair"),observation:sum("observationRefresh"),metadata:sum("metadataRefreshDetected")}}));
+          NODE
+
+          echo "WORK20Q_C3_DECISION GO — RAPNA CURRENT REPLAY COMPLETED — ROLLBACK NOT EXECUTED"
