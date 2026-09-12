@@ -2,7 +2,7 @@ name: VIGÍA OECD recent sync
 
 on:
   schedule:
-    - cron: "7,22,37,52 * * * *"
+    - cron: "7/15 * * * *"
 
 concurrency:
   group: vigia-oecd-recent
