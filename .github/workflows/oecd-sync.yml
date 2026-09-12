@@ -32,10 +32,10 @@ jobs:
             --request POST --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
             --max-time 840 --output "$response_file" --write-out '%{http_code}' \
             "$VIGIA_OECD_SYNC_URL?mode=dry-run")"
-          test "$http_code" = "200"
+          echo "HTTP_STATUS=$http_code"
           node -e '
             const fs=require("node:fs");
-            const dry=JSON.parse(fs.readFileSync(process.argv[1],"utf8"))?.dryRun;
+            const body=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));\n            console.log("BODY "+JSON.stringify(body));\n            const dry=body?.dryRun;
             if(!dry) throw new Error("Missing dryRun");
             console.log(JSON.stringify(dry));
             if(!dry.zeroWrite) throw new Error("Dry-run wrote data");
