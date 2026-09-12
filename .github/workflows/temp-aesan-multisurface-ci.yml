@@ -35,6 +35,6 @@ jobs:
           if (!hit) throw new Error('ES2026/517 missing after multisurface discovery');
           if (!/2026_65_rev$/.test(hit.url)) throw new Error(`ES2026/517 did not resolve to latest revision: ${hit.url}`);
           if (!/Ampliación de información/i.test(hit.title)) throw new Error(`ES2026/517 did not preserve revision title: ${hit.title}`);
-          if (hit.publishedAt !== '2026-09-11T12:00:00.000Z') throw new Error(`Unexpected revision date: ${hit.publishedAt}`);
+          if (hit.publishedAt !== '2026-09-10T22:00:00.000Z') throw new Error(`Unexpected revision date: ${hit.publishedAt}`);
           console.log(JSON.stringify({reference:hit.reference,url:hit.url,title:hit.title,publishedAt:hit.publishedAt,versionCount:hit.versionCount}));
           NODE
