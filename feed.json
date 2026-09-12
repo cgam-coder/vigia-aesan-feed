@@ -4,17 +4,460 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-09-10T20:27:21.420Z",
+  "generatedAt": "2026-09-12T12:07:20.207Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
     "totalAlerts": 127,
     "earliestPublishedAt": "2025-01-01T23:00:00.000Z",
-    "latestPublishedAt": "2026-09-08T22:00:00.000Z",
-    "lastFullSyncAt": "2026-09-10T20:27:21.420Z",
+    "latestPublishedAt": "2026-09-10T22:00:00.000Z",
+    "lastFullSyncAt": "2026-09-12T12:07:20.207Z",
     "pagesScanned": 9,
     "legacyIndexesScanned": 0
   },
   "alerts": [
+    {
+      "id": "aesan:ES2026/517",
+      "reference": "ES2026/517",
+      "sourceRecordId": "f15fbfe8-aa09-4203-b932-6700decbe1d8",
+      "sourceRecordIdType": "idAlert",
+      "sourceRecordSchemaVersion": 2,
+      "sourceRecordHash": "8cbf813407f0e274e5d1e8add7276d493e3ed2eef12b9099a5adc59d9ee14ee5",
+      "previousReferences": [],
+      "referenceHistory": [
+        {
+          "reference": "ES2026/517",
+          "title": "Advertencia por presencia de gluten: gluten no declarado en salsas etiquetadas \"sin gluten\" procedentes de España. (Ref. ES2026/517 )",
+          "contentHash": "568f6dbdf22d29cd52f1ae450d4c6b69e5eeb45a0e358f16370abfc0989added"
+        }
+      ],
+      "source": "AESAN",
+      "type": "Alimentaria",
+      "priority": "Media",
+      "title": "Ampliación de información sobre la alerta por presencia de gluten no declarado en salsas etiquetadas \"sin gluten\" procedentes de España (Ref. ES2026/517)",
+      "product": "Salsa barbacoa (BBQ)",
+      "brand": "Vulpi",
+      "productClass": "Condimentos, salsas y especias",
+      "productKey": "salsa barbacoa bbq",
+      "brandKey": "vulpi",
+      "provider": "",
+      "providerKey": "",
+      "providerRole": "",
+      "providerEvidence": "",
+      "notifyingText": "Como ampliación de la información transmitida el pasado 26/08/2026, la comunidad autónoma de Madrid ha informado a la Agencia Española de Seguridad Alimentaria y Nutrición, a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI) de la detección de dos nuevos formatos de salsa barbacoa lote L2510281105 y L2601200123 en formato 1020 g y salsa chimichurri lote L2601280130 (formato 1080 g), además de la retirada de Salsa barbacoa marca Vulpi 600 g, lotes L2509291007, L2510281105 y L251203A1205, y Salsa chimichurri marca Vulpi, 210 g, lote L2512171223 y lote L2601280209, elaborados con la misma materia prima, además de los inicialmente comunicados.",
+      "hazard": "Gluten no declarado",
+      "origin": "España",
+      "scope": "Colectivo alérgico o intolerante indicado por AESAN",
+      "action": "Como medida de precaución, se recomienda a aquellas PERSONAS CON PROBLEMAS DERIVADOS DE LA INGESTA DE GLUTEN que pudieran tener el producto anteriormente mencionado en sus hogares se abstengan de consumirlo.",
+      "lots": [],
+      "imageUrl": "https://www.aesan.gob.es/dam/jcr:0fff7b0a-ba92-4792-9f75-d44cdde180e8/alerta_11_08_2026_3.2026-09-11-15-24-57.png",
+      "officialTitle": "Ampliación de información sobre la alerta por presencia de gluten no declarado en salsas etiquetadas \"sin gluten\" procedentes de España (Ref. ES2026/517)",
+      "publishedFields": [
+        {
+          "label": "Nombre del producto",
+          "value": "Salsa chimichurri",
+          "sourceField": "article.productData[0].field[0]",
+          "order": 0,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Nombre de marca",
+          "value": "Vulpi",
+          "sourceField": "article.productData[0].field[1]",
+          "order": 1,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Aspecto del producto",
+          "value": "Envasado en botella de plástico",
+          "sourceField": "article.productData[0].field[2]",
+          "order": 2,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Números de lote",
+          "value": "L2601280130, fecha de consumo preferente enero 2027",
+          "sourceField": "article.productData[0].field[3]",
+          "order": 3,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Código de barras",
+          "value": ": 8437023947920",
+          "sourceField": "article.productData[0].field[4]",
+          "order": 4,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Peso de unidad",
+          "value": "1080 g",
+          "sourceField": "article.productData[0].field[5]",
+          "order": 5,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Temperatura",
+          "value": "ambiente",
+          "sourceField": "article.productData[0].field[6]",
+          "order": 6,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Nombre del producto",
+          "value": "Salsa barbacoa (BBQ)",
+          "sourceField": "article.productData[1].field[0]",
+          "order": 7,
+          "section": "product_data",
+          "context": "list:1"
+        },
+        {
+          "label": "Nombre de marca comercial",
+          "value": "Dumt’s",
+          "sourceField": "article.productData[1].field[1]",
+          "order": 8,
+          "section": "product_data",
+          "context": "list:1"
+        },
+        {
+          "label": "Aspecto del producto",
+          "value": "Envasado en botella de plástico",
+          "sourceField": "article.productData[1].field[2]",
+          "order": 9,
+          "section": "product_data",
+          "context": "list:1"
+        },
+        {
+          "label": "Números de lote",
+          "value": ": L2510281105, fecha de consumo preferente 31.03.27 y L2601200123, fecha de consumo preferente enero 2027",
+          "sourceField": "article.productData[1].field[3]",
+          "order": 10,
+          "section": "product_data",
+          "context": "list:1"
+        },
+        {
+          "label": "Código de barras",
+          "value": "8437023947357",
+          "sourceField": "article.productData[1].field[4]",
+          "order": 11,
+          "section": "product_data",
+          "context": "list:1"
+        },
+        {
+          "label": "Peso de unidad",
+          "value": "1020 g",
+          "sourceField": "article.productData[1].field[5]",
+          "order": 12,
+          "section": "product_data",
+          "context": "list:1"
+        },
+        {
+          "label": "Temperatura",
+          "value": "ambiente",
+          "sourceField": "article.productData[1].field[6]",
+          "order": 13,
+          "section": "product_data",
+          "context": "list:1"
+        },
+        {
+          "label": "Nombre del producto",
+          "value": "Salsa barbacoa (BBQ)",
+          "sourceField": "article.productData[2].field[0]",
+          "order": 14,
+          "section": "product_data",
+          "context": "list:2"
+        },
+        {
+          "label": "Nombre de marca",
+          "value": "Vulpi",
+          "sourceField": "article.productData[2].field[1]",
+          "order": 15,
+          "section": "product_data",
+          "context": "list:2"
+        },
+        {
+          "label": "Aspecto del producto",
+          "value": "Envasado en botella de plástico",
+          "sourceField": "article.productData[2].field[2]",
+          "order": 16,
+          "section": "product_data",
+          "context": "list:2"
+        },
+        {
+          "label": "Números de lote",
+          "value": "L2510221028, L2510221029, L2510221030, L2510221031 y L2510221032, con fecha de consumo preferente: enero 2027 y L2509291007, con fecha de consumo preferente 31.12.26 L2510281105, con fecha de consumo preferente 31.01.27 y L251203A1205, con fecha de consumo preferente 31.03.27",
+          "sourceField": "article.productData[2].field[3]",
+          "order": 17,
+          "section": "product_data",
+          "context": "list:2"
+        },
+        {
+          "label": "Código de barras",
+          "value": "8437023947814",
+          "sourceField": "article.productData[2].field[4]",
+          "order": 18,
+          "section": "product_data",
+          "context": "list:2"
+        },
+        {
+          "label": "Peso de unidad",
+          "value": "600 g",
+          "sourceField": "article.productData[2].field[5]",
+          "order": 19,
+          "section": "product_data",
+          "context": "list:2"
+        },
+        {
+          "label": "Temperatura",
+          "value": "ambiente",
+          "sourceField": "article.productData[2].field[6]",
+          "order": 20,
+          "section": "product_data",
+          "context": "list:2"
+        },
+        {
+          "label": "Nombre del producto",
+          "value": "Salsa chimichurri",
+          "sourceField": "article.productData[3].field[0]",
+          "order": 21,
+          "section": "product_data",
+          "context": "list:3"
+        },
+        {
+          "label": "Nombre de marca",
+          "value": "Vulpi",
+          "sourceField": "article.productData[3].field[1]",
+          "order": 22,
+          "section": "product_data",
+          "context": "list:3"
+        },
+        {
+          "label": "Aspecto del producto",
+          "value": "Envasado en botella de plástico",
+          "sourceField": "article.productData[3].field[2]",
+          "order": 23,
+          "section": "product_data",
+          "context": "list:3"
+        },
+        {
+          "label": "Números de lote",
+          "value": "L2509160918, L2509160919, L2509160920, L2509160921, L2509160922, L2509160923, L2509160924 y L2512111217, con fecha de consumo preferente: septiembre 2026 y L2512171223, fecha de consumo preferente diciembre 2026 y L2601280209, fecha de consumo preferente enero 2027",
+          "sourceField": "article.productData[3].field[3]",
+          "order": 24,
+          "section": "product_data",
+          "context": "list:3"
+        },
+        {
+          "label": "Código de barras",
+          "value": "8437023947906",
+          "sourceField": "article.productData[3].field[4]",
+          "order": 25,
+          "section": "product_data",
+          "context": "list:3"
+        },
+        {
+          "label": "Peso de unidad",
+          "value": "210 g.",
+          "sourceField": "article.productData[3].field[5]",
+          "order": 26,
+          "section": "product_data",
+          "context": "list:3"
+        },
+        {
+          "label": "Temperatura",
+          "value": "ambiente",
+          "sourceField": "article.productData[3].field[6]",
+          "order": 27,
+          "section": "product_data",
+          "context": "list:3"
+        },
+        {
+          "label": "Nombre del producto",
+          "value": "Salsa barbacoa (BBQ)",
+          "sourceField": "article.productData[4].field[0]",
+          "order": 28,
+          "section": "product_data",
+          "context": "list:4"
+        },
+        {
+          "label": "Nombre de marca comercial",
+          "value": "Dumt’s",
+          "sourceField": "article.productData[4].field[1]",
+          "order": 29,
+          "section": "product_data",
+          "context": "list:4"
+        },
+        {
+          "label": "Aspecto del producto",
+          "value": "Envasado en botella de plástico",
+          "sourceField": "article.productData[4].field[2]",
+          "order": 30,
+          "section": "product_data",
+          "context": "list:4"
+        },
+        {
+          "label": "Números de lote",
+          "value": "L251203B1223 y L251203B1209, con fecha de consumo preferente marzo 2027",
+          "sourceField": "article.productData[4].field[3]",
+          "order": 31,
+          "section": "product_data",
+          "context": "list:4"
+        },
+        {
+          "label": "Código de barras",
+          "value": "8437023947029",
+          "sourceField": "article.productData[4].field[4]",
+          "order": 32,
+          "section": "product_data",
+          "context": "list:4"
+        },
+        {
+          "label": "Peso de unidad",
+          "value": "225 g.",
+          "sourceField": "article.productData[4].field[5]",
+          "order": 33,
+          "section": "product_data",
+          "context": "list:4"
+        },
+        {
+          "label": "Temperatura",
+          "value": "ambiente",
+          "sourceField": "article.productData[4].field[6]",
+          "order": 34,
+          "section": "product_data",
+          "context": "list:4"
+        }
+      ],
+      "materialParagraphs": [
+        {
+          "value": "Como ampliación de la información transmitida el pasado 26/08/2026, la comunidad autónoma de Madrid ha informado a la Agencia Española de Seguridad Alimentaria y Nutrición, a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI) de la detección de dos nuevos formatos de salsa barbacoa lote L2510281105 y L2601200123 en formato 1020 g y salsa chimichurri lote L2601280130 (formato 1080 g), además de la retirada de Salsa barbacoa marca Vulpi 600 g, lotes L2509291007, L2510281105 y L251203A1205, y Salsa chimichurri marca Vulpi, 210 g, lote L2512171223 y lote L2601280209, elaborados con la misma materia prima, además de los inicialmente comunicados.",
+          "sourceField": "article.body.p[0]",
+          "order": 0,
+          "section": "publication"
+        },
+        {
+          "value": "Los datos actualizados de los productos implicados son:",
+          "sourceField": "article.body.p[1]",
+          "order": 1,
+          "section": "publication"
+        },
+        {
+          "value": "Según la información disponible, la distribución ha sido a las comunidades autónomas de Andalucía, Aragón, Castilla - La Mancha, Castilla y León, Cataluña, Comunidad Valenciana, Galicia y Madrid , si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
+          "sourceField": "article.body.p[2]",
+          "order": 2,
+          "section": "publication"
+        },
+        {
+          "value": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+          "sourceField": "article.body.p[3]",
+          "order": 3,
+          "section": "publication"
+        },
+        {
+          "value": "Como medida de precaución, se recomienda a aquellas PERSONAS CON PROBLEMAS DERIVADOS DE LA INGESTA DE GLUTEN que pudieran tener el producto anteriormente mencionado en sus hogares se abstengan de consumirlo.",
+          "sourceField": "article.body.p[4]",
+          "order": 4,
+          "section": "publication"
+        },
+        {
+          "value": "EL CONSUMO DE ESTE PRODUCTO NO COMPORTA NINGÚN RIESGO PARA EL RESTO DE LA POBLACIÓN.",
+          "sourceField": "article.body.p[5]",
+          "order": 5,
+          "section": "publication"
+        },
+        {
+          "value": "Puede ampliar información de la AESAN sobre alergias, intolerancias y problemas derivados de la ingesta de gluten en los siguientes enlaces:",
+          "sourceField": "article.body.p[6]",
+          "order": 6,
+          "section": "publication"
+        }
+      ],
+      "resources": [
+        {
+          "kind": "image",
+          "url": "https://www.aesan.gob.es/dam/jcr:0fff7b0a-ba92-4792-9f75-d44cdde180e8/alerta_11_08_2026_3.2026-09-11-15-24-57.png",
+          "label": null,
+          "sourceField": "article.image[0]",
+          "order": 0
+        },
+        {
+          "kind": "image",
+          "url": "https://www.aesan.gob.es/dam/jcr:41b3860e-dbbf-409e-8ed4-f17d656adf12/alerta_11_08_2026_2.2026-09-11-15-25-43.png",
+          "label": null,
+          "sourceField": "article.image[1]",
+          "order": 1
+        },
+        {
+          "kind": "image",
+          "url": "https://www.aesan.gob.es/dam/jcr:b7f1eae0-9946-447d-80a5-84b5ea291b4e/alerta_11_08_2026_1.2026-09-11-15-26-59.png",
+          "label": null,
+          "sourceField": "article.image[2]",
+          "order": 2
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/AECOSAN/docs/documentos/seguridad_alimentaria/gestion_riesgos/Cuadriptico_Alergias_Alimentarias_interactivo.pdf",
+          "label": "Información a los consumidores sobre alergias alimentarias",
+          "sourceField": "article.link[3]",
+          "order": 3
+        },
+        {
+          "kind": "link",
+          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/alergias_e_intolerancias.htm",
+          "label": "Etiquetado de sustancias que causan alergias e intolerancias",
+          "sourceField": "article.link[4]",
+          "order": 4
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/AECOSAN/docs/documentos/publicaciones/seguridad_alimentaria/intolerancia_lactosa.pdf",
+          "label": "Intolerancia a la lactosa",
+          "sourceField": "article.link[5]",
+          "order": 5
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/AECOSAN/docs/documentos/publicaciones/seguridad_alimentaria/enfermedad_celiaca.pdf",
+          "label": "Enfermedad celiaca",
+          "sourceField": "article.link[6]",
+          "order": 6
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/AECOSAN/docs/documentos/publicaciones/seguridad_alimentaria/GUIA_ETIQUETADO_DE_ALIMENTOS_QUE_CONTIENEN_CEREALES_CON_GLUTEN.pdf",
+          "label": "Guía de etiquetado de alimentos que contienen cereales con gluten",
+          "sourceField": "article.link[7]",
+          "order": 7
+        },
+        {
+          "kind": "link",
+          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/informacion_gluten.htm",
+          "label": "Información sobre la ausencia o presencia reducida de gluten",
+          "sourceField": "article.link[8]",
+          "order": 8
+        }
+      ],
+      "officialDates": [
+        {
+          "label": null,
+          "value": "11/09/2026",
+          "sourceField": "pageInfo.date",
+          "order": 0
+        }
+      ],
+      "url": "https://www.aesan.gob.es/alertas/2026_65_rev",
+      "publishedAt": "2026-09-10T22:00:00.000Z",
+      "detectedAt": "2026-08-28T00:51:40.885Z",
+      "updatedAt": "2026-09-12T12:07:20.207Z",
+      "contentHash": "8cbf813407f0e274e5d1e8add7276d493e3ed2eef12b9099a5adc59d9ee14ee5",
+      "versionCount": 2,
+      "isUpdate": true
+    },
     {
       "id": "aesan:ES2026/243",
       "reference": "ES2026/543",
@@ -305,294 +748,6 @@
       "updatedAt": "2026-09-02T14:39:08.106Z",
       "contentHash": "1f90f4ee6e230b04dc2ea84a01574dfce5a829f99984dcc5109cc35b2a383e00",
       "versionCount": 2,
-      "isUpdate": false
-    },
-    {
-      "id": "aesan:ES2026/517",
-      "reference": "ES2026/517",
-      "sourceRecordId": "4e2180c9-e75b-4583-af9e-1ecfdda918df",
-      "sourceRecordIdType": "idAlert",
-      "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "1f5a800188326e6eb4db79af9f68474bc096c5126c9224187052532307f8be91",
-      "previousReferences": [],
-      "referenceHistory": [],
-      "source": "AESAN",
-      "type": "Alimentaria",
-      "priority": "Media",
-      "title": "Advertencia por presencia de gluten: gluten no declarado en salsas etiquetadas \"sin gluten\" procedentes de España. (Ref. ES2026/517 )",
-      "product": "Salsa barbacoa (BBQ)",
-      "brand": "Vulpi",
-      "productClass": "Condimentos, salsas y especias",
-      "productKey": "salsa barbacoa bbq",
-      "brandKey": "vulpi",
-      "provider": "",
-      "providerKey": "",
-      "providerRole": "",
-      "providerEvidence": "",
-      "notifyingText": "La Agencia Española de Seguridad Alimentaria y Nutrición ha tenido conocimiento a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de una notificación de alerta trasladada por las autoridades sanitarias de Madrid, relativa a la presencia de gluten no incluido etiquetado en varias salsas: salsa barbacoa (BBQ) y salsa chimichurri marca Vulpi y salsa barbacoa (BBQ) marca Dumt’s.",
-      "hazard": "Gluten no declarado",
-      "origin": "España",
-      "scope": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Andalucía y Madrid, si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
-      "action": "Como medida de precaución, se recomienda a aquellas PERSONAS CON PROBLEMAS DERIVADOS DE LA INGESTA DE GLUTEN que pudieran tener el producto anteriormente mencionado en sus hogares se abstengan de consumirlo.",
-      "lots": [],
-      "imageUrl": "https://www.aesan.gob.es/dam/jcr:a5de2859-344b-4085-a739-e89a2cbdd963/1.2026-08-26-13-39-49.png",
-      "officialTitle": "Advertencia por presencia de gluten: gluten no declarado en salsas etiquetadas \"sin gluten\" procedentes de España. (Ref. ES2026/517 )",
-      "publishedFields": [
-        {
-          "label": "Nombre del producto",
-          "value": "Salsa barbacoa (BBQ)",
-          "sourceField": "article.productData[0].field[0]",
-          "order": 0,
-          "section": "product_data",
-          "context": "list:0"
-        },
-        {
-          "label": "Nombre de marca",
-          "value": "Vulpi",
-          "sourceField": "article.productData[0].field[1]",
-          "order": 1,
-          "section": "product_data",
-          "context": "list:0"
-        },
-        {
-          "label": "Aspecto del producto",
-          "value": "Envasado en botella de plástico.",
-          "sourceField": "article.productData[0].field[2]",
-          "order": 2,
-          "section": "product_data",
-          "context": "list:0"
-        },
-        {
-          "label": "Números de lote",
-          "value": "L2510221028, L2510221029, L2510221030, L2510221031 y L2510221032, con fecha de consumo preferente: enero 2027",
-          "sourceField": "article.productData[0].field[3]",
-          "order": 3,
-          "section": "product_data",
-          "context": "list:0"
-        },
-        {
-          "label": "Código de barras",
-          "value": "8437023947814",
-          "sourceField": "article.productData[0].field[4]",
-          "order": 4,
-          "section": "product_data",
-          "context": "list:0"
-        },
-        {
-          "label": "Peso de unidad",
-          "value": "600 g.",
-          "sourceField": "article.productData[0].field[5]",
-          "order": 5,
-          "section": "product_data",
-          "context": "list:0"
-        },
-        {
-          "label": "Temperatura",
-          "value": "ambiente",
-          "sourceField": "article.productData[0].field[6]",
-          "order": 6,
-          "section": "product_data",
-          "context": "list:0"
-        },
-        {
-          "label": "Nombre del producto",
-          "value": "Salsa chimichurri",
-          "sourceField": "article.productData[1].field[0]",
-          "order": 7,
-          "section": "product_data",
-          "context": "list:1"
-        },
-        {
-          "label": "Nombre de marca",
-          "value": "Vulpi",
-          "sourceField": "article.productData[1].field[1]",
-          "order": 8,
-          "section": "product_data",
-          "context": "list:1"
-        },
-        {
-          "label": "Aspecto del producto",
-          "value": "Envasado en botella de plástico.",
-          "sourceField": "article.productData[1].field[2]",
-          "order": 9,
-          "section": "product_data",
-          "context": "list:1"
-        },
-        {
-          "label": "Números de lote",
-          "value": "L2509160918, L2509160919, L2509160920, L2509160921, L2509160922, L2509160923, L2509160924 y L2512111217, con fecha de consumo preferente: septiembre 2026",
-          "sourceField": "article.productData[1].field[3]",
-          "order": 10,
-          "section": "product_data",
-          "context": "list:1"
-        },
-        {
-          "label": "Código de barras",
-          "value": ": 8437023947906",
-          "sourceField": "article.productData[1].field[4]",
-          "order": 11,
-          "section": "product_data",
-          "context": "list:1"
-        },
-        {
-          "label": "Peso de unidad",
-          "value": "210 g.",
-          "sourceField": "article.productData[1].field[5]",
-          "order": 12,
-          "section": "product_data",
-          "context": "list:1"
-        },
-        {
-          "label": "Temperatura",
-          "value": "ambiente",
-          "sourceField": "article.productData[1].field[6]",
-          "order": 13,
-          "section": "product_data",
-          "context": "list:1"
-        },
-        {
-          "label": "Nombre del producto",
-          "value": "Salsa barbacoa (BBQ)",
-          "sourceField": "article.productData[2].field[0]",
-          "order": 14,
-          "section": "product_data",
-          "context": "list:2"
-        },
-        {
-          "label": "Nombre de marca comercial",
-          "value": "Dumt’s",
-          "sourceField": "article.productData[2].field[1]",
-          "order": 15,
-          "section": "product_data",
-          "context": "list:2"
-        },
-        {
-          "label": "Aspecto del producto",
-          "value": "Envasado en botella de plástico.",
-          "sourceField": "article.productData[2].field[2]",
-          "order": 16,
-          "section": "product_data",
-          "context": "list:2"
-        },
-        {
-          "label": "Números de lote",
-          "value": ": L251203B1223 y L251203B1209, con fecha de consumo preferente marzo 2027",
-          "sourceField": "article.productData[2].field[3]",
-          "order": 17,
-          "section": "product_data",
-          "context": "list:2"
-        },
-        {
-          "label": "Código de barras",
-          "value": "8437023947029",
-          "sourceField": "article.productData[2].field[4]",
-          "order": 18,
-          "section": "product_data",
-          "context": "list:2"
-        },
-        {
-          "label": "Peso de unidad",
-          "value": "225 g.",
-          "sourceField": "article.productData[2].field[5]",
-          "order": 19,
-          "section": "product_data",
-          "context": "list:2"
-        },
-        {
-          "label": "Temperatura",
-          "value": "ambiente",
-          "sourceField": "article.productData[2].field[6]",
-          "order": 20,
-          "section": "product_data",
-          "context": "list:2"
-        }
-      ],
-      "materialParagraphs": [
-        {
-          "value": "La Agencia Española de Seguridad Alimentaria y Nutrición ha tenido conocimiento a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de una notificación de alerta trasladada por las autoridades sanitarias de Madrid, relativa a la presencia de gluten no incluido etiquetado en varias salsas: salsa barbacoa (BBQ) y salsa chimichurri marca Vulpi y salsa barbacoa (BBQ) marca Dumt’s.\nLos datos de los productos implicados son:",
-          "sourceField": "article.body.p[0]",
-          "order": 0,
-          "section": "publication"
-        },
-        {
-          "value": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Andalucía y Madrid, si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.\nEsta información ha sido trasladada a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.\nComo medida de precaución, se recomienda a las personas con problemas derivados de la ingesta de gluten que pudieran tener el producto anteriormente mencionado en sus hogares que se abstengan de consumirlo.\nEL CONSUMO DE ESTE PRODUCTO NO COMPORTA NINGÚN RIESGO PARA EL RESTO DE LA POBLACIÓN.\nPuede ampliar información de la AESAN sobre alergias, intolerancias y problemas derivados de la ingesta de gluten en los siguientes enlaces:",
-          "sourceField": "article.body.p[1]",
-          "order": 1,
-          "section": "publication"
-        }
-      ],
-      "resources": [
-        {
-          "kind": "image",
-          "url": "https://www.aesan.gob.es/dam/jcr:a5de2859-344b-4085-a739-e89a2cbdd963/1.2026-08-26-13-39-49.png",
-          "label": null,
-          "sourceField": "article.image[0]",
-          "order": 0
-        },
-        {
-          "kind": "image",
-          "url": "https://www.aesan.gob.es/dam/jcr:b85b9ea8-4af5-45af-9cec-289f9ee1b79a/2.2026-08-26-13-40-07.png",
-          "label": null,
-          "sourceField": "article.image[1]",
-          "order": 1
-        },
-        {
-          "kind": "image",
-          "url": "https://www.aesan.gob.es/dam/jcr:c36c145d-3ac9-4c32-8db2-e55311be5d9b/3.2026-08-26-13-40-23.png",
-          "label": null,
-          "sourceField": "article.image[2]",
-          "order": 2
-        },
-        {
-          "kind": "document",
-          "url": "https://www.aesan.gob.es/dam/jcr:ba066bf6-210a-4533-9a62-0491ae37a388/Cuadriptico_Alergias_Alimentarias_interactivo.pdf",
-          "label": "Información a los consumidores sobre alergias alimentarias",
-          "sourceField": "article.link[3]",
-          "order": 3
-        },
-        {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/seguridad-alimentaria/informacion-alimentaria/etiquetado-sustancias",
-          "label": "Etiquetado de sustancias que causan alergias e intolerancias",
-          "sourceField": "article.link[4]",
-          "order": 4
-        },
-        {
-          "kind": "document",
-          "url": "https://www.aesan.gob.es/dam/jcr:63990b52-7b41-4d8c-ba93-745d68b63471/intolerancia_lactosa.pdf",
-          "label": "Intolerancia a la lactosa",
-          "sourceField": "article.link[5]",
-          "order": 5
-        },
-        {
-          "kind": "document",
-          "url": "https://www.aesan.gob.es/dam/jcr:a9d14dd3-f957-4638-8448-c2b3e007ec0c/enfermedad_celiaca.pdf",
-          "label": "Enfermedad celiaca",
-          "sourceField": "article.link[6]",
-          "order": 6
-        },
-        {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/dam/jcr:34432d9b-a474-4b98-8e4e-74ae81d9fd72/GUIA_ETIQUETADO_GLUTEN.jpg",
-          "label": "Guía de etiquetado de alimentos que contienen cereales con gluten",
-          "sourceField": "article.link[7]",
-          "order": 7
-        }
-      ],
-      "officialDates": [
-        {
-          "label": null,
-          "value": "26/08/2026",
-          "sourceField": "pageInfo.date",
-          "order": 0
-        }
-      ],
-      "url": "https://www.aesan.gob.es/alertas/2026_65",
-      "publishedAt": "2026-08-25T22:00:00.000Z",
-      "detectedAt": "2026-08-28T00:51:40.885Z",
-      "updatedAt": "2026-08-25T22:00:00.000Z",
-      "contentHash": "568f6dbdf22d29cd52f1ae450d4c6b69e5eeb45a0e358f16370abfc0989added",
-      "versionCount": 1,
       "isUpdate": false
     },
     {
