@@ -19,19 +19,17 @@ jobs:
         with:
           node-version: 22
       - run: npm test
-      - name: Run live AESAN discovery dry validation
-        env:
-          OUTPUT_PATH: /tmp/aesan-feed-validation.json
-          AESAN_FULL_HISTORY: "0"
+      - name: Inspect AESAN landing raw HTML
         run: |
-          cp feed.json "${OUTPUT_PATH}"
-          npm run update | tee /tmp/aesan-validation.log
-          grep -q '"discoverySurfaces":2' /tmp/aesan-validation.log
-          grep -q '"landingOnlyCards":' /tmp/aesan-validation.log
-          node - <<'NODE'
-          const fs = require('node:fs');
-          const feed = JSON.parse(fs.readFileSync(process.env.OUTPUT_PATH, 'utf8'));
-          const hit = feed.alerts.find((a) => a.reference === 'ES2026/517');
-          if (!hit) throw new Error('ES2026/517 missing after multisurface discovery');
-          console.log(JSON.stringify({reference:hit.reference,url:hit.url,title:hit.title,publishedAt:hit.publishedAt,versionCount:hit.versionCount}));
-          NODE
+          curl --silent --show-error --location --max-time 45 \
+            -H 'Accept: text/html,application/xhtml+xml' \
+            -H 'Accept-Language: es-ES,es;q=0.9' \
+            -A 'VIGIA-AESAN-Feed/1.0 (+https://github.com/cgam-coder/vigia-aesan-feed)' \
+            'https://www.aesan.gob.es/alertas/alertas-alimentarias' -o /tmp/aesan-landing.html
+          echo "bytes=$(wc -c </tmp/aesan-landing.html)"
+          echo '--- 2026_65_rev matches ---'
+          grep -n -o -E '.{0,180}2026_65_rev.{0,220}' /tmp/aesan-landing.html | head -20 || true
+          echo '--- href alert matches ---'
+          grep -n -o -E 'href="[^"]*/alertas/[^"]+"' /tmp/aesan-landing.html | head -40 || true
+          echo '--- structural markers ---'
+          grep -n -o -E '.{0,80}(seeMoreCard|ES2026/517|Ampliaci[^<]{0,120}).{0,160}' /tmp/aesan-landing.html | head -40 || true
