@@ -1,4 +1,4 @@
-name: TEMP WORK20Q-D Safety Gate aggregate audit
+name: TEMP WORK20Q-D Safety Gate order-churn repair
 
 on:
   workflow_dispatch:
@@ -7,27 +7,41 @@ permissions:
   contents: read
 
 jobs:
-  audit:
+  repair:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     env:
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
-      - name: Prove exact nondeterministic-order window
+      - name: Repair only exact nondeterministic-order versions
         run: |
-          response_file="${RUNNER_TEMP}/order-churn.json"
-          http_code="$(curl -q --silent --show-error --request POST --max-time 60 \
+          response_file="${RUNNER_TEMP}/order-churn-repair.json"
+          http_code="$(curl -q --silent --show-error --request POST --max-time 90 \
             --header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}" \
             --output "${response_file}" --write-out '%{http_code}' \
-            "https://vigia-alertas.csar68.chatgpt.site/api/safety-gate/sync?mode=audit-order-churn&startedAt=2026-09-12T14%3A36%3A34.693Z&completedAt=2026-09-12T14%3A47%3A02.540Z")"
+            "https://vigia-alertas.csar68.chatgpt.site/api/safety-gate/sync?mode=repair-order-churn&confirm=WORK20Q-D-SAFETY-GATE-ORDER-CHURN&startedAt=2026-09-12T14%3A36%3A34.693Z&completedAt=2026-09-12T14%3A47%3A02.540Z&expectedCandidateCount=137&expectedRepairableCount=116")"
           node - <<'NODE' "${http_code}" "${response_file}"
           const fs = require("node:fs");
           const status = Number(process.argv[2]);
           const body = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
-          const audit = body?.audit;
-          if (status !== 200 || audit?.candidateVersions !== 137 || audit?.repairableVersions !== 137 ||
-              audit?.officialChangeVersions !== 0 || audit?.invalidVersions !== 0) {
-            throw new Error(`unexpected audit: HTTP ${status} ${JSON.stringify(body)}`);
+          const repair = body?.repair;
+          const audit = repair?.audit;
+          const remaining = repair?.remaining;
+          if (status !== 200 || repair?.status !== "repaired" || repair?.repairedCount !== 116 ||
+              audit?.candidateVersions !== 137 || audit?.repairableVersions !== 116 ||
+              audit?.officialChangeVersions !== 21 || audit?.invalidVersions !== 0 ||
+              remaining?.candidateVersions !== 21 || remaining?.repairableVersions !== 0 ||
+              remaining?.officialChangeVersions !== 21 || remaining?.invalidVersions !== 0 ||
+              !/^sg-work20q-d-order-churn-/.test(repair?.snapshotId ?? "") ||
+              !/^[0-9a-f]{64}$/.test(repair?.checksum ?? "")) {
+            throw new Error(`unexpected repair: HTTP ${status} ${JSON.stringify(body)}`);
           }
-          console.log(JSON.stringify(audit));
+          console.log(JSON.stringify({
+            status:repair.status,
+            repairedCount:repair.repairedCount,
+            snapshotId:repair.snapshotId,
+            checksum:repair.checksum,
+            audit,
+            remaining,
+          }));
           NODE
