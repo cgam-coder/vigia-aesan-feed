@@ -2,7 +2,7 @@ name: VIGÍA OECD recent sync
 
 on:
   schedule:
-    - cron: "19 11 * * *"
+    - cron: "7,22,37,52 * * * *"
 
 concurrency:
   group: vigia-oecd-recent
@@ -14,17 +14,16 @@ permissions:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       VIGIA_OECD_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/oecd/sync
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
       - name: Preflight OECD authorization
+        shell: bash
         run: |
-          if [ -z "$VIGIA_SYNC_TOKEN" ]; then
-            echo "OECD preflight: VIGIA_SYNC_TOKEN is missing"
-            exit 1
-          fi
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
           response_file="$RUNNER_TEMP/oecd-preflight.json"
           http_code="$(curl --silent --show-error --location --request POST \
             --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" --max-time 30 \
@@ -34,21 +33,125 @@ jobs:
             const status=Number(process.argv[1]);
             const body=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
             if(status!==200||body?.authorized!==true||body?.source!=="OECD") throw new Error(`OECD preflight failed with HTTP ${status}`);
-            console.log("OECD preflight: endpoint authorized");
           ' "$http_code" "$response_file"
 
-      - name: Refresh OECD
+      - name: Detect bounded gap recovery
+        id: observe
+        shell: bash
         run: |
-          response_file="$RUNNER_TEMP/oecd-sync.json"
-          http_code="$(curl --silent --show-error --location --request POST \
-            --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" --max-time 480 \
-            --output "$response_file" --write-out '%{http_code}' "$VIGIA_OECD_SYNC_URL?mode=recent")"
+          set -euo pipefail
+          response_file="$RUNNER_TEMP/oecd-observe.json"
+          http_code="$(curl --silent --show-error --location \
+            --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" --max-time 60 \
+            --output "$response_file" --write-out '%{http_code}' "$VIGIA_OECD_SYNC_URL?observe=1")"
+          test "$http_code" = "200"
           node -e '
             const fs=require("node:fs");
-            const status=Number(process.argv[1]);
-            const state=JSON.parse(fs.readFileSync(process.argv[2],"utf8"))?.state;
-            if(status!==200||state?.source!=="OECD"||state?.mode!=="recent"||state?.status!=="completed") throw new Error(state?.lastError||`OECD recent sync failed with HTTP ${status}`);
-            if(state.lastError||state.detailFailures!==0||state.pageErrors!==0) throw new Error("OECD recent sync reported failures");
-            if(state.leaseOwnerId!==null||state.leaseMode!==null||state.leaseExpiresAt!==null) throw new Error("OECD recent lease was not released");
-            console.log(JSON.stringify({status:state.status,recordsObserved:state.recordsObserved,recordsPersisted:state.recordsPersisted,newCount:state.newCount,updatedCount:state.updatedCount,detailFailures:state.detailFailures,pageErrors:state.pageErrors,lastError:state.lastError,leaseReleased:true}));
-          ' "$http_code" "$response_file"
+            const body=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+            const last=body?.recent?.lastSuccessAt;
+            const gap=Boolean(last&&Date.now()-Date.parse(last)>7*24*60*60*1000);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT,`gap_recovery=${gap}\n`);
+            console.log(JSON.stringify({gapRecovery:gap,lastSuccessAt:last??null,lease:body?.lease??null}));
+          ' "$response_file"
+
+      - name: Dry-run and create exact snapshot
+        if: steps.observe.outputs.gap_recovery == 'true'
+        id: recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          dry_file="$RUNNER_TEMP/oecd-dry-run.json"
+          dry_status="$(curl --silent --show-error --location --retry 2 --retry-all-errors \
+            --request POST --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
+            --max-time 840 --output "$dry_file" --write-out '%{http_code}' \
+            "$VIGIA_OECD_SYNC_URL?mode=dry-run")"
+          test "$dry_status" = "200"
+          node -e '
+            const fs=require("node:fs");
+            const dry=JSON.parse(fs.readFileSync(process.argv[1],"utf8"))?.dryRun;
+            if(!dry) throw new Error("Missing dryRun");
+            console.log("DRY_RUN "+JSON.stringify(dry));
+            if(!dry.zeroWrite) throw new Error("Dry-run wrote data");
+            if(dry.counts?.unexpected!==0) throw new Error("Unexpected OECD classifications");
+            fs.writeFileSync(process.argv[2],JSON.stringify({targetIds:dry.targetIds}));
+          ' "$dry_file" "$RUNNER_TEMP/oecd-snapshot-request.json"
+          snapshot_file="$RUNNER_TEMP/oecd-snapshot.json"
+          snapshot_status="$(curl --silent --show-error --location --request POST \
+            --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" --header "Content-Type: application/json" \
+            --data-binary "@$RUNNER_TEMP/oecd-snapshot-request.json" --max-time 180 \
+            --output "$snapshot_file" --write-out '%{http_code}' "$VIGIA_OECD_SYNC_URL?mode=snapshot")"
+          test "$snapshot_status" = "201"
+          node -e '
+            const fs=require("node:fs");
+            const manifest=JSON.parse(fs.readFileSync(process.argv[1],"utf8"))?.snapshot;
+            if(!manifest?.id||manifest?.status!=="ready"||manifest?.purpose!=="pre-reconciliation") throw new Error("Snapshot OECD not ready");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT,`snapshot_id=${manifest.id}\n`);
+            console.log("SNAPSHOT "+JSON.stringify(manifest));
+          ' "$snapshot_file"
+
+      - name: Verify snapshot and run recovery twice
+        if: steps.observe.outputs.gap_recovery == 'true'
+        env:
+          SNAPSHOT_ID: ${{ steps.recovery.outputs.snapshot_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e 'require("node:fs").writeFileSync(process.argv[1],JSON.stringify({snapshotId:process.env.SNAPSHOT_ID}))' "$RUNNER_TEMP/oecd-snapshot-id.json"
+          verify_file="$RUNNER_TEMP/oecd-verify-snapshot.json"
+          verify_status="$(curl --silent --show-error --location --request POST \
+            --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" --header "Content-Type: application/json" \
+            --data-binary "@$RUNNER_TEMP/oecd-snapshot-id.json" --max-time 180 \
+            --output "$verify_file" --write-out '%{http_code}' "$VIGIA_OECD_SYNC_URL?mode=verify-snapshot")"
+          test "$verify_status" = "200"
+          node -e '
+            const fs=require("node:fs");
+            const verification=JSON.parse(fs.readFileSync(process.argv[1],"utf8"))?.verification;
+            if(verification?.sourceMatches!==true||verification?.snapshotId!==process.env.SNAPSHOT_ID) throw new Error("Snapshot verification failed");
+            console.log("VERIFICATION "+JSON.stringify(verification));
+          ' "$verify_file"
+
+          first_file="$RUNNER_TEMP/oecd-sync-1.json"
+          first_status="$(curl --silent --show-error --location --request POST \
+            --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" --header "Content-Type: application/json" \
+            --data-binary "@$RUNNER_TEMP/oecd-snapshot-id.json" --max-time 840 \
+            --output "$first_file" --write-out '%{http_code}' "$VIGIA_OECD_SYNC_URL?mode=recent")"
+          test "$first_status" = "200"
+          node -e '
+            const fs=require("node:fs");
+            const state=JSON.parse(fs.readFileSync(process.argv[1],"utf8"))?.state;
+            if(state?.status!=="completed"||state?.pageErrors!==0||state?.detailFailures!==0||state?.lastError!==null) throw new Error(state?.lastError||"Sync 1 failed");
+            if(state?.leaseOwnerId!==null||state?.leaseMode!==null||state?.leaseExpiresAt!==null) throw new Error("Sync 1 lease not released");
+            console.log("SYNC_1 "+JSON.stringify(state));
+          ' "$first_file"
+
+          second_file="$RUNNER_TEMP/oecd-sync-2.json"
+          second_status="$(curl --silent --show-error --location --request POST \
+            --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" --max-time 840 \
+            --output "$second_file" --write-out '%{http_code}' "$VIGIA_OECD_SYNC_URL?mode=recent")"
+          test "$second_status" = "200"
+          node -e '
+            const fs=require("node:fs");
+            const state=JSON.parse(fs.readFileSync(process.argv[1],"utf8"))?.state;
+            if(state?.status!=="completed"||state?.recordsPersisted!==0||state?.newCount!==0||state?.updatedCount!==0) throw new Error("Sync 2 was not zero-write");
+            if(state?.pageErrors!==0||state?.detailFailures!==0||state?.lastError!==null) throw new Error("Sync 2 reported failures");
+            if(state?.leaseOwnerId!==null||state?.leaseMode!==null||state?.leaseExpiresAt!==null) throw new Error("Sync 2 lease not released");
+            console.log("SYNC_2 "+JSON.stringify(state));
+          ' "$second_file"
+
+      - name: Normal bounded recent
+        if: steps.observe.outputs.gap_recovery != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          response_file="$RUNNER_TEMP/oecd-sync.json"
+          http_code="$(curl --silent --show-error --location --request POST \
+            --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" --max-time 840 \
+            --output "$response_file" --write-out '%{http_code}' "$VIGIA_OECD_SYNC_URL?mode=recent")"
+          test "$http_code" = "200"
+          node -e '
+            const fs=require("node:fs");
+            const state=JSON.parse(fs.readFileSync(process.argv[1],"utf8"))?.state;
+            if(state?.status!=="completed"||state?.pageErrors!==0||state?.detailFailures!==0||state?.lastError!==null) throw new Error(state?.lastError||"OECD recent failed");
+            if(state?.leaseOwnerId!==null||state?.leaseMode!==null||state?.leaseExpiresAt!==null) throw new Error("OECD recent lease not released");
+            console.log("RECENT "+JSON.stringify(state));
+          ' "$response_file"
