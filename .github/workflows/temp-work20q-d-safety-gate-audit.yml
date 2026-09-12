@@ -41,7 +41,8 @@ jobs:
               c?.alerts!==21071 || c?.versionRows!==22604 || c?.versionCountSum!==23072 ||
               c?.versionCountSum-c?.versionRows!==468 || c?.missingCurrentHashRows!==294 || c?.invalidVersionCountRows!==0 ||
               counts?.safetyGateAlerts!==21071 || counts?.safetyGateUniqueReferences!==21071 ||
-              counts?.safetyGateVersions!==22604 || counts?.safetyGateVersionCountSum!==23072 ||\n              counts?.safetyGateVersionCountSum-counts?.safetyGateVersions!==468 ||
+              counts?.safetyGateVersions!==22604 || counts?.safetyGateVersionCountSum!==23072 ||
+              counts?.safetyGateVersionCountSum-counts?.safetyGateVersions!==468 ||
               integrity?.duplicateReferenceGroups!==0 || integrity?.invalidIdentities!==0 ||
               integrity?.emptyCanonicalRows!==0 || integrity?.invalidOfficialUrls!==0 ||
               observe?.lease!==null || observe?.recent?.status!=="completed" ||
