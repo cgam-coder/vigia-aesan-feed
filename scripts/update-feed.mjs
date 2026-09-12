@@ -17,6 +17,7 @@ const OUTPUT_PATH = resolve(process.env.OUTPUT_PATH || "feed.json");
 const RECENT_PAGE_COUNT = Math.max(1, Math.min(20, Number(process.env.AESAN_PAGES || 4)));
 const MAX_ARCHIVE_PAGES = Math.max(20, Math.min(600, Number(process.env.AESAN_MAX_ARCHIVE_PAGES || 400)));
 const FULL_HISTORY = /^(?:1|true|yes)$/i.test(process.env.AESAN_FULL_HISTORY || "");
+const AESAN_ALERTS_LANDING_URL = "https://www.aesan.gob.es/alertas/alertas-alimentarias";
 const USER_AGENT = "VIGIA-AESAN-Feed/1.0 (+https://github.com/cgam-coder/vigia-aesan-feed)";
 const TLS_CERTIFICATE_ERRORS = new Set([
   "CERT_HAS_EXPIRED",
@@ -153,14 +154,31 @@ const searchDiscovery = (html) => ({
 async function main() {
   const now = new Date().toISOString();
   const current = await readCurrentFeed();
-  const listing = await readListPages();
+  const [listing, landingHtml] = await Promise.all([
+    readListPages(),
+    fetchHtml(AESAN_ALERTS_LANDING_URL),
+  ]);
   const pages = listing.pages;
   if (FULL_HISTORY && pages[0]) console.log(`AESAN_SEARCH_DISCOVERY ${JSON.stringify(searchDiscovery(pages[0]))}`);
+
   const currentCards = pages.flatMap(parseListCards);
-  const legacyCards = [];
-  const cardsByUrl = new Map(currentCards.map((card) => [card.url, card]));
+  const landingCards = parseListCards(landingHtml);
+  if (!landingCards.length) {
+    throw new Error("AESAN respondió en la portada de alertas, pero no se identificaron fichas: posible drift de la superficie secundaria de descubrimiento");
+  }
+
+  const primaryUrls = new Set(currentCards.map((card) => card.url));
+  const landingOnlyCards = landingCards.filter((card) => !primaryUrls.has(card.url));
+  if (landingOnlyCards.length) {
+    console.warn(`AESAN_DISCOVERY_DIVERGENCE ${JSON.stringify({
+      secondarySurface:AESAN_ALERTS_LANDING_URL,
+      missingFromSearcher:landingOnlyCards.map(({ url, reference, title, publishedAt }) => ({ url, reference, title, publishedAt })),
+    })}`);
+  }
+
+  const cardsByUrl = new Map([...currentCards, ...landingCards].map((card) => [card.url, card]));
   const cards = consolidateListCards([...cardsByUrl.values()]);
-  if (!cards.length) throw new Error("AESAN respondió, pero no se identificaron fichas de alerta en el buscador oficial");
+  if (!cards.length) throw new Error("AESAN respondió, pero no se identificaron fichas de alerta en ninguna superficie oficial de descubrimiento");
 
   let detailFailures = 0;
   const alerts = await mapLimit(cards, 3, async (card) => {
@@ -184,7 +202,21 @@ async function main() {
     legacyIndexesScanned:listing.legacyPages.length,
   });
   await writeFile(OUTPUT_PATH, `${JSON.stringify(feed, null, 2)}\n`, "utf8");
-  console.log(JSON.stringify({ source:AESAN_LIST_URL, mode:FULL_HISTORY ? "full-history" : "recent", pages:listing.scanned, legacyIndexes:listing.legacyPages.length, currentCards:currentCards.length, legacyCards:legacyCards.length, cards:cards.length, alerts:feed.alerts.length, detailFailures, generatedAt:feed.generatedAt, archive:feed.archive }));
+  console.log(JSON.stringify({
+    source:AESAN_LIST_URL,
+    mode:FULL_HISTORY ? "full-history" : "recent",
+    pages:listing.scanned,
+    legacyIndexes:listing.legacyPages.length,
+    discoverySurfaces:2,
+    currentCards:currentCards.length,
+    landingCards:landingCards.length,
+    landingOnlyCards:landingOnlyCards.length,
+    cards:cards.length,
+    alerts:feed.alerts.length,
+    detailFailures,
+    generatedAt:feed.generatedAt,
+    archive:feed.archive,
+  }));
 }
 
 await main();
