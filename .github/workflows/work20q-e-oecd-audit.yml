@@ -1,0 +1,40 @@
+name: WORK20Q-E OECD read-only preflight
+
+on:
+  push:
+    branches:
+      - work/20q-e-oecd-preflight
+    paths:
+      - .github/workflows/work20q-e-oecd-audit.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VIGIA_OECD_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/oecd/sync
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+    steps:
+      - name: Authenticated observe and audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+          for query in "observe=1" "audit=1"; do
+            response_file="$RUNNER_TEMP/oecd-${query%%=*}.json"
+            http_code="$(curl --silent --show-error --location \
+              --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
+              --max-time 180 \
+              --output "$response_file" --write-out '%{http_code}' \
+              "$VIGIA_OECD_SYNC_URL?$query")"
+            test "$http_code" = "200"
+            node -e '
+              const fs=require("node:fs");
+              const body=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+              if(body?.error) throw new Error(body.error);
+              console.log(JSON.stringify(body));
+            ' "$response_file"
+          done
