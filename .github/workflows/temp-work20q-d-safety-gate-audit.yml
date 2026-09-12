@@ -9,39 +9,25 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 3
     env:
-      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
-      - name: Read aggregate audit and state
+      - name: Prove exact nondeterministic-order window
         run: |
-          audit_file="${RUNNER_TEMP}/safety-gate-audit.json"
-          observe_file="${RUNNER_TEMP}/safety-gate-observe.json"
-          audit_code="$(curl -q --silent --show-error --max-time 180 \
+          response_file="${RUNNER_TEMP}/order-churn.json"
+          http_code="$(curl -q --silent --show-error --request POST --max-time 60 \
             --header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}" \
-            --output "${audit_file}" --write-out '%{http_code}' \
-            "${VIGIA_BASE_URL}/api/safety-gate/sync?audit=1")"
-          observe_code="$(curl -q --silent --show-error --max-time 30 \
-            --header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}" \
-            --output "${observe_file}" --write-out '%{http_code}' \
-            "${VIGIA_BASE_URL}/api/safety-gate/sync?observe=1")"
-          node - <<'NODE' "${audit_code}" "${audit_file}" "${observe_code}" "${observe_file}"
+            --output "${response_file}" --write-out '%{http_code}' \
+            "https://vigia-alertas.csar68.chatgpt.site/api/safety-gate/sync?mode=audit-order-churn&startedAt=2026-09-12T14%3A36%3A34.693Z&completedAt=2026-09-12T14%3A47%3A02.540Z")"
+          node - <<'NODE' "${http_code}" "${response_file}"
           const fs = require("node:fs");
-          const auditCode = Number(process.argv[2]);
-          const auditBody = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
-          const observeCode = Number(process.argv[4]);
-          const observeBody = JSON.parse(fs.readFileSync(process.argv[5], "utf8"));
-          if (auditCode !== 200 || !auditBody?.audit) throw new Error(`audit failed: HTTP ${auditCode}`);
-          if (observeCode !== 200) throw new Error(`observe failed: HTTP ${observeCode}`);
-          const audit = auditBody.audit;
-          console.log(JSON.stringify({
-            audit:{ checkedAt:audit.checkedAt, counts:audit.counts, integrity:audit.integrity, range:audit.range,
-              snapshot:audit.snapshot ? { id:audit.snapshot.id, status:audit.snapshot.status,
-                sourceAlertCount:audit.snapshot.sourceAlertCount,
-                missingSafetyGateAlerts:audit.snapshot.missingSafetyGateAlerts.length,
-                changedSafetyGateAlerts:audit.snapshot.changedSafetyGateAlerts.length,
-                missingAesanAlerts:audit.snapshot.missingAesanAlerts.length } : null },
-            observe:{ recent:observeBody.recent, lease:observeBody.lease }
-          }));
+          const status = Number(process.argv[2]);
+          const body = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
+          const audit = body?.audit;
+          if (status !== 200 || audit?.candidateVersions !== 137 || audit?.repairableVersions !== 137 ||
+              audit?.officialChangeVersions !== 0 || audit?.invalidVersions !== 0) {
+            throw new Error(`unexpected audit: HTTP ${status} ${JSON.stringify(body)}`);
+          }
+          console.log(JSON.stringify(audit));
           NODE
