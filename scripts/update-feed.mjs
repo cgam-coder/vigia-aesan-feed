@@ -8,6 +8,7 @@ import {
   cardFallback,
   consolidateListCards,
   parseDetail,
+  parseLegacyListCards,
   parseListCards,
   previousForCard,
   sourceIdentityForHtml,
@@ -162,7 +163,7 @@ async function main() {
   if (FULL_HISTORY && pages[0]) console.log(`AESAN_SEARCH_DISCOVERY ${JSON.stringify(searchDiscovery(pages[0]))}`);
 
   const currentCards = pages.flatMap(parseListCards);
-  const landingCards = parseListCards(landingHtml);
+  const landingCards = parseLegacyListCards(landingHtml);
   if (!landingCards.length) {
     throw new Error("AESAN respondió en la portada de alertas, pero no se identificaron fichas: posible drift de la superficie secundaria de descubrimiento");
   }
