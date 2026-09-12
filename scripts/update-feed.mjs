@@ -153,6 +153,21 @@ const searchDiscovery = (html) => ({
 
 const landingCardsFor = (html) => parseListCards(html.replace(/\bseeMoreCardSlide\b/gu, "seeMoreCard seeMoreCardSlide"));
 
+async function hydrateIncompleteLandingCards(cards, now) {
+  return mapLimit(cards, 3, async (card) => {
+    if (card.reference) return card;
+    const html = await fetchHtml(card.url);
+    const identity = sourceIdentityForHtml(html, card.url);
+    const alert = parseDetail(html, card, null, now, identity);
+    return {
+      ...card,
+      title:alert.title,
+      reference:alert.reference,
+      publishedAt:alert.publishedAt || card.publishedAt,
+    };
+  });
+}
+
 async function main() {
   const now = new Date().toISOString();
   const current = await readCurrentFeed();
@@ -164,10 +179,11 @@ async function main() {
   if (FULL_HISTORY && pages[0]) console.log(`AESAN_SEARCH_DISCOVERY ${JSON.stringify(searchDiscovery(pages[0]))}`);
 
   const currentCards = pages.flatMap(parseListCards);
-  const landingCards = landingCardsFor(landingHtml);
-  if (!landingCards.length) {
+  const landingCardsRaw = landingCardsFor(landingHtml);
+  if (!landingCardsRaw.length) {
     throw new Error("AESAN respondió en la portada de alertas, pero no se identificaron fichas: posible drift de la superficie secundaria de descubrimiento");
   }
+  const landingCards = await hydrateIncompleteLandingCards(landingCardsRaw, now);
 
   const primaryUrls = new Set(currentCards.map((card) => card.url));
   const landingOnlyCards = landingCards.filter((card) => !primaryUrls.has(card.url));
