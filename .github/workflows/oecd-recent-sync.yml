@@ -2,7 +2,7 @@ name: VIGÍA OECD recent sync
 
 on:
   schedule:
-    - cron: "7/15 * * * *"
+    - cron: "7,22,37,52 * * * *"
 
 concurrency:
   group: vigia-oecd-recent
@@ -137,7 +137,6 @@ jobs:
             if(state?.leaseOwnerId!==null||state?.leaseMode!==null||state?.leaseExpiresAt!==null) throw new Error("Sync 2 lease not released");
             console.log("SYNC_2 "+JSON.stringify(state));
           ' "$second_file"
-
 
       - name: Audit recovered OECD invariants
         if: steps.observe.outputs.gap_recovery == 'true'
