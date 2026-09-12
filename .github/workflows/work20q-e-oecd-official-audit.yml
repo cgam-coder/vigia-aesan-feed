@@ -1,0 +1,112 @@
+name: WORK20Q-E OECD official surfaces audit
+
+on:
+  push:
+    branches:
+      - work/20q-e-oecd-preflight
+    paths:
+      - .github/workflows/work20q-e-oecd-official-audit.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Compare OECD RSS Search Export and Detail
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, xml.etree.ElementTree as ET
+          from collections import Counter, defaultdict
+          BASE="https://globalrecalls.oecd.org/ws/"
+          BEGIN="2026-08-13"
+          GAP_BEGIN="2026-09-03"
+          END="2026-09-12"
+          def get(path, params=None):
+              url=BASE+path
+              if params: url+="?"+urllib.parse.urlencode(params)
+              req=urllib.request.Request(url,headers={"Accept":"application/json, application/xml, text/xml, application/rss+xml"})
+              with urllib.request.urlopen(req,timeout=180) as r:
+                  return r.read(),r.headers.get("Content-Type","")
+          def local(tag):
+              return tag.rsplit("}",1)[-1]
+          def text(node,name):
+              for child in list(node):
+                  if local(child.tag)==name:
+                      return (child.text or "").strip()
+              return ""
+          def refs_from_xml(payload, rss=False):
+              root=ET.fromstring(payload)
+              rows=[]
+              tag="item" if rss else "recall"
+              for node in root.iter():
+                  if local(node.tag)!=tag: continue
+                  uri=text(node,"guid") if rss else ""
+                  if not rss:
+                      lang=(node.attrib.get("lang") or "").upper()
+                      ident=text(node,"id")
+                      country=""
+                      for child in list(node):
+                          if local(child.tag)=="country_id":
+                              country=(child.attrib.get("labelkey") or "").upper()
+                      uri="http://PoliciesApplications.oecd.org/GlobalRecalls/Recall/"+lang+"/"+country+"/"+urllib.parse.quote(ident,safe="")
+                  rows.append({"uri":uri,"id":text(node,"id"),"date":text(node,"dateSubmitted") if rss else text(node,"date"),
+                               "pubDate":text(node,"pubDate") if rss else text(node,"created")})
+              return rows
+          def search(begin,end):
+              query=f"date GE {begin} AND date LE {end}"
+              start=0; rows=[]; total=None
+              while True:
+                  payload,_=get("search.xqy",{"start":start,"q":query})
+                  page=json.loads(payload)
+                  if total is None: total=int(page.get("total",0))
+                  batch=page.get("results") or []
+                  rows.extend(batch)
+                  if len(rows)>=total: break
+                  if not batch: raise RuntimeError("Search truncated")
+                  start+=20
+              return rows
+          rss_payload,_=get("rss.xqy")
+          rss=refs_from_xml(rss_payload,True)
+          search30=search(BEGIN,END)
+          search_gap=search(GAP_BEGIN,END)
+          export_payload,_=get("export.xqy",{"beginAnnouncementDate":GAP_BEGIN,"endAnnouncementDate":END})
+          exported=refs_from_xml(export_payload,False)
+          def ref(uri):
+              marker="/Recall/"
+              return urllib.parse.unquote(uri.split(marker,1)[1]) if marker in uri else ""
+          sets={"rss":{ref(x.get("uri","")) for x in rss if ref(x.get("uri",""))},
+                "search30":{ref(x.get("uri","")) for x in search30 if ref(x.get("uri",""))},
+                "searchGap":{ref(x.get("uri","")) for x in search_gap if ref(x.get("uri",""))},
+                "exportGap":{ref(x.get("uri","")) for x in exported if ref(x.get("uri",""))}}
+          print(json.dumps({"surfaceCounts":{k:len(v) for k,v in sets.items()},
+            "gap":{"searchOnly":sorted(sets["searchGap"]-sets["exportGap"]),"exportOnly":sorted(sets["exportGap"]-sets["searchGap"]),
+                   "intersection":len(sets["searchGap"]&sets["exportGap"])},
+            "recent":{"rssOnlyVsSearch30":sorted(sets["rss"]-sets["search30"]),"search30OnlyVsRss":sorted(sets["search30"]-sets["rss"])},
+            "rssRange":{"first":rss[0] if rss else None,"last":rss[-1] if rss else None}},ensure_ascii=False))
+          latest=sorted(search30,key=lambda x:(str(x.get("date","")),str(x.get("uri",""))),reverse=True)[:20]
+          details=[]
+          for row in latest:
+              uri=row.get("uri","")
+              payload,_=get("getrecall.xqy",{"uri":uri,"uiLang":"en"})
+              obj=json.loads(payload).get("recall") or {}
+              details.append({"reference":ref(uri),"searchDate":row.get("date"),"identity":{"uri":obj.get("uri"),"id":obj.get("id"),
+                "languageId":obj.get("languageId"),"countryId":obj.get("countryId"),"countryName":obj.get("countryName")},
+                "fields":sorted(obj.keys()),"date":obj.get("date"),"images":len(obj.get("images") or []),
+                "productCodes":len(obj.get("product.code") or []),"hasManufacturer":bool(obj.get("manufacturer.name")),
+                "hasDistributor":bool(obj.get("distributor.name")),"hasRiskLevel":obj.get("riskLevel") not in (None,""),
+                "hasInjuries":obj.get("injuries") not in (None,""),"hasUnits":obj.get("units") not in (None,""),
+                "hasExternalUrl":obj.get("extUrl") not in (None,"")})
+          print(json.dumps({"top20":details},ensure_ascii=False))
+          groups=defaultdict(list)
+          for x in search30:
+              uri=x.get("uri",""); r=ref(uri); parts=r.split("/",2)
+              if len(parts)==3: groups[(parts[1],parts[2])].append(r)
+          multilingual={f"{k[0]}/{k[1]}":sorted(v) for k,v in groups.items() if len(v)>1}
+          print(json.dumps({"identityAudit":{"multilingualOrDuplicateCountryIdGroups":multilingual,
+            "duplicateUris":sorted([u for u,c in Counter(x.get("uri","") for x in search30).items() if c>1])}},ensure_ascii=False))
+          PY
