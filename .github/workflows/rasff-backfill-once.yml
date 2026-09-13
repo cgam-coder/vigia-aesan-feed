@@ -99,7 +99,13 @@ jobs:
           const initialObserve = await call("/api/rasff/sync?observe=1");
           assertIntegrity(initialAudit, "initial");
           if (initialObserve.lease !== null) throw new Error("RASFF lease is active before backfill");
+          if (!initialObserve.backfill || initialObserve.backfill.status !== "failed" ||
+              initialObserve.backfill.cursor !== 1675 || initialObserve.backfill.cursorKey !== "2020.2422" ||
+              initialObserve.backfill.recordsObserved !== 1675 || initialObserve.backfill.recordsPersisted !== 1360 ||
+              initialObserve.backfill.detailFailures !== 0 || initialObserve.backfill.pageErrors !== 3)
+            throw new Error(`Unexpected exact resume state: ${JSON.stringify(initialObserve.backfill)}`);
           const baselineSources = sourceCounts(initialAudit);
+          const historicalPageErrors = initialObserve.backfill.pageErrors;
           console.log("BACKFILL_INITIAL_AUDIT " + JSON.stringify(initialAudit));
           console.log("BACKFILL_INITIAL_OBSERVE " + JSON.stringify(initialObserve));
 
@@ -111,7 +117,7 @@ jobs:
             const state = body.state;
             if (!state || state.source !== "RASFF" || state.mode !== "backfill" ||
                 !["partial", "completed"].includes(state.status)) throw new Error(`Batch ${batch} invalid state`);
-            if (state.detailFailures !== 0 || state.pageErrors !== 0 || state.lastError !== null)
+            if (state.detailFailures !== 0 || state.pageErrors !== historicalPageErrors || state.lastError !== null)
               throw new Error(`Batch ${batch} reported ingestion errors: ${JSON.stringify(compact(state))}`);
             if (state.leaseOwnerId !== null || state.leaseMode !== null || state.leaseExpiresAt !== null)
               throw new Error(`Batch ${batch} response retained lease state`);
