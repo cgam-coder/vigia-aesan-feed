@@ -1,0 +1,168 @@
+name: VIGIA RASFF reconcile certification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/rasff-reconcile-twice.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vigia-rasff-controlled-activation
+  cancel-in-progress: false
+
+jobs:
+  reconcile_first:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+      RASFF_PASS: first
+    steps:
+      - name: Run first complete reconcile sweep
+        shell: bash
+        run: &reconcile |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+          node <<'NODE'
+          const base = process.env.VIGIA_BASE_URL;
+          const token = process.env.VIGIA_SYNC_TOKEN;
+          const pass = process.env.RASFF_PASS;
+          const headers = { Authorization:`Bearer ${token}` };
+          const MAX_BATCHES = 850;
+
+          const call = async (path, method = "GET") => {
+            let lastError;
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              try {
+                const response = await fetch(base + path, {
+                  method, headers, redirect:"follow", signal:AbortSignal.timeout(600_000),
+                });
+                const text = await response.text();
+                let body;
+                try { body = JSON.parse(text); }
+                catch { throw new Error(`${method} ${path} returned non-JSON HTTP ${response.status}: ${text.slice(0, 240)}`); }
+                if (response.status === 200) return body;
+                if (response.status < 500) throw new Error(`${method} ${path} failed HTTP ${response.status}: ${text.slice(0, 500)}`);
+                lastError = new Error(`${method} ${path} transient HTTP ${response.status}`);
+              } catch (error) { lastError = error; }
+              if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 3_000));
+            }
+            throw lastError;
+          };
+          const sourceCounts = (audit) => ({
+            AESAN:audit.counts.aesanAlerts, RAPNA:audit.counts.rapnaAlerts,
+            "SAFETY GATE":audit.counts.safetyGateAlerts, OECD:audit.counts.oecdAlerts,
+          });
+          const assertIntegrity = (audit, label) => {
+            const anomalies = Object.entries(audit.integrity).filter(([, value]) => value !== 0);
+            const domains = audit.productDomains;
+            const geography = audit.geography;
+            const hazards = audit.hazards;
+            if (anomalies.length || domains.missingOrStaleDimensionState !== 0 ||
+                domains.humanFood + domains.animalFeed + domains.nonFood + domains.unknown !== audit.counts.rasffAlerts ||
+                geography.mappedRows + geography.unmappedRows !== geography.rows ||
+                geography.originRows + geography.notifyingRows + geography.distributionRows + geography.affectedRows !== geography.rows ||
+                geography.alertsWithGeography > audit.counts.rasffAlerts ||
+                hazards.mappedRows + hazards.unmappedRows + hazards.unknownRows !== hazards.rows ||
+                hazards.alertsWithHazards > audit.counts.rasffAlerts)
+              throw new Error(`${label} audit failed: ${JSON.stringify({ anomalies, domains, geography, hazards })}`);
+          };
+          const assertOtherSources = (baseline, audit, label) => {
+            const current = sourceCounts(audit);
+            for (const source of Object.keys(baseline))
+              if (baseline[source] !== current[source]) throw new Error(`${label}: ${source} count changed`);
+          };
+          const compact = (state) => ({
+            status:state.status, cursor:state.cursor, cursorKey:state.cursorKey, totalUnits:state.totalUnits,
+            pagesScanned:state.pagesScanned, recordsObserved:state.recordsObserved,
+            recordsPersisted:state.recordsPersisted, newCount:state.newCount, updatedCount:state.updatedCount,
+            detailFailures:state.detailFailures, pageErrors:state.pageErrors, coverage:state.coverage,
+            lastError:state.lastError, leaseOwnerId:state.leaseOwnerId,
+            leaseMode:state.leaseMode, leaseExpiresAt:state.leaseExpiresAt,
+          });
+
+          const initialAudit = (await call("/api/rasff/sync?audit=1")).audit;
+          const initialObserve = await call("/api/rasff/sync?observe=1");
+          assertIntegrity(initialAudit, `${pass}-initial`);
+          if (initialObserve.lease !== null || initialObserve.backfill?.coverage !== "official-index-complete")
+            throw new Error(`${pass}: backfill is not complete and lease-free`);
+          const baselineSources = sourceCounts(initialAudit);
+          const baselineRasff = {
+            counts:initialAudit.counts, productDomains:initialAudit.productDomains,
+            geography:initialAudit.geography, hazards:initialAudit.hazards,
+          };
+          console.log(`RECONCILE_${pass.toUpperCase()}_INITIAL_AUDIT ` + JSON.stringify(initialAudit));
+
+          let priorCursor = initialObserve.reconcile?.status === "partial" ? initialObserve.reconcile.cursor : -1;
+          let priorObserved = initialObserve.reconcile?.status === "partial" ? initialObserve.reconcile.recordsObserved : 0;
+          let finalState = null;
+          for (let batch = 1; batch <= MAX_BATCHES; batch++) {
+            const state = (await call("/api/rasff/sync?mode=reconcile&batchSize=40", "POST")).state;
+            if (!state || state.source !== "RASFF" || state.mode !== "reconcile" ||
+                !["partial", "completed"].includes(state.status)) throw new Error(`${pass} batch ${batch}: invalid state`);
+            if (state.detailFailures !== 0 || state.pageErrors !== 0 || state.lastError !== null ||
+                state.leaseOwnerId !== null || state.leaseMode !== null || state.leaseExpiresAt !== null)
+              throw new Error(`${pass} batch ${batch}: ingestion/lease failure ${JSON.stringify(compact(state))}`);
+            if ((state.status !== "completed" && state.cursor <= priorCursor) || state.recordsObserved < priorObserved)
+              throw new Error(`${pass} batch ${batch}: cursor/counter inconsistency`);
+            const observed = await call("/api/rasff/sync?observe=1");
+            if (observed.lease !== null || !observed.reconcile) throw new Error(`${pass} batch ${batch}: observe/lease failure`);
+            for (const key of ["status", "cursor", "cursorKey", "recordsObserved", "recordsPersisted",
+              "newCount", "updatedCount", "detailFailures", "pageErrors", "coverage"])
+              if (observed.reconcile[key] !== state[key]) throw new Error(`${pass} batch ${batch}: observe drift at ${key}`);
+            console.log(`RECONCILE_${pass.toUpperCase()}_BATCH ` + JSON.stringify({ batch, ...compact(state), lease:observed.lease }));
+            priorCursor = state.cursor;
+            priorObserved = state.recordsObserved;
+            if (batch % 25 === 0 || state.status === "completed") {
+              const audit = (await call("/api/rasff/sync?audit=1")).audit;
+              assertIntegrity(audit, `${pass}-batch-${batch}`);
+              assertOtherSources(baselineSources, audit, `${pass}-batch-${batch}`);
+              console.log(`RECONCILE_${pass.toUpperCase()}_AUDIT ` + JSON.stringify({ batch, audit }));
+            }
+            if (state.status === "completed") { finalState = state; break; }
+          }
+          if (!finalState || finalState.coverage !== "official-index-complete" ||
+              finalState.cursor !== 0 || finalState.cursorKey !== null)
+            throw new Error(`${pass}: reconcile did not complete within ${MAX_BATCHES} batches`);
+
+          const official = (await call("/api/rasff/sync?mode=preview-reconcile&cursor=0&batchSize=40", "POST")).preview;
+          const expectedOperational = official.totalElements - official.archiveSkippedCount;
+          const finalAudit = (await call("/api/rasff/sync?audit=1")).audit;
+          const finalObserve = await call("/api/rasff/sync?observe=1");
+          assertIntegrity(finalAudit, `${pass}-final`);
+          assertOtherSources(baselineSources, finalAudit, `${pass}-final`);
+          if (finalObserve.lease !== null || finalObserve.reconcile?.status !== "completed" ||
+              finalObserve.reconcile.coverage !== "official-index-complete" ||
+              finalAudit.counts.rasffAlerts !== expectedOperational)
+            throw new Error(`${pass}: final corpus/state mismatch`);
+          if (pass === "second") {
+            if (finalState.recordsPersisted !== 0 || finalState.newCount !== 0 || finalState.updatedCount !== 0)
+              throw new Error("Second reconcile pass is not idempotent");
+            for (const key of ["counts", "productDomains", "geography", "hazards"])
+              if (JSON.stringify(baselineRasff[key]) !== JSON.stringify(finalAudit[key]))
+                throw new Error(`Second reconcile audit drift at ${key}`);
+          }
+          console.log(`RECONCILE_${pass.toUpperCase()}_FINAL_STATE ` + JSON.stringify(finalState));
+          console.log(`RECONCILE_${pass.toUpperCase()}_OFFICIAL_UNIVERSE ` + JSON.stringify({
+            totalElements:official.totalElements, archiveSkipped:official.archiveSkippedCount, expectedOperational,
+          }));
+          console.log(`RECONCILE_${pass.toUpperCase()}_FINAL_AUDIT ` + JSON.stringify(finalAudit));
+          console.log(`RECONCILE_${pass.toUpperCase()}_FINAL_OBSERVE ` + JSON.stringify(finalObserve));
+          NODE
+
+  reconcile_second:
+    needs: reconcile_first
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+      RASFF_PASS: second
+    steps:
+      - name: Run second complete reconcile sweep and prove idempotence
+        shell: bash
+        run: *reconcile
