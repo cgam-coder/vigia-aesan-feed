@@ -20,27 +20,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Apply minimal recovery
+      - name: Apply minimal test recovery
         shell: bash
         run: |
           set -euo pipefail
           python <<'PY'
           from pathlib import Path
-
           p=Path('test/safety-gate-workflow.test.mjs')
           t=p.read_text()
           old="""const refresh = workflow.split('      - name: Refresh Safety Gate\\n')[1].split('        run: |\\n')[1]\n  .split('\\n').map(line => line.startsWith('          ') ? line.slice(10) : line).join('\\n');"""
           new="""const refresh = workflow.split('      - name: Refresh Safety Gate\\n')[1].split('        run: |\\n')[1]\n  .split('\\n  oecd:\\n')[0]\n  .split('\\n').map(line => line.startsWith('          ') ? line.slice(10) : line).join('\\n');"""
           if t.count(old) != 1:
               raise SystemExit(f'unexpected Safety Gate test extraction count: {t.count(old)}')
-          p.write_text(t.replace(old,new))
-
-          p=Path('.github/workflows/safety-gate-sync.yml')
-          t=p.read_text()
-          old='body?.apiVersion !== 2 || body?.schemaVersion !== 2 || !Array.isArray(body?.items)'
-          new='body?.apiVersion !== 2 || ![2, 3].includes(body?.schemaVersion) || !Array.isArray(body?.items)'
-          if t.count(old) != 1:
-              raise SystemExit(f'unexpected schema guard count: {t.count(old)}')
           p.write_text(t.replace(old,new))
           PY
       - name: Test complete feed repository
@@ -58,16 +49,14 @@ jobs:
           if(!Array.isArray(feed?.alerts) || feed.alerts.length < 100) throw new Error('AESAN live feed unexpectedly small');
           const refs=new Set(feed.alerts.map(a=>String(a.reference||'')));
           for(const ref of ['ES2026/517','ES2026/543','ES2026/535']) if(!refs.has(ref)) throw new Error(`Missing certified recent AESAN reference ${ref}`);
-          const recent=feed.alerts.slice(0,8).map(a=>({reference:a.reference,publishedAt:a.publishedAt,title:a.title}));
-          console.log(JSON.stringify({alerts:feed.alerts.length,recent},null,2));
+          console.log(JSON.stringify({alerts:feed.alerts.length,latest:feed.alerts.slice(0,3).map(a=>({reference:a.reference,publishedAt:a.publishedAt,title:a.title}))},null,2));
           NODE
           git checkout -- feed.json
-      - name: Commit validated repair and remove carrier
+      - name: Commit validated test repair
         shell: bash
         run: |
           set -euo pipefail
-          git rm .github/workflows/work-aesan-feed-recovery.yml
-          git add test/safety-gate-workflow.test.mjs .github/workflows/safety-gate-sync.yml
+          git add test/safety-gate-workflow.test.mjs
           git config user.name "cgam-coder"
           git config user.email "c.gamiz93@gmail.com"
           git commit -m "fix(ops): restore AESAN feed validation after OECD scheduler merge"
