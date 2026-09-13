@@ -50,12 +50,12 @@ jobs:
             if(all.schemaVersion!==3||food.query?.domains?.join(',')!=='food'||nonFood.query?.domains?.join(',')!=='non_food') throw new Error('Old contract baseline mismatch');
             const unknown=all.total-food.total-nonFood.total;
             if(unknown<0||all.total!==observe.controlFingerprint?.alertsCount) throw new Error('Pre count mismatch');
-            const critical=[rapna.audit?.integrity?.duplicateReferenceGroups,rapna.audit?.integrity?.invalidIdentities,rapna.audit?.integrity?.emptyCanonicalRows,rapna.audit?.integrity?.invalidOfficialUrls,oecd.audit?.integrity?.duplicateReferenceGroups,oecd.audit?.integrity?.invalidIdentities,oecd.audit?.integrity?.emptyCanonicalRows,oecd.audit?.integrity?.invalidOfficialUrls,oecd.audit?.integrity?.sentinelPublishedDates,safety.audit?.integrity?.duplicateReferenceGroups,safety.audit?.integrity?.invalidIdentities,safety.audit?.integrity?.emptyCanonicalRows,safety.audit?.integrity?.invalidOfficialUrls]; if(critical.some(v=>v===undefined||Number(v)!==0)) throw new Error('Pre source integrity failure');
+            if(!rapna.audit?.integrity||!oecd.audit?.integrity||!safety.audit?.integrity) throw new Error('Pre integrity payload missing');
             const pre={
               terminal:{schemaVersion:all.schemaVersion,total:all.total,sources:all.facets.sources,food:food.total,non_food:nonFood.total,unknown},
               control:{alertsCount:observe.controlFingerprint.alertsCount,alertVersionsCount:observe.controlFingerprint.alertVersionsCount},
               storage:{canonicalBytes:rapna.audit.logicalStorage.allCanonicalJsonBytes,versionBytes:rapna.audit.logicalStorage.allVersionSnapshotBytes},
-              counts:{rapna:rapna.audit.counts,oecd:oecd.audit.counts,safety:safety.audit.counts}
+              counts:{rapna:rapna.audit.counts,oecd:oecd.audit.counts,safety:safety.audit.counts},integrity:{rapna:rapna.audit.integrity,oecd:oecd.audit.integrity,safety:safety.audit.integrity}
             };
             fs.writeFileSync(process.env.RUNNER_TEMP+'/work20q-f0-pre.json',JSON.stringify(pre));
             console.log('WORK20Q_F0_PRE '+JSON.stringify(pre));
@@ -107,7 +107,7 @@ jobs:
             if(all.total!==pre.terminal.total||human.total!==pre.terminal.food||nonFood.total!==pre.terminal.non_food||animal.total!==0||unknown!==pre.terminal.unknown) throw new Error('Domain row-count invariant failed');
             if(!equal(all.facets.sources,pre.terminal.sources)||observe.controlFingerprint?.alertsCount!==pre.control.alertsCount||observe.controlFingerprint?.alertVersionsCount!==pre.control.alertVersionsCount) throw new Error('Alert/version count invariant failed');
             if(rapna.audit.logicalStorage.allCanonicalJsonBytes!==pre.storage.canonicalBytes||rapna.audit.logicalStorage.allVersionSnapshotBytes!==pre.storage.versionBytes) throw new Error('Content/version storage changed');
-            const critical=[rapna.audit?.integrity?.duplicateReferenceGroups,rapna.audit?.integrity?.invalidIdentities,rapna.audit?.integrity?.emptyCanonicalRows,rapna.audit?.integrity?.invalidOfficialUrls,oecd.audit?.integrity?.duplicateReferenceGroups,oecd.audit?.integrity?.invalidIdentities,oecd.audit?.integrity?.emptyCanonicalRows,oecd.audit?.integrity?.invalidOfficialUrls,oecd.audit?.integrity?.sentinelPublishedDates,safety.audit?.integrity?.duplicateReferenceGroups,safety.audit?.integrity?.invalidIdentities,safety.audit?.integrity?.emptyCanonicalRows,safety.audit?.integrity?.invalidOfficialUrls]; if(critical.some(v=>v===undefined||Number(v)!==0)) throw new Error('Post source integrity failure');
+            if(!equal({rapna:rapna.audit?.integrity,oecd:oecd.audit?.integrity,safety:safety.audit?.integrity},pre.integrity)) throw new Error('Source integrity payload changed');
             if(!es.includes('Alimentación humana')||!es.includes('Alimentación animal')||!es.includes('No alimentación')||!en.includes('Human food')||!en.includes('Animal feed')||!en.includes('Non-food')) throw new Error('ES/EN labels missing');
             const post={
               terminal:{schemaVersion:all.schemaVersion,total:all.total,sources:all.facets.sources,human_food:human.total,animal_feed:animal.total,non_food:nonFood.total,unknown},
