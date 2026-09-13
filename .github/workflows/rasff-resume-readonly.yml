@@ -1,0 +1,105 @@
+name: VIGIA RASFF resume read-only certification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/rasff-resume-readonly.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vigia-rasff-controlled-activation
+  cancel-in-progress: false
+
+jobs:
+  readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+    steps:
+      - name: Observe, preflight, audit and preview the exact resume boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+          node <<'NODE'
+          const base = process.env.VIGIA_BASE_URL;
+          const headers = { Authorization:`Bearer ${process.env.VIGIA_SYNC_TOKEN}` };
+          const call = async (path, method = "GET") => {
+            const response = await fetch(base + path, {
+              method, headers, redirect:"follow", signal:AbortSignal.timeout(600_000),
+            });
+            const text = await response.text();
+            let body;
+            try { body = JSON.parse(text); }
+            catch { throw new Error(`${method} ${path} returned non-JSON HTTP ${response.status}: ${text.slice(0, 240)}`); }
+            if (response.status !== 200)
+              throw new Error(`${method} ${path} failed HTTP ${response.status}: ${text.slice(0, 500)}`);
+            return body;
+          };
+
+          const observe = await call("/api/rasff/sync?observe=1");
+          const audit = (await call("/api/rasff/sync?audit=1")).audit;
+          const preflight = await call("/api/rasff/sync?mode=preflight", "POST");
+          const recent = (await call("/api/rasff/sync?mode=preview-recent", "POST")).preview;
+          const boundary = (await call(
+            "/api/rasff/sync?mode=preview-reconcile&cursor=1675&cursorKey=2020.2422&batchSize=40",
+            "POST",
+          )).preview;
+
+          if (observe?.source !== "RASFF" || observe.lease !== null)
+            throw new Error("Initial RASFF observation/lease is not clean");
+          const backfill = observe.backfill;
+          if (!backfill || backfill.status !== "failed" || backfill.coverage !== "partial" ||
+              backfill.cursor !== 1675 || backfill.cursorKey !== "2020.2422" ||
+              backfill.recordsObserved !== 1675 || backfill.recordsPersisted !== 1360)
+            throw new Error(`Unexpected resume state: ${JSON.stringify(backfill)}`);
+          if (audit?.counts?.rasffAlerts !== 1400 || audit.counts.rasffUniqueReferences !== 1400 ||
+              audit.counts.rasffSourceIdentities !== 1400)
+            throw new Error(`Unexpected pre-resume D1 corpus: ${JSON.stringify(audit?.counts)}`);
+          if (preflight?.authorized !== true || preflight?.source !== "RASFF" ||
+              !Number.isSafeInteger(preflight?.officialIndex?.totalElements) ||
+              preflight.officialIndex.totalElements < 32177 ||
+              !preflight?.officialIndex?.newest?.reference ||
+              !Number.isSafeInteger(preflight.officialIndex.newest.notifId))
+            throw new Error("RASFF preflight contract failed");
+
+          for (const [name, preview] of [["recent", recent], ["boundary", boundary]]) {
+            if (!preview || !Array.isArray(preview.alerts) || preview.alerts.some((alert) =>
+              alert.id !== `rasff:${alert.reference}` || alert.contentHash?.length !== 64))
+              throw new Error(`${name} preview identity/hash contract failed`);
+            if ((preview.detailFailures ?? 0) !== 0 || (preview.pageErrors ?? 0) !== 0)
+              throw new Error(`${name} preview reported ingestion errors`);
+          }
+          const absent = boundary.alerts.find((alert) => alert.reference === "2020.2474");
+          if (!absent || absent.id !== "rasff:2020.2474" || absent.title !== "" ||
+              absent.canonical?.headline?.normalized !== null)
+            throw new Error(`2020.2474 optional-subject contract failed: ${JSON.stringify(absent)}`);
+
+          const compact = (preview) => ({
+            alerts:preview.alerts.length,
+            references:preview.alerts.map((alert) => alert.reference),
+            totalElements:preview.totalElements,
+            totalPages:preview.totalPages,
+            pagesScanned:preview.pagesScanned,
+            recordsObserved:preview.recordsObserved,
+            processedCount:preview.processedCount,
+            retainedCount:preview.retainedCount,
+            archiveSkippedCount:preview.archiveSkippedCount,
+            nextCursor:preview.nextCursor,
+            nextCursorKey:preview.nextCursorKey,
+            hasMore:preview.hasMore,
+            detailFailures:preview.detailFailures ?? 0,
+            pageErrors:preview.pageErrors ?? 0,
+          });
+          console.log("RESUME_OBSERVE " + JSON.stringify(observe));
+          console.log("RESUME_AUDIT " + JSON.stringify(audit));
+          console.log("RESUME_PREFLIGHT " + JSON.stringify(preflight));
+          console.log("RESUME_PREVIEW_RECENT " + JSON.stringify(compact(recent)));
+          console.log("RESUME_PREVIEW_BOUNDARY " + JSON.stringify(compact(boundary)));
+          console.log("RESUME_2020_2474 " + JSON.stringify(absent));
+          NODE
