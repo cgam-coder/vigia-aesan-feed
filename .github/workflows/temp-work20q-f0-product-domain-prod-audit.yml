@@ -1,0 +1,122 @@
+name: TEMP WORK 20Q-F0 production audit
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: work-20q-f0-product-domain-prod-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == 'main' &&
+      github.head_ref == 'work/20q-f0-product-domain-prod-audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Capture read-only pre-migration baseline
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "${VIGIA_SYNC_TOKEN}"
+          node <<'NODE'
+          const fs=require('node:fs');
+          const origin='https://nagamealert.com';
+          const token=process.env.VIGIA_SYNC_TOKEN;
+          const get=async(path,auth=false)=>{
+            const response=await fetch(origin+path,{headers:{'Cache-Control':'no-cache',...(auth?{Authorization:'Bearer '+token}:{})}});
+            if(!response.ok) throw new Error(path+' HTTP '+response.status);
+            return response.json();
+          };
+          (async()=>{
+            const [observe,rapna,oecd,safety,all,food,nonFood]=await Promise.all([
+              get('/api/rapna/sync?observe=1',true),
+              get('/api/rapna/sync?audit=1',true),
+              get('/api/oecd/sync?audit=1',true),
+              get('/api/safety-gate/sync?audit=1',true),
+              get('/api/terminal/alerts?period=all&country=ALL&pageSize=1'),
+              get('/api/terminal/alerts?period=all&country=ALL&pageSize=1&domain=food'),
+              get('/api/terminal/alerts?period=all&country=ALL&pageSize=1&domain=non_food')
+            ]);
+            if(all.schemaVersion!==3||food.query?.domains?.join(',')!=='food'||nonFood.query?.domains?.join(',')!=='non_food') throw new Error('Old contract baseline mismatch');
+            const unknown=all.total-food.total-nonFood.total;
+            if(unknown<0||all.total!==observe.controlFingerprint?.alertsCount) throw new Error('Pre count mismatch');
+            for(const audit of [rapna.audit,oecd.audit,safety.audit]) if(!audit||Object.values(audit.integrity).some(v=>Number(v)!==0)) throw new Error('Pre source integrity failure');
+            const pre={
+              terminal:{schemaVersion:all.schemaVersion,total:all.total,sources:all.facets.sources,food:food.total,non_food:nonFood.total,unknown},
+              control:{alertsCount:observe.controlFingerprint.alertsCount,alertVersionsCount:observe.controlFingerprint.alertVersionsCount},
+              storage:{canonicalBytes:rapna.audit.logicalStorage.allCanonicalJsonBytes,versionBytes:rapna.audit.logicalStorage.allVersionSnapshotBytes},
+              counts:{rapna:rapna.audit.counts,oecd:oecd.audit.counts,safety:safety.audit.counts}
+            };
+            fs.writeFileSync(process.env.RUNNER_TEMP+'/work20q-f0-pre.json',JSON.stringify(pre));
+            console.log('WORK20Q_F0_PRE '+JSON.stringify(pre));
+          })().catch(error=>{console.error(error);process.exit(1)});
+          NODE
+
+      - name: Wait for activation and verify read-only post-migration invariants
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node <<'NODE'
+          const fs=require('node:fs');
+          const origin='https://nagamealert.com';
+          const token=process.env.VIGIA_SYNC_TOKEN;
+          const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+          const get=async(path,auth=false)=>{
+            const response=await fetch(origin+path,{headers:{'Cache-Control':'no-cache',...(auth?{Authorization:'Bearer '+token}:{})}});
+            if(!response.ok) throw new Error(path+' HTTP '+response.status);
+            return response.json();
+          };
+          const stable=value=>Array.isArray(value)?value.map(stable):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[k,stable(v)])):value;
+          const equal=(a,b)=>JSON.stringify(stable(a))===JSON.stringify(stable(b));
+          (async()=>{
+            const pre=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/work20q-f0-pre.json','utf8'));
+            let all=null;
+            for(let attempt=1;attempt<=180;attempt++){
+              all=await get('/api/terminal/alerts?period=all&country=ALL&pageSize=1');
+              if(all.schemaVersion===4) break;
+              if(attempt===180) throw new Error('Timed out waiting for schemaVersion 4');
+              await sleep(10000);
+            }
+            const [observe,rapna,oecd,safety,human,animal,nonFood,legacy,es,en]=await Promise.all([
+              get('/api/rapna/sync?observe=1',true),
+              get('/api/rapna/sync?audit=1',true),
+              get('/api/oecd/sync?audit=1',true),
+              get('/api/safety-gate/sync?audit=1',true),
+              get('/api/terminal/alerts?period=all&country=ALL&pageSize=1&domain=human_food'),
+              get('/api/terminal/alerts?period=all&country=ALL&pageSize=1&domain=animal_feed'),
+              get('/api/terminal/alerts?period=all&country=ALL&pageSize=1&domain=non_food'),
+              get('/api/terminal/alerts?period=all&country=ALL&pageSize=1&domain=food'),
+              fetch(origin+'/es/',{headers:{'Cache-Control':'no-cache'}}).then(r=>r.text()),
+              fetch(origin+'/en/',{headers:{'Cache-Control':'no-cache'}}).then(r=>r.text())
+            ]);
+            const unknown=all.total-human.total-animal.total-nonFood.total;
+            if(all.schemaVersion!==4||human.query?.domains?.join(',')!=='human_food'||animal.query?.domains?.join(',')!=='animal_feed'||nonFood.query?.domains?.join(',')!=='non_food') throw new Error('New domain contract mismatch');
+            if(legacy.query?.domains?.join(',')!=='human_food'||legacy.total!==human.total) throw new Error('Legacy food compatibility mismatch');
+            if(all.total!==pre.terminal.total||human.total!==pre.terminal.food||nonFood.total!==pre.terminal.non_food||animal.total!==0||unknown!==pre.terminal.unknown) throw new Error('Domain row-count invariant failed');
+            if(!equal(all.facets.sources,pre.terminal.sources)||observe.controlFingerprint?.alertsCount!==pre.control.alertsCount||observe.controlFingerprint?.alertVersionsCount!==pre.control.alertVersionsCount) throw new Error('Alert/version count invariant failed');
+            if(rapna.audit.logicalStorage.allCanonicalJsonBytes!==pre.storage.canonicalBytes||rapna.audit.logicalStorage.allVersionSnapshotBytes!==pre.storage.versionBytes) throw new Error('Content/version storage changed');
+            for(const audit of [rapna.audit,oecd.audit,safety.audit]) if(!audit||Object.values(audit.integrity).some(v=>Number(v)!==0)) throw new Error('Post source integrity failure');
+            if(!es.includes('Alimentación humana')||!es.includes('Alimentación animal')||!es.includes('No alimentación')||!en.includes('Human food')||!en.includes('Animal feed')||!en.includes('Non-food')) throw new Error('ES/EN labels missing');
+            const post={
+              terminal:{schemaVersion:all.schemaVersion,total:all.total,sources:all.facets.sources,human_food:human.total,animal_feed:animal.total,non_food:nonFood.total,unknown},
+              legacy:{domain:'food',canonicalDomain:legacy.query.domains[0],total:legacy.total},
+              control:{alertsCount:observe.controlFingerprint.alertsCount,alertVersionsCount:observe.controlFingerprint.alertVersionsCount},
+              storage:{canonicalBytes:rapna.audit.logicalStorage.allCanonicalJsonBytes,versionBytes:rapna.audit.logicalStorage.allVersionSnapshotBytes},
+              labels:{es:true,en:true},sourceIntegrity:{rapna:rapna.audit.integrity,oecd:oecd.audit.integrity,safety:safety.audit.integrity}
+            };
+            console.log('WORK20Q_F0_POST '+JSON.stringify(post));
+            console.log('WORK20Q_F0_DECISION GO');
+          })().catch(error=>{console.error(error);process.exit(1)});
+          NODE
