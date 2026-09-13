@@ -1,0 +1,75 @@
+name: VIGIA RASFF controlled activation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/rasff-control.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vigia-rasff-controlled-activation
+  cancel-in-progress: false
+
+jobs:
+  readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+    steps:
+      - name: Observe, preflight and previews
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+
+          call() {
+            method="$1"
+            path="$2"
+            output="$3"
+            curl --silent --show-error --location --request "$method" \
+              --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
+              --retry 2 --retry-delay 3 --retry-all-errors --max-time 600 \
+              --output "$output" --write-out '%{http_code}' \
+              "$VIGIA_BASE_URL$path"
+          }
+
+          observe_status="$(call GET '/api/rasff/sync?observe=1' "$RUNNER_TEMP/observe.json")"
+          preflight_status="$(call POST '/api/rasff/sync?mode=preflight' "$RUNNER_TEMP/preflight.json")"
+          recent_status="$(call POST '/api/rasff/sync?mode=preview-recent' "$RUNNER_TEMP/preview-recent.json")"
+          reconcile_status="$(call POST '/api/rasff/sync?mode=preview-reconcile&cursor=0&batchSize=40' "$RUNNER_TEMP/preview-reconcile.json")"
+
+          node - "$observe_status" "$preflight_status" "$recent_status" "$reconcile_status" \
+            "$RUNNER_TEMP/observe.json" "$RUNNER_TEMP/preflight.json" \
+            "$RUNNER_TEMP/preview-recent.json" "$RUNNER_TEMP/preview-reconcile.json" <<'NODE'
+          const fs = require("node:fs");
+          const statuses = process.argv.slice(2, 6).map(Number);
+          const [observe, preflight, recentBody, reconcileBody] = process.argv.slice(6).map((path) =>
+            JSON.parse(fs.readFileSync(path, "utf8")));
+          if (statuses.some((status) => status !== 200)) throw new Error(`Unexpected HTTP statuses: ${statuses.join(",")}`);
+          if (observe?.source !== "RASFF" || observe.lease !== null) throw new Error("RASFF initial observation or lease is not clean");
+          if (preflight?.authorized !== true || preflight?.source !== "RASFF" ||
+              !Number.isSafeInteger(preflight?.officialIndex?.totalElements) || preflight.officialIndex.totalElements < 1 ||
+              !Number.isSafeInteger(preflight?.officialIndex?.totalPages) || preflight.officialIndex.totalPages < 1 ||
+              !preflight?.officialIndex?.newest?.reference || !Number.isSafeInteger(preflight.officialIndex.newest.notifId)) {
+            throw new Error("RASFF preflight contract failed");
+          }
+          const recent = recentBody?.preview;
+          const reconcile = reconcileBody?.preview;
+          for (const [name, preview] of [["recent", recent], ["reconcile", reconcile]]) {
+            if (!preview || !Array.isArray(preview.alerts) || preview.alerts.some((alert) =>
+              alert.id !== `rasff:${alert.reference}` || alert.contentHash?.length !== 64)) {
+              throw new Error(`RASFF ${name} preview identity contract failed`);
+            }
+            if ((preview.detailFailures ?? 0) !== 0) throw new Error(`RASFF ${name} preview has detail failures`);
+          }
+          console.log("OBSERVE " + JSON.stringify(observe));
+          console.log("PREFLIGHT " + JSON.stringify(preflight));
+          console.log("PREVIEW_RECENT " + JSON.stringify(recent));
+          console.log("PREVIEW_RECONCILE " + JSON.stringify(reconcile));
+          NODE
