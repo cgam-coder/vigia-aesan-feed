@@ -7,6 +7,7 @@ import test from 'node:test';
 
 const workflow = readFileSync(new URL('../.github/workflows/safety-gate-sync.yml', import.meta.url), 'utf8');
 const refresh = workflow.split('      - name: Refresh Safety Gate\n')[1].split('        run: |\n')[1]
+  .split('\n  oecd:\n')[0]
   .split('\n').map(line => line.startsWith('          ') ? line.slice(10) : line).join('\n');
 const completed = { source:'SAFETY GATE', mode:'recent', status:'completed', lastError:null,
   leaseOwnerId:null, leaseMode:null, leaseExpiresAt:null,
