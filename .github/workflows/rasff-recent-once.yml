@@ -1,0 +1,99 @@
+name: VIGIA RASFF recent activation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/rasff-recent-once.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vigia-rasff-controlled-activation
+  cancel-in-progress: false
+
+jobs:
+  recent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+    steps:
+      - name: Audit empty corpus and certify recent idempotence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+
+          call() {
+            method="$1"
+            path="$2"
+            output="$3"
+            curl --silent --show-error --location --request "$method" \
+              --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
+              --retry 2 --retry-delay 3 --retry-all-errors --max-time 600 \
+              --output "$output" --write-out '%{http_code}' \
+              "$VIGIA_BASE_URL$path"
+          }
+
+          audit_before_status="$(call GET '/api/rasff/sync?audit=1' "$RUNNER_TEMP/audit-before.json")"
+          recent_1_status="$(call POST '/api/rasff/sync?mode=recent' "$RUNNER_TEMP/recent-1.json")"
+          observe_1_status="$(call GET '/api/rasff/sync?observe=1' "$RUNNER_TEMP/observe-1.json")"
+          audit_1_status="$(call GET '/api/rasff/sync?audit=1' "$RUNNER_TEMP/audit-1.json")"
+          recent_2_status="$(call POST '/api/rasff/sync?mode=recent' "$RUNNER_TEMP/recent-2.json")"
+          observe_2_status="$(call GET '/api/rasff/sync?observe=1' "$RUNNER_TEMP/observe-2.json")"
+          audit_2_status="$(call GET '/api/rasff/sync?audit=1' "$RUNNER_TEMP/audit-2.json")"
+
+          node - "$audit_before_status" "$recent_1_status" "$observe_1_status" "$audit_1_status" \
+            "$recent_2_status" "$observe_2_status" "$audit_2_status" \
+            "$RUNNER_TEMP/audit-before.json" "$RUNNER_TEMP/recent-1.json" "$RUNNER_TEMP/observe-1.json" \
+            "$RUNNER_TEMP/audit-1.json" "$RUNNER_TEMP/recent-2.json" "$RUNNER_TEMP/observe-2.json" \
+            "$RUNNER_TEMP/audit-2.json" <<'NODE'
+          const fs = require("node:fs");
+          const labels = ["audit-before", "recent-1", "observe-1", "audit-1", "recent-2", "observe-2", "audit-2"];
+          const statuses = process.argv.slice(2, 9).map(Number);
+          const bodies = process.argv.slice(9).map((path) => JSON.parse(fs.readFileSync(path, "utf8")));
+          console.log("HTTP " + JSON.stringify(Object.fromEntries(labels.map((label, index) => [label, statuses[index]]))));
+          if (statuses.some((status) => status !== 200)) throw new Error(`Unexpected HTTP statuses: ${statuses.join(",")}`);
+          const [beforeBody, recent1, observe1, audit1Body, recent2, observe2, audit2Body] = bodies;
+          const before = beforeBody.audit;
+          const audit1 = audit1Body.audit;
+          const audit2 = audit2Body.audit;
+          const integrityValues = (audit) => Object.values(audit.integrity);
+          const sourceCounts = (audit) => ({
+            AESAN:audit.counts.aesanAlerts, RAPNA:audit.counts.rapnaAlerts,
+            RASFF:audit.counts.rasffAlerts, "SAFETY GATE":audit.counts.safetyGateAlerts,
+            OECD:audit.counts.oecdAlerts,
+          });
+          if (before.counts.rasffAlerts !== 0 || before.counts.rasffVersions !== 0 ||
+              integrityValues(before).some((value) => value !== 0)) throw new Error("RASFF pre-write audit is not clean");
+          if (recent1.state?.status !== "completed" || recent1.state.detailFailures !== 0 || recent1.state.pageErrors !== 0 ||
+              recent1.state.newCount < 1 || recent1.state.updatedCount !== 0) throw new Error("RASFF first recent failed");
+          if (observe1.lease !== null || observe1.recent?.status !== "completed") throw new Error("RASFF first recent lease/state failed");
+          if (audit1.counts.rasffAlerts !== recent1.state.newCount ||
+              audit1.counts.rasffVersions !== audit1.counts.rasffVersionCountSum ||
+              integrityValues(audit1).some((value) => value !== 0)) throw new Error("RASFF first recent audit failed");
+          if (recent2.state?.status !== "completed" || recent2.state.newCount !== 0 || recent2.state.updatedCount !== 0 ||
+              recent2.state.recordsPersisted !== 0 || recent2.state.detailFailures !== 0 || recent2.state.pageErrors !== 0) {
+            throw new Error("RASFF second recent is not idempotent");
+          }
+          if (observe2.lease !== null || observe2.recent?.status !== "completed") throw new Error("RASFF second recent lease/state failed");
+          if (JSON.stringify(audit1.counts) !== JSON.stringify(audit2.counts) ||
+              JSON.stringify(audit1.integrity) !== JSON.stringify(audit2.integrity) ||
+              JSON.stringify(audit1.productDomains) !== JSON.stringify(audit2.productDomains)) {
+            throw new Error("RASFF audit drift after equivalent recent");
+          }
+          const beforeSources = sourceCounts(before); const afterSources = sourceCounts(audit2);
+          for (const source of ["AESAN", "RAPNA", "SAFETY GATE", "OECD"]) {
+            if (beforeSources[source] !== afterSources[source]) throw new Error(`${source} count changed during RASFF recent`);
+          }
+          console.log("AUDIT_BEFORE " + JSON.stringify(before));
+          console.log("RECENT_1 " + JSON.stringify(recent1.state));
+          console.log("OBSERVE_1 " + JSON.stringify(observe1));
+          console.log("AUDIT_1 " + JSON.stringify(audit1));
+          console.log("RECENT_2 " + JSON.stringify(recent2.state));
+          console.log("OBSERVE_2 " + JSON.stringify(observe2));
+          console.log("AUDIT_2 " + JSON.stringify(audit2));
+          NODE
