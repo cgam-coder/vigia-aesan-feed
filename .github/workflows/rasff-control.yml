@@ -48,10 +48,17 @@ jobs:
             "$RUNNER_TEMP/observe.json" "$RUNNER_TEMP/preflight.json" \
             "$RUNNER_TEMP/preview-recent.json" "$RUNNER_TEMP/preview-reconcile.json" <<'NODE'
           const fs = require("node:fs");
+          const labels = ["observe", "preflight", "preview-recent", "preview-reconcile"];
           const statuses = process.argv.slice(2, 6).map(Number);
-          const [observe, preflight, recentBody, reconcileBody] = process.argv.slice(6).map((path) =>
-            JSON.parse(fs.readFileSync(path, "utf8")));
+          const paths = process.argv.slice(6);
+          console.log("HTTP " + JSON.stringify(Object.fromEntries(labels.map((label, index) => [label, statuses[index]]))));
           if (statuses.some((status) => status !== 200)) throw new Error(`Unexpected HTTP statuses: ${statuses.join(",")}`);
+          const bodies = paths.map((path, index) => {
+            const raw = fs.readFileSync(path, "utf8");
+            if (!raw.trim()) throw new Error(`${labels[index]} returned an empty body`);
+            return JSON.parse(raw);
+          });
+          const [observe, preflight, recentBody, reconcileBody] = bodies;
           if (observe?.source !== "RASFF" || observe.lease !== null) throw new Error("RASFF initial observation or lease is not clean");
           if (preflight?.authorized !== true || preflight?.source !== "RASFF" ||
               !Number.isSafeInteger(preflight?.officialIndex?.totalElements) || preflight.officialIndex.totalElements < 1 ||
