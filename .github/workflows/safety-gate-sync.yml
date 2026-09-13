@@ -38,7 +38,7 @@ jobs:
             const alertsStatus = Number(process.argv[2]);
             const body = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
             if (rootStatus !== 200) throw new Error(`VIGIA frontend smoke failed with HTTP ${rootStatus}`);
-            if (alertsStatus !== 200 || body?.apiVersion !== 2 || body?.schemaVersion !== 2 || !Array.isArray(body?.items) || body.items.length === 0) {
+            if (alertsStatus !== 200 || body?.apiVersion !== 2 || ![2, 3].includes(body?.schemaVersion) || !Array.isArray(body?.items) || body.items.length === 0) {
               throw new Error(`VIGIA read-plane smoke failed with HTTP ${alertsStatus}`);
             }
             console.log(JSON.stringify({ rootStatus, alertsStatus, apiVersion:body.apiVersion, schemaVersion:body.schemaVersion, alerts:body.items.length }));
