@@ -42,15 +42,22 @@ jobs:
           observe_status="$(call GET '/api/rasff/sync?observe=1' "$RUNNER_TEMP/observe.json")"
           preflight_status="$(call POST '/api/rasff/sync?mode=preflight' "$RUNNER_TEMP/preflight.json")"
           recent_status="$(call POST '/api/rasff/sync?mode=preview-recent' "$RUNNER_TEMP/preview-recent.json")"
-          reconcile_status="$(call POST '/api/rasff/sync?mode=preview-reconcile&cursor=0&batchSize=40' "$RUNNER_TEMP/preview-reconcile.json")"
+          reconcile_1_status="$(call POST '/api/rasff/sync?mode=preview-reconcile&cursor=0&batchSize=1' "$RUNNER_TEMP/preview-reconcile-1.json")"
+          read -r cursor_2 key_2 < <(node -e 'const p=require(process.argv[1]).preview; process.stdout.write(`${p.nextCursor} ${p.nextCursorKey}`)' "$RUNNER_TEMP/preview-reconcile-1.json")
+          reconcile_2_status="$(call POST "/api/rasff/sync?mode=preview-reconcile&cursor=$cursor_2&cursorKey=$key_2&batchSize=40" "$RUNNER_TEMP/preview-reconcile-2.json")"
+          read -r cursor_3 key_3 < <(node -e 'const p=require(process.argv[1]).preview; process.stdout.write(`${p.nextCursor} ${p.nextCursorKey}`)' "$RUNNER_TEMP/preview-reconcile-2.json")
+          reconcile_3_status="$(call POST "/api/rasff/sync?mode=preview-reconcile&cursor=$cursor_3&cursorKey=$key_3&batchSize=40" "$RUNNER_TEMP/preview-reconcile-3.json")"
 
-          node - "$observe_status" "$preflight_status" "$recent_status" "$reconcile_status" \
+          node - "$observe_status" "$preflight_status" "$recent_status" \
+            "$reconcile_1_status" "$reconcile_2_status" "$reconcile_3_status" \
             "$RUNNER_TEMP/observe.json" "$RUNNER_TEMP/preflight.json" \
-            "$RUNNER_TEMP/preview-recent.json" "$RUNNER_TEMP/preview-reconcile.json" <<'NODE'
+            "$RUNNER_TEMP/preview-recent.json" \
+            "$RUNNER_TEMP/preview-reconcile-1.json" "$RUNNER_TEMP/preview-reconcile-2.json" \
+            "$RUNNER_TEMP/preview-reconcile-3.json" <<'NODE'
           const fs = require("node:fs");
-          const labels = ["observe", "preflight", "preview-recent", "preview-reconcile"];
-          const statuses = process.argv.slice(2, 6).map(Number);
-          const paths = process.argv.slice(6);
+          const labels = ["observe", "preflight", "preview-recent", "preview-reconcile-1", "preview-reconcile-2", "preview-reconcile-3"];
+          const statuses = process.argv.slice(2, 8).map(Number);
+          const paths = process.argv.slice(8);
           console.log("HTTP " + JSON.stringify(Object.fromEntries(labels.map((label, index) => [label, statuses[index]]))));
           if (statuses.some((status) => status !== 200)) throw new Error(`Unexpected HTTP statuses: ${statuses.join(",")}`);
           const bodies = paths.map((path, index) => {
@@ -58,8 +65,11 @@ jobs:
             if (!raw.trim()) throw new Error(`${labels[index]} returned an empty body`);
             return JSON.parse(raw);
           });
-          const [observe, preflight, recentBody, reconcileBody] = bodies;
-          if (observe?.source !== "RASFF" || observe.lease !== null) throw new Error("RASFF initial observation or lease is not clean");
+          const [observe, preflight, recentBody, ...reconcileBodies] = bodies;
+          if (observe?.source !== "RASFF" || observe.recent !== null || observe.reconcile !== null ||
+              observe.backfill !== null || observe.lease !== null) {
+            throw new Error("RASFF initial observation or lease is not clean");
+          }
           if (preflight?.authorized !== true || preflight?.source !== "RASFF" ||
               !Number.isSafeInteger(preflight?.officialIndex?.totalElements) || preflight.officialIndex.totalElements < 1 ||
               !Number.isSafeInteger(preflight?.officialIndex?.totalPages) || preflight.officialIndex.totalPages < 1 ||
@@ -67,16 +77,44 @@ jobs:
             throw new Error("RASFF preflight contract failed");
           }
           const recent = recentBody?.preview;
-          const reconcile = reconcileBody?.preview;
-          for (const [name, preview] of [["recent", recent], ["reconcile", reconcile]]) {
+          const reconciles = reconcileBodies.map((body) => body?.preview);
+          for (const [name, preview] of [["recent", recent], ...reconciles.map((preview, index) => [`reconcile-${index + 1}`, preview])]) {
             if (!preview || !Array.isArray(preview.alerts) || preview.alerts.some((alert) =>
               alert.id !== `rasff:${alert.reference}` || alert.contentHash?.length !== 64)) {
               throw new Error(`RASFF ${name} preview identity contract failed`);
             }
             if ((preview.detailFailures ?? 0) !== 0) throw new Error(`RASFF ${name} preview has detail failures`);
           }
+          if (recent.alerts.length !== 20 || recent.newRecordCount !== 20 || recent.hasMore !== false) {
+            throw new Error("RASFF recent preview cardinality contract failed");
+          }
+          if (reconciles[0].retainedCount !== 1 || reconciles[0].archiveSkippedCount < 1 ||
+              reconciles[1].retainedCount !== 40 || reconciles[2].retainedCount !== 40 ||
+              reconciles[1].nextCursor !== reconciles[2].nextCursor - reconciles[2].processedCount) {
+            throw new Error("RASFF reconcile progression contract failed");
+          }
+          const summary = (preview) => ({
+            alerts:preview.alerts.length,
+            samples:[preview.alerts[0], preview.alerts.at(-1)].filter(Boolean),
+            pagesScanned:preview.pagesScanned,
+            recordsObserved:preview.recordsObserved,
+            newRecordCount:preview.newRecordCount,
+            overlapCount:preview.overlapCount,
+            totalElements:preview.totalElements,
+            totalPages:preview.totalPages,
+            processedCount:preview.processedCount,
+            retainedCount:preview.retainedCount,
+            archiveSkippedCount:preview.archiveSkippedCount,
+            nextCursor:preview.nextCursor,
+            nextCursorKey:preview.nextCursorKey,
+            hasMore:preview.hasMore,
+            completedSweep:preview.completedSweep,
+            detailFailures:preview.detailFailures ?? 0,
+            oldestPublishedAt:preview.oldestPublishedAt,
+            newestPublishedAt:preview.newestPublishedAt,
+          });
           console.log("OBSERVE " + JSON.stringify(observe));
           console.log("PREFLIGHT " + JSON.stringify(preflight));
-          console.log("PREVIEW_RECENT " + JSON.stringify(recent));
-          console.log("PREVIEW_RECONCILE " + JSON.stringify(reconcile));
+          console.log("PREVIEW_RECENT " + JSON.stringify(summary(recent)));
+          reconciles.forEach((preview, index) => console.log(`PREVIEW_RECONCILE_${index + 1} ` + JSON.stringify(summary(preview))));
           NODE
