@@ -90,15 +90,14 @@ jobs:
           const initialObserve = await call("/api/rasff/sync?observe=1");
           assertIntegrity(initialAudit, "initial");
           if (initialObserve.lease !== null) throw new Error("RASFF lease is active before backfill");
-          if (initialObserve.backfill?.status === "completed") throw new Error("RASFF backfill was already complete");
           const baselineSources = sourceCounts(initialAudit);
           console.log("BACKFILL_INITIAL_AUDIT " + JSON.stringify(initialAudit));
           console.log("BACKFILL_INITIAL_OBSERVE " + JSON.stringify(initialObserve));
 
           let priorCursor = initialObserve.backfill?.cursor ?? -1;
           let priorObserved = initialObserve.backfill?.recordsObserved ?? 0;
-          let finalState = null;
-          for (let batch = 1; batch <= MAX_BATCHES; batch++) {
+          let finalState = initialObserve.backfill?.status === "completed" ? initialObserve.backfill : null;
+          for (let batch = 1; !finalState && batch <= MAX_BATCHES; batch++) {
             const body = await call(`/api/rasff/sync?mode=backfill&batchSize=${BATCH_SIZE}`, "POST");
             const state = body.state;
             if (!state || state.source !== "RASFF" || state.mode !== "backfill" ||
@@ -107,7 +106,7 @@ jobs:
               throw new Error(`Batch ${batch} reported ingestion errors: ${JSON.stringify(compact(state))}`);
             if (state.leaseOwnerId !== null || state.leaseMode !== null || state.leaseExpiresAt !== null)
               throw new Error(`Batch ${batch} response retained lease state`);
-            if (state.cursor <= priorCursor || state.recordsObserved < priorObserved)
+            if ((state.status !== "completed" && state.cursor <= priorCursor) || state.recordsObserved < priorObserved)
               throw new Error(`Batch ${batch} cursor/counter did not advance consistently`);
 
             const observed = await call("/api/rasff/sync?observe=1");
@@ -122,7 +121,7 @@ jobs:
             console.log("BACKFILL_BATCH " + JSON.stringify({ batch, ...compact(state), lease:observed.lease }));
             priorCursor = state.cursor;
             priorObserved = state.recordsObserved;
-            finalState = state;
+            if (state.status === "completed") finalState = state;
 
             if (batch % 25 === 0 || state.status === "completed") {
               const audit = (await call("/api/rasff/sync?audit=1")).audit;
@@ -135,10 +134,12 @@ jobs:
             if (state.status === "completed") break;
           }
 
-          if (!finalState || finalState.status !== "completed" ||
-              finalState.coverage !== "official-index-complete" || finalState.cursor !== finalState.totalUnits)
+          if (!finalState || finalState.status !== "completed" || finalState.coverage !== "official-index-complete" ||
+              finalState.cursor !== 0 || finalState.cursorKey !== null)
             throw new Error(`Backfill did not reach complete coverage within ${MAX_BATCHES} batches`);
 
+          const officialPreview = (await call("/api/rasff/sync?mode=preview-reconcile&cursor=0&batchSize=40", "POST")).preview;
+          const expectedOperational = officialPreview.totalElements - officialPreview.archiveSkippedCount;
           const finalAudit = (await call("/api/rasff/sync?audit=1")).audit;
           const finalObserve = await call("/api/rasff/sync?observe=1");
           assertIntegrity(finalAudit, "final");
@@ -146,12 +147,18 @@ jobs:
           if (finalObserve.lease !== null || finalObserve.backfill?.status !== "completed" ||
               finalObserve.backfill.coverage !== "official-index-complete")
             throw new Error("Final observe is not complete and lease-free");
-          if (finalAudit.counts.rasffAlerts !== finalState.recordsObserved ||
+          if (officialPreview.totalElements !== finalState.totalUnits ||
+              finalAudit.counts.rasffAlerts !== expectedOperational ||
               finalAudit.counts.rasffUniqueReferences !== finalAudit.counts.rasffAlerts ||
               finalAudit.counts.rasffSourceIdentities !== finalAudit.counts.rasffAlerts ||
               finalAudit.counts.rasffVersions !== finalAudit.counts.rasffVersionCountSum)
             throw new Error("Final D1 corpus does not match the operational official universe");
           console.log("BACKFILL_FINAL_STATE " + JSON.stringify(finalState));
+          console.log("BACKFILL_OFFICIAL_UNIVERSE " + JSON.stringify({
+            totalElements:officialPreview.totalElements,
+            archiveSkipped:officialPreview.archiveSkippedCount,
+            expectedOperational,
+          }));
           console.log("BACKFILL_FINAL_OBSERVE " + JSON.stringify(finalObserve));
           console.log("BACKFILL_FINAL_AUDIT " + JSON.stringify(finalAudit));
           NODE
