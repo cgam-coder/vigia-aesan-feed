@@ -13,58 +13,9 @@ concurrency:
   group: vigia-rasff-controlled-activation
   cancel-in-progress: true
 
-env:
-  VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
-  VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-
 jobs:
-  stage_1:
+  stopped:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
-    env:
-      RASFF_STAGE: "1"
-      MAX_SUCCESSFUL_BATCHES: "160"
-      REQUIRE_COMPLETE: "0"
     steps:
-      - uses: actions/checkout@v4
-      - name: Resume RASFF from the current checkpoint — stage 1
-        run: node scripts/resume-rasff-backfill.mjs
-
-  stage_2:
-    needs: stage_1
-    runs-on: ubuntu-latest
-    timeout-minutes: 360
-    env:
-      RASFF_STAGE: "2"
-      MAX_SUCCESSFUL_BATCHES: "160"
-      REQUIRE_COMPLETE: "0"
-    steps:
-      - uses: actions/checkout@v4
-      - name: Resume RASFF from the current checkpoint — stage 2
-        run: node scripts/resume-rasff-backfill.mjs
-
-  stage_3:
-    needs: stage_2
-    runs-on: ubuntu-latest
-    timeout-minutes: 360
-    env:
-      RASFF_STAGE: "3"
-      MAX_SUCCESSFUL_BATCHES: "160"
-      REQUIRE_COMPLETE: "0"
-    steps:
-      - uses: actions/checkout@v4
-      - name: Resume RASFF from the current checkpoint — stage 3
-        run: node scripts/resume-rasff-backfill.mjs
-
-  stage_4:
-    needs: stage_3
-    runs-on: ubuntu-latest
-    timeout-minutes: 360
-    env:
-      RASFF_STAGE: "4"
-      MAX_SUCCESSFUL_BATCHES: "160"
-      REQUIRE_COMPLETE: "1"
-    steps:
-      - uses: actions/checkout@v4
-      - name: Complete and certify the RASFF backfill — stage 4
-        run: node scripts/resume-rasff-backfill.mjs
+      - name: Preserve current checkpoint after Sites divergence STOP
+        run: echo "RASFF writes remain stopped pending explicit authorization."
