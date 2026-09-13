@@ -62,10 +62,19 @@ jobs:
           const assertIntegrity = (audit, label) => {
             const anomalies = Object.entries(audit.integrity).filter(([, value]) => value !== 0);
             if (anomalies.length) throw new Error(`${label} integrity anomalies: ${JSON.stringify(anomalies)}`);
-            if (audit.productDomains.unknown !== 0 || audit.productDomains.missingOrStaleDimensionState !== 0 ||
-                audit.geography.unmappedRows !== 0) {
-              throw new Error(`${label} dimension/geography anomalies`);
-            }
+            const domains = audit.productDomains;
+            if (domains.humanFood + domains.animalFeed + domains.nonFood + domains.unknown !== audit.counts.rasffAlerts ||
+                domains.missingOrStaleDimensionState !== 0)
+              throw new Error(`${label} product-domain balance failed`);
+            const geography = audit.geography;
+            if (geography.mappedRows + geography.unmappedRows !== geography.rows ||
+                geography.originRows + geography.notifyingRows + geography.distributionRows + geography.affectedRows !== geography.rows ||
+                geography.alertsWithGeography > audit.counts.rasffAlerts)
+              throw new Error(`${label} geography balance failed`);
+            const hazards = audit.hazards;
+            if (hazards.mappedRows + hazards.unmappedRows + hazards.unknownRows !== hazards.rows ||
+                hazards.alertsWithHazards > audit.counts.rasffAlerts)
+              throw new Error(`${label} hazard balance failed`);
           };
           const assertOtherSources = (baseline, audit, label) => {
             const current = sourceCounts(audit);
