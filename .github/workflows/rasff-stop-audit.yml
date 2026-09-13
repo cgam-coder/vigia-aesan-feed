@@ -1,0 +1,39 @@
+name: VIGIA RASFF stop audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/rasff-stop-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+    steps:
+      - name: Capture read-only audit after operational stop
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+          node <<'NODE'
+          const headers = { Authorization:`Bearer ${process.env.VIGIA_SYNC_TOKEN}` };
+          const read = async (path) => {
+            const response = await fetch(process.env.VIGIA_BASE_URL + path, { headers, redirect:"follow" });
+            const body = await response.json();
+            if (response.status !== 200) throw new Error(`GET ${path} failed HTTP ${response.status}`);
+            return body;
+          };
+          const observe = await read("/api/rasff/sync?observe=1");
+          const audit = (await read("/api/rasff/sync?audit=1")).audit;
+          if (observe.lease !== null || observe.backfill?.status !== "failed" || observe.backfill.pageErrors < 1)
+            throw new Error("Expected stopped, failed and lease-free backfill state");
+          console.log("STOP_OBSERVE " + JSON.stringify(observe));
+          console.log("STOP_AUDIT " + JSON.stringify(audit));
+          NODE
