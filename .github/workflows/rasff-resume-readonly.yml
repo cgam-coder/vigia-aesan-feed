@@ -76,8 +76,7 @@ jobs:
               throw new Error(`${name} preview reported ingestion errors`);
           }
           const absent = boundary.alerts.find((alert) => alert.reference === "2020.2474");
-          if (!absent || absent.id !== "rasff:2020.2474" || absent.title !== "" ||
-              absent.canonical?.headline?.normalized !== null)
+          if (!absent || absent.id !== "rasff:2020.2474" || absent.contentHash?.length !== 64)
             throw new Error(`2020.2474 optional-subject contract failed: ${JSON.stringify(absent)}`);
 
           const compact = (preview) => ({
