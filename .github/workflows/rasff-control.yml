@@ -43,9 +43,9 @@ jobs:
           preflight_status="$(call POST '/api/rasff/sync?mode=preflight' "$RUNNER_TEMP/preflight.json")"
           recent_status="$(call POST '/api/rasff/sync?mode=preview-recent' "$RUNNER_TEMP/preview-recent.json")"
           reconcile_1_status="$(call POST '/api/rasff/sync?mode=preview-reconcile&cursor=0&batchSize=1' "$RUNNER_TEMP/preview-reconcile-1.json")"
-          read -r cursor_2 key_2 < <(node -e 'const p=require(process.argv[1]).preview; process.stdout.write(`${p.nextCursor} ${p.nextCursorKey}`)' "$RUNNER_TEMP/preview-reconcile-1.json")
+          read -r cursor_2 key_2 < <(node -e 'const p=require(process.argv[1]).preview; console.log(`${p.nextCursor} ${p.nextCursorKey}`)' "$RUNNER_TEMP/preview-reconcile-1.json")
           reconcile_2_status="$(call POST "/api/rasff/sync?mode=preview-reconcile&cursor=$cursor_2&cursorKey=$key_2&batchSize=40" "$RUNNER_TEMP/preview-reconcile-2.json")"
-          read -r cursor_3 key_3 < <(node -e 'const p=require(process.argv[1]).preview; process.stdout.write(`${p.nextCursor} ${p.nextCursorKey}`)' "$RUNNER_TEMP/preview-reconcile-2.json")
+          read -r cursor_3 key_3 < <(node -e 'const p=require(process.argv[1]).preview; console.log(`${p.nextCursor} ${p.nextCursorKey}`)' "$RUNNER_TEMP/preview-reconcile-2.json")
           reconcile_3_status="$(call POST "/api/rasff/sync?mode=preview-reconcile&cursor=$cursor_3&cursorKey=$key_3&batchSize=40" "$RUNNER_TEMP/preview-reconcile-3.json")"
 
           node - "$observe_status" "$preflight_status" "$recent_status" \
