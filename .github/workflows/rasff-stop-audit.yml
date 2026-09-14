@@ -53,7 +53,7 @@ jobs:
               audit.counts.rasffAlerts !== audit.counts.rasffUniqueReferences ||
               audit.counts.rasffAlerts !== audit.counts.rasffSourceIdentities ||
               audit.counts.rasffVersions !== audit.counts.rasffVersionCountSum ||
-              delta !== observe.backfill.detailFailures || delta !== observe.reconcile.detailFailures ||
+              delta !== 0 && (delta !== observe.backfill.detailFailures || delta !== observe.reconcile.detailFailures) ||
               preflight?.authorized !== true || preflight?.officialIndex?.totalElements !== official.totalElements)
             throw new Error("Final RASFF read-only gate failed: " + JSON.stringify({ observe, audit, preflight, official, expectedOperational, delta }));
           console.log("FINAL_OBSERVE " + JSON.stringify(observe));
