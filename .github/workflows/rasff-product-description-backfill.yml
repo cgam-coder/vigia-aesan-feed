@@ -21,7 +21,7 @@ jobs:
       VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
       STAGE_BATCHES: "100"
-      STAGE_MARKER: "stage-1"
+      STAGE_MARKER: "stage-1b"
     steps:
       - name: Resume exact checkpoint with deferred-detail semantics
         shell: bash
@@ -138,7 +138,8 @@ jobs:
             if (detailDelta !== deferred.length || detailDelta < 0)
               throw new Error("Batch " + batch + " detailFailures/deferred mismatch: " + JSON.stringify({ detailDelta, deferred }));
             if (deferred.some((item) => !item.reference || !Number.isSafeInteger(item.notifId) ||
-                !["http-429", "http-5xx", "timeout", "aborted", "network"].includes(item.classification)))
+                !["transport", "upstream"].includes(item.classification) ||
+                !["http-429", "http-5xx", "timeout", "aborted", "network"].includes(item.reason)))
               throw new Error("Batch " + batch + " returned an invalid deferred classification");
             if (state.recordsObserved <= prior.recordsObserved || state.recordsPersisted < prior.recordsPersisted ||
                 state.newCount < prior.newCount || state.updatedCount < prior.updatedCount)
