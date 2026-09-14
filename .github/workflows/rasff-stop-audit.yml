@@ -1,4 +1,4 @@
-# WORK 20Q-F1 Sites realignment read-only gate
+# WORK 20Q-F1 final persisted-checkpoint read-only gate
 name: VIGIA RASFF Sites realignment read-only gate
 
 on:
