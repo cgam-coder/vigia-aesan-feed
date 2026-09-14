@@ -107,6 +107,8 @@ jobs:
           const initial = observe.backfill;
           if (!initial || initial.cursor < 11515 || (initial.cursor > 0 && !initial.cursorKey))
             throw new Error("RASFF cursor regressed or lost its anchor: " + JSON.stringify(initial));
+          if (initial.status === "failed")
+            throw new Error("RASFF backfill is failed before this stage; semantic/global failures require review: " + initial.lastError);
           if (initial.leaseOwnerId !== null || initial.leaseMode !== null || initial.leaseExpiresAt !== null)
             throw new Error("Persisted RASFF backfill state retains a lease");
 
