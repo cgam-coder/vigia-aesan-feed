@@ -1,10 +1,6 @@
 name: VIGIA RASFF production scheduler
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/rasff-control.yml"
   schedule:
     - cron: "9,39 * * * *"
     - cron: "27 2 * * *"
@@ -27,7 +23,7 @@ concurrency:
 
 jobs:
   recent:
-    if: github.event_name == 'push' || github.event_name == 'schedule' && github.event.schedule == '9,39 * * * *' || github.event_name == 'workflow_dispatch' && inputs.lane == 'recent'
+    if: github.event_name == 'schedule' && github.event.schedule == '9,39 * * * *' || github.event_name == 'workflow_dispatch' && inputs.lane == 'recent'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
