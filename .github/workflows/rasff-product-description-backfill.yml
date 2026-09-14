@@ -1,4 +1,4 @@
-name: VIGIA RASFF final recent certification
+name: VIGIA RASFF material-version idempotence
 
 on:
   push:
@@ -14,14 +14,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  recent-twice:
+  version-idempotence:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
-      - name: Run and certify recent twice
+      - name: Verify every multi-version RASFF alert is stable
         shell: bash
         run: |
           set -euo pipefail
@@ -29,60 +29,64 @@ jobs:
           node <<'NODE'
           const base = process.env.VIGIA_BASE_URL;
           const headers = { Authorization:"Bearer " + process.env.VIGIA_SYNC_TOKEN, "Content-Type":"application/json" };
-          const call = async (path, method = "GET") => {
-            const response = await fetch(base + path, { method, headers, redirect:"follow", signal:AbortSignal.timeout(600_000) });
+          const call = async (path, method = "GET", body) => {
+            const response = await fetch(base + path, { method, headers,
+              body:body === undefined ? undefined : JSON.stringify(body), redirect:"follow",
+              signal:AbortSignal.timeout(600_000) });
             const raw = await response.text();
-            let body;
-            try { body = JSON.parse(raw); }
+            let parsed;
+            try { parsed = JSON.parse(raw); }
             catch { throw new Error(method + " " + path + " returned non-JSON HTTP " + response.status); }
             if (response.status !== 200) throw new Error(method + " " + path + " failed HTTP " + response.status + ": " + raw.slice(0, 1000));
-            return body;
+            return parsed;
           };
-          const assertAudit = (audit, label) => {
-            const anomalies = Object.entries(audit.integrity).filter(([, value]) => value !== 0);
-            if (anomalies.length || audit.productDomains.missingOrStaleDimensionState !== 0 ||
+          const auditClean = (audit, label) => {
+            if (Object.values(audit.integrity).some((value) => value !== 0) ||
                 audit.counts.rasffAlerts !== audit.counts.rasffUniqueReferences ||
                 audit.counts.rasffAlerts !== audit.counts.rasffSourceIdentities ||
                 audit.counts.rasffVersions !== audit.counts.rasffVersionCountSum)
-              throw new Error(label + " audit failed: " + JSON.stringify({ anomalies, counts:audit.counts }));
+              throw new Error(label + " audit failed: " + JSON.stringify(audit));
           };
-          const counts = (audit) => ({ AESAN:audit.counts.aesanAlerts, RAPNA:audit.counts.rapnaAlerts,
-            RASFF:audit.counts.rasffAlerts, "SAFETY GATE":audit.counts.safetyGateAlerts, OECD:audit.counts.oecdAlerts,
-            versions:audit.counts.rasffVersions });
-          const validDeferred = (state) => (state.deferredDetails || []).every((item) =>
-            ["transport", "upstream"].includes(item.classification) &&
-            ["http-429", "http-5xx", "timeout", "aborted", "network"].includes(item.reason));
           const initialObserve = await call("/api/rasff/sync?observe=1");
           const before = (await call("/api/rasff/sync?audit=1")).audit;
-          assertAudit(before, "recent-before");
-          if (initialObserve.lease !== null || initialObserve.backfill?.coverage !== "official-index-complete" ||
-              initialObserve.reconcile?.status !== "completed") throw new Error("Recent requires completed reconcile and free lease");
-          const first = (await call("/api/rasff/sync?mode=recent", "POST")).state;
-          const middleObserve = await call("/api/rasff/sync?observe=1");
-          const middle = (await call("/api/rasff/sync?audit=1")).audit;
-          assertAudit(middle, "recent-first");
-          if (first?.status !== "completed" || !validDeferred(first) ||
-              first.detailFailures !== (first.deferredDetails || []).length ||
-              first.leaseOwnerId !== null || middleObserve.lease !== null)
-            throw new Error("First recent state/deferred/lease contract failed: " + JSON.stringify(first));
-          const second = (await call("/api/rasff/sync?mode=recent", "POST")).state;
-          const finalObserve = await call("/api/rasff/sync?observe=1");
+          auditClean(before, "version-before");
+          if (initialObserve.lease !== null || initialObserve.reconcile?.status !== "completed")
+            throw new Error("Version idempotence requires completed reconcile and free lease");
+          let cursor = null;
+          const multiple = [];
+          let pages = 0;
+          do {
+            const path = "/api/v2/alerts?source=RASFF&pageSize=100" + (cursor ? "&cursor=" + encodeURIComponent(cursor) : "");
+            const page = await call(path);
+            pages++;
+            for (const item of page.items || []) if (item.versionCount > 1) {
+              const match = String(item.url || "").match(/\/screen\/notification\/(\d+)$/u);
+              if (!match || item.id !== "rasff:" + item.reference)
+                throw new Error("Invalid multi-version RASFF identity: " + JSON.stringify(item));
+              multiple.push({ reference:item.reference, notifId:Number(match[1]), versionCount:item.versionCount,
+                contentHash:item.contentHash || null });
+            }
+            cursor = page.pagination?.hasMore ? page.pagination.nextCursor : null;
+            if (pages > 400) throw new Error("RASFF V2 pagination exceeded bound");
+          } while (cursor);
+          if (multiple.length !== before.counts.rasffMultipleVersionAlerts || multiple.length < 1 || multiple.length > 40)
+            throw new Error("Multi-version discovery count mismatch: " + JSON.stringify({ pages, multiple, audit:before.counts }));
+          const items = multiple.map(({ reference, notifId }) => ({ reference, notifId }));
+          const first = await call("/api/rasff/sync?mode=repair-detail", "POST", { items });
+          if (first.failed.length) throw new Error("Multi-version idempotence detail failure: " + JSON.stringify(first.failed));
+          const second = await call("/api/rasff/sync?mode=repair-detail", "POST", { items });
+          if (second.failed.length || second.repaired.length || second.unchanged.length !== items.length)
+            throw new Error("Second multi-version repair is not fully unchanged: " + JSON.stringify(second));
+          const afterObserve = await call("/api/rasff/sync?observe=1");
           const after = (await call("/api/rasff/sync?audit=1")).audit;
-          assertAudit(after, "recent-second");
-          if (second?.status !== "completed" || !validDeferred(second) ||
-              second.detailFailures !== (second.deferredDetails || []).length ||
-              second.newCount !== 0 || second.updatedCount !== 0 || second.recordsPersisted !== 0 ||
-              second.leaseOwnerId !== null || finalObserve.lease !== null)
-            throw new Error("Second recent is not idempotent: " + JSON.stringify(second));
-          const beforeCounts = counts(before), afterCounts = counts(after);
-          for (const source of ["AESAN", "RAPNA", "SAFETY GATE", "OECD"])
-            if (afterCounts[source] < beforeCounts[source]) throw new Error(source + " regressed during RASFF recent");
-          if (JSON.stringify(counts(middle)) !== JSON.stringify(afterCounts))
-            throw new Error("Corpus drifted between equivalent recent runs");
-          console.log("RECENT_BEFORE " + JSON.stringify(before));
-          console.log("RECENT_FIRST " + JSON.stringify(first));
-          console.log("RECENT_MIDDLE " + JSON.stringify(middle));
-          console.log("RECENT_SECOND " + JSON.stringify(second));
-          console.log("RECENT_AFTER " + JSON.stringify(after));
-          console.log("RECENT_FINAL_OBSERVE " + JSON.stringify(finalObserve));
+          auditClean(after, "version-after");
+          if (afterObserve.lease !== null || after.counts.rasffAlerts !== before.counts.rasffAlerts ||
+              after.counts.rasffVersions !== before.counts.rasffVersions + first.repaired.length ||
+              after.counts.rasffMultipleVersionAlerts < before.counts.rasffMultipleVersionAlerts)
+            throw new Error("Multi-version idempotence audit drift");
+          console.log("VERSION_MULTI_DISCOVERY " + JSON.stringify({ pages, multiple }));
+          console.log("VERSION_REPAIR_FIRST " + JSON.stringify(first));
+          console.log("VERSION_REPAIR_SECOND " + JSON.stringify(second));
+          console.log("VERSION_AUDIT_BEFORE " + JSON.stringify(before));
+          console.log("VERSION_AUDIT_AFTER " + JSON.stringify(after));
           NODE
