@@ -1,6 +1,10 @@
 name: VIGIA five-source freshness watchdog
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/freshness-watchdog.yml"
   schedule:
     - cron: "13,28,43,58 * * * *"
   workflow_dispatch:

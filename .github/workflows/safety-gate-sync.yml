@@ -1,6 +1,10 @@
 name: VIGIA Safety Gate + OECD recent sync
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/safety-gate-sync.yml"
   schedule:
     - cron: "7,37 * * * *"
     - cron: "22,52 * * * *"
@@ -11,7 +15,7 @@ permissions:
 
 jobs:
   safety_gate:
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '7,37 * * * *'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.schedule == '7,37 * * * *'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
