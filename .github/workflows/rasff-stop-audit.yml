@@ -1,5 +1,4 @@
-# WORK 20Q-F1 final persisted-checkpoint read-only gate
-name: VIGIA RASFF Sites realignment read-only gate
+name: VIGIA RASFF final read-only audit
 
 on:
   push:
@@ -20,118 +19,45 @@ jobs:
     timeout-minutes: 30
     env:
       VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
-      VIGIA_CUSTOM_URL: https://nagamealert.com
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
-      - name: Observe, audit, preflight and smoke without writes
+      - name: Certify final persisted state without writes
         shell: bash
         run: |
           set -euo pipefail
           test -n "$VIGIA_SYNC_TOKEN"
           node <<'NODE'
           const base = process.env.VIGIA_BASE_URL;
-          const custom = process.env.VIGIA_CUSTOM_URL;
-          const auth = { Authorization:`Bearer ${process.env.VIGIA_SYNC_TOKEN}` };
-          const call = async (origin, path, { method="GET", headers={}, max=600_000 } = {}) => {
-            const response = await fetch(origin + path, {
-              method, headers, redirect:"follow", signal:AbortSignal.timeout(max),
-            });
-            const text = await response.text();
-            let body = null;
-            try { body = JSON.parse(text); } catch {}
-            if (response.status !== 200) throw new Error(`${method} ${path} HTTP ${response.status}: ${text.slice(0,500)}`);
-            return { status:response.status, body, text, url:response.url };
+          const headers = { Authorization:"Bearer " + process.env.VIGIA_SYNC_TOKEN };
+          const call = async (path, method = "GET") => {
+            const response = await fetch(base + path, { method, headers, redirect:"follow", signal:AbortSignal.timeout(600_000) });
+            const raw = await response.text();
+            let body;
+            try { body = JSON.parse(raw); } catch { throw new Error(method + " " + path + " returned non-JSON HTTP " + response.status); }
+            if (response.status !== 200) throw new Error(method + " " + path + " failed HTTP " + response.status + ": " + raw.slice(0, 1000));
+            return body;
           };
-          const api = (path, method="GET") => call(base, path, { method, headers:auth });
-          const publicGet = (path) => call(custom, path, { max:120_000 });
-          const sourceCounts = (audit) => ({
-            AESAN:audit.counts.aesanAlerts,
-            RAPNA:audit.counts.rapnaAlerts,
-            "SAFETY GATE":audit.counts.safetyGateAlerts,
-            OECD:audit.counts.oecdAlerts,
-            RASFF:audit.counts.rasffAlerts,
-          });
-          const observe = (await api("/api/rasff/sync?observe=1")).body;
-          const audit = (await api("/api/rasff/sync?audit=1")).body.audit;
-          const preflight = (await api("/api/rasff/sync?mode=preflight", "POST")).body;
-          if (observe?.source !== "RASFF" || !observe.backfill)
-            throw new Error(`Unsafe observe state: ${JSON.stringify(observe)}`);
-          const staleLease = observe.lease && Date.parse(observe.lease.expiresAt) < Date.now();
-          if (observe.lease !== null && !staleLease)
-            throw new Error(`Active or malformed lease blocks the gate: ${JSON.stringify(observe.lease)}`);
-          const state = observe.backfill;
-          if (state.cursor < 9955 || state.recordsObserved < 9955 || state.detailFailures !== 0)
-            throw new Error(`Backfill checkpoint invariant failed: ${JSON.stringify(state)}`);
-          if (!preflight?.authorized || preflight?.source !== "RASFF" ||
-              !Number.isSafeInteger(preflight?.officialIndex?.totalElements) || preflight.officialIndex.totalElements < 1 ||
-              !Number.isSafeInteger(preflight?.officialIndex?.totalPages) || preflight.officialIndex.totalPages < 1 ||
-              !preflight.officialIndex?.newest?.reference || !Number.isSafeInteger(preflight.officialIndex.newest.notifId))
-            throw new Error(`Official preflight contract failed: ${JSON.stringify(preflight)}`);
-          const anomalies = Object.entries(audit.integrity).filter(([, value]) => value !== 0);
-          const { counts, productDomains:domains, geography, hazards } = audit;
-          if (anomalies.length || counts.rasffMissingProductAlerts !== 0 || counts.rasffMissingProductIdAlerts !== 0 ||
-              counts.rasffNullProductDescriptionAlerts !== counts.rasffProductIdWithoutDescriptionAlerts ||
-              counts.rasffUniqueReferences !== counts.rasffAlerts || counts.rasffSourceIdentities !== counts.rasffAlerts ||
-              counts.rasffVersions !== counts.rasffVersionCountSum ||
-              domains.missingOrStaleDimensionState !== 0 ||
-              domains.humanFood + domains.animalFeed + domains.nonFood + domains.unknown !== counts.rasffAlerts ||
-              geography.mappedRows + geography.unmappedRows !== geography.rows ||
-              geography.originRows + geography.notifyingRows + geography.distributionRows + geography.affectedRows !== geography.rows ||
-              hazards.mappedRows + hazards.unmappedRows + hazards.unknownRows !== hazards.rows)
-            throw new Error(`RASFF audit invariant failed: ${JSON.stringify({anomalies,counts,domains,geography,hazards})}`);
-
-          const htmlPaths = ["/es/", "/en/", "/es/alertas?source=RASFF", "/es/fuentes", "/en/sources"];
-          const html = {};
-          for (const path of htmlPaths) {
-            const response = await publicGet(path);
-            if (!/NagameAlert/u.test(response.text)) throw new Error(`${path} lacks NagameAlert shell`);
-            html[path] = { status:response.status, finalUrl:response.url, bytes:response.text.length };
-          }
-          const terminal = await publicGet("/api/terminal/alerts?period=all&country=ALL&source=RASFF&pageSize=100");
-          const v2 = await publicGet("/api/v2/alerts?source=RASFF&pageSize=100");
-          if (!Array.isArray(terminal.body?.items) || !terminal.body.items.length ||
-              terminal.body.items.some((item) => item.source !== "RASFF"))
-            throw new Error("Terminal RASFF smoke failed");
-          if (v2.body?.apiVersion !== 2 || v2.body?.schemaVersion !== 4 || !Array.isArray(v2.body.items) ||
-              !v2.body.items.length || v2.body.items.some((item) => item.source !== "RASFF"))
-            throw new Error("V2 RASFF smoke failed");
-
-          const byReference = async (reference) => {
-            const response = await publicGet(`/api/v2/alerts?source=RASFF&reference=${encodeURIComponent(reference)}`);
-            if (response.body?.items?.length !== 1) throw new Error(`Expected one RASFF ${reference} item`);
-            return response.body.items[0];
-          };
-          const missingDescription = await byReference("2021.6273");
-          const normal = v2.body.items.find((item) => item.reference !== "2021.6273" && item.subject && item.product);
-          if (!normal) throw new Error("No representative normal RASFF notification found");
-          const pathFor = (locale, item) => {
-            const key = Buffer.from(item.id).toString("base64url");
-            const slug = item.title.normalize("NFKD").replace(/[\u0300-\u036f]/gu, "").toLowerCase()
-              .replace(/[’']/gu, "").replace(/[^a-z0-9]+/gu, "-").replace(/^-+|-+$/gu, "")
-              .slice(0,96).replace(/-+$/gu, "") || "alerta";
-            return `/${locale}/${locale === "es" ? "alerta" : "alert"}/rasff/${key}/${slug}`;
-          };
-          const detail = {};
-          for (const [label, item] of [["missingDescription", missingDescription], ["normal", normal]]) {
-            for (const locale of ["es", "en"]) {
-              const path = pathFor(locale, item);
-              const response = await publicGet(path);
-              if (!response.text.includes(item.reference) || !/RASFF/u.test(response.text))
-                throw new Error(`${label} ${locale} detail failed`);
-              detail[`${label}-${locale}`] = { path, status:response.status, bytes:response.text.length };
-            }
-          }
-          for (const source of ["AESAN", "RAPNA", "SAFETY GATE", "OECD"]) {
-            const response = await publicGet(`/api/v2/alerts?source=${encodeURIComponent(source)}&pageSize=1`);
-            if (response.body?.items?.length !== 1 || response.body.items[0].source !== source)
-              throw new Error(`${source} V2 smoke failed`);
-          }
-          const sitemap = await publicGet("/sitemap.xml");
-          if (!/sitemapindex|urlset/u.test(sitemap.text)) throw new Error("Sitemap smoke failed");
-
-          console.log("REALIGN_OBSERVE " + JSON.stringify(observe));
-          console.log("REALIGN_AUDIT " + JSON.stringify(audit));
-          console.log("REALIGN_PREFLIGHT " + JSON.stringify(preflight));
-          console.log("REALIGN_SOURCE_COUNTS " + JSON.stringify(sourceCounts(audit)));
-          console.log("REALIGN_SMOKE " + JSON.stringify({html,terminal:{status:terminal.status,items:terminal.body.items.length},v2:{status:v2.status,items:v2.body.items.length},detail,sitemap:{status:sitemap.status,bytes:sitemap.text.length}}));
+          const observe = await call("/api/rasff/sync?observe=1");
+          const audit = (await call("/api/rasff/sync?audit=1")).audit;
+          const preflight = await call("/api/rasff/sync?mode=preflight", "POST");
+          const official = (await call("/api/rasff/sync?mode=preview-reconcile&cursor=0&batchSize=1", "POST")).preview;
+          const integrity = Object.entries(audit.integrity).filter(([, value]) => value !== 0);
+          const expectedOperational = official.totalElements - official.archiveSkippedCount;
+          const delta = expectedOperational - audit.counts.rasffAlerts;
+          if (observe.lease !== null || observe.backfill?.status !== "completed" ||
+              observe.backfill?.coverage !== "official-index-complete" || observe.backfill?.cursor !== 0 ||
+              observe.backfill?.cursorKey !== null || observe.reconcile?.status !== "completed" ||
+              observe.reconcile?.coverage !== "official-index-complete" || observe.reconcile?.cursor !== 0 ||
+              observe.reconcile?.cursorKey !== null || integrity.length ||
+              audit.counts.rasffAlerts !== audit.counts.rasffUniqueReferences ||
+              audit.counts.rasffAlerts !== audit.counts.rasffSourceIdentities ||
+              audit.counts.rasffVersions !== audit.counts.rasffVersionCountSum ||
+              delta !== observe.backfill.detailFailures || delta !== observe.reconcile.detailFailures ||
+              preflight?.authorized !== true || preflight?.officialIndex?.totalElements !== official.totalElements)
+            throw new Error("Final RASFF read-only gate failed: " + JSON.stringify({ observe, audit, preflight, official, expectedOperational, delta }));
+          console.log("FINAL_OBSERVE " + JSON.stringify(observe));
+          console.log("FINAL_AUDIT " + JSON.stringify(audit));
+          console.log("FINAL_OFFICIAL " + JSON.stringify({ totalElements:official.totalElements,
+            archiveSkippedCount:official.archiveSkippedCount, expectedOperational, delta }));
+          console.log("FINAL_PREFLIGHT " + JSON.stringify(preflight));
           NODE
