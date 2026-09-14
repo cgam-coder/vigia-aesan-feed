@@ -35,6 +35,15 @@ jobs:
           const headers = { Authorization:"Bearer " + process.env.VIGIA_SYNC_TOKEN, "Content-Type":"application/json" };
           const MAX_BATCHES = Number(process.env.STAGE_BATCHES);
           const BATCH_SIZE = Number(process.env.BATCH_SIZE);
+          const SEARCH_URL = "https://webgate.ec.europa.eu/rasff-window/backend/public/notification/search/consolidated/en/";
+          const recoverableGlobalFailure = (state) => Boolean(state?.status === "failed" &&
+            state.leaseOwnerId === null && state.leaseMode === null && state.leaseExpiresAt === null && (
+              state.lastError === "D1_ERROR: out of memory: SQLITE_NOMEM" ||
+              state.lastError === "RASFF agotó el timeout para " + SEARCH_URL ||
+              state.lastError === "RASFF abortó la petición para " + SEARCH_URL ||
+              state.lastError === "RASFF sufrió un fallo de red para " + SEARCH_URL ||
+              /^RASFF devolvió HTTP (?:429|5\d\d) para https:\/\/webgate\.ec\.europa\.eu\/rasff-window\/backend\/public\/notification\/search\/consolidated\/en\/$/u.test(state.lastError || "")
+            ));
           const call = async (path, method = "GET") => {
             const response = await fetch(base + path, { method, headers, redirect:"follow", signal:AbortSignal.timeout(600_000) });
             const text = await response.text();
@@ -56,10 +65,8 @@ jobs:
               catch { throw new Error("POST " + path + " returned non-JSON HTTP " + response.status); }
               if (response.status === 200) return body;
               const state = body?.state;
-              const recoverableD1Oom = response.status === 503 && state?.status === "failed" &&
-                state.lastError === "D1_ERROR: out of memory: SQLITE_NOMEM" &&
-                state.leaseOwnerId === null && state.leaseMode === null && state.leaseExpiresAt === null;
-              if (!recoverableD1Oom) throw new Error("POST " + path + " failed HTTP " + response.status + ": " + raw.slice(0, 1000));
+              const recoverableGlobal = response.status === 503 && recoverableGlobalFailure(state);
+              if (!recoverableGlobal) throw new Error("POST " + path + " failed HTTP " + response.status + ": " + raw.slice(0, 1000));
               globalRecoveries++;
               console.log("RECONCILE_RECOVERABLE_GLOBAL " + JSON.stringify({ marker:process.env.STAGE_MARKER,
                 attempt, cursor:state.cursor, cursorKey:state.cursorKey, pageErrors:state.pageErrors,
@@ -92,10 +99,8 @@ jobs:
           if (observe.lease !== null || observe.backfill?.status !== "completed" ||
               observe.backfill?.coverage !== "official-index-complete") throw new Error("Reconcile requires completed backfill and a free lease");
           if (observe.reconcile?.status === "failed") {
-            const recoverableD1Oom = observe.reconcile.lastError === "D1_ERROR: out of memory: SQLITE_NOMEM" &&
-              observe.reconcile.pageErrors > 0 && observe.reconcile.leaseOwnerId === null &&
-              observe.reconcile.leaseMode === null && observe.reconcile.leaseExpiresAt === null;
-            if (!recoverableD1Oom) throw new Error("Reconcile is failed before this stage: " + observe.reconcile.lastError);
+            const recoverableGlobal = observe.reconcile.pageErrors > 0 && recoverableGlobalFailure(observe.reconcile);
+            if (!recoverableGlobal) throw new Error("Reconcile is failed before this stage: " + observe.reconcile.lastError);
             console.log("RECONCILE_RECOVERABLE_GLOBAL " + JSON.stringify({ marker:process.env.STAGE_MARKER,
               cursor:observe.reconcile.cursor, cursorKey:observe.reconcile.cursorKey,
               pageErrors:observe.reconcile.pageErrors, lastError:observe.reconcile.lastError }));
