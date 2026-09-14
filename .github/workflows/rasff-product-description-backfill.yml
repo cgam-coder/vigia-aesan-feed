@@ -1,4 +1,4 @@
-name: VIGIA RASFF targeted deferred repair
+name: VIGIA RASFF final recent certification
 
 on:
   push:
@@ -14,14 +14,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  targeted-repair:
+  recent-twice:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
-      - name: Repair exact deferred RASFF identities
+      - name: Run and certify recent twice
         shell: bash
         run: |
           set -euo pipefail
@@ -29,83 +29,60 @@ jobs:
           node <<'NODE'
           const base = process.env.VIGIA_BASE_URL;
           const headers = { Authorization:"Bearer " + process.env.VIGIA_SYNC_TOKEN, "Content-Type":"application/json" };
-          const expectedOperational = 32177;
-          const items = [
-            { reference:"2022.4518", notifId:563471 },
-            { reference:"2022.4827", notifId:565971 },
-            { reference:"2022.6820", notifId:581438 },
-            { reference:"2022.7175", notifId:584299 },
-            { reference:"2023.0258", notifId:590576 },
-            { reference:"2023.0743", notifId:593935 },
-            { reference:"2023.2096", notifId:603355 },
-            { reference:"2023.2243", notifId:604694 },
-            { reference:"2023.3564", notifId:613521 },
-            { reference:"2023.3613", notifId:613394 },
-            { reference:"2023.5372", notifId:627424 },
-            { reference:"2023.5493", notifId:628446 },
-            { reference:"2023.6454", notifId:634224 },
-            { reference:"2023.6581", notifId:633489 },
-            { reference:"2023.7272", notifId:640503 },
-            { reference:"2024.1414", notifId:665628 },
-            { reference:"2024.2480", notifId:674245 },
-            { reference:"2024.3003", notifId:678239 },
-            { reference:"2024.3006", notifId:678211 },
-            { reference:"2024.3943", notifId:685998 },
-            { reference:"2024.4788", notifId:693051 },
-            { reference:"2024.4966", notifId:692360 },
-            { reference:"2024.5011", notifId:694197 },
-            { reference:"2024.6656", notifId:708893 },
-            { reference:"2024.7178", notifId:713592 },
-            { reference:"2025.2720", notifId:756612 },
-            { reference:"2025.5455", notifId:777370 },
-            { reference:"2025.5375", notifId:773733 },
-          ];
-          const call = async (path, method = "GET", body) => {
-            const response = await fetch(base + path, { method, headers,
-              body:body === undefined ? undefined : JSON.stringify(body), redirect:"follow",
-              signal:AbortSignal.timeout(600_000) });
-            const text = await response.text();
-            let parsed;
-            try { parsed = JSON.parse(text); }
+          const call = async (path, method = "GET") => {
+            const response = await fetch(base + path, { method, headers, redirect:"follow", signal:AbortSignal.timeout(600_000) });
+            const raw = await response.text();
+            let body;
+            try { body = JSON.parse(raw); }
             catch { throw new Error(method + " " + path + " returned non-JSON HTTP " + response.status); }
-            if (response.status !== 200) throw new Error(method + " " + path + " failed HTTP " + response.status + ": " + text.slice(0, 1000));
-            return parsed;
+            if (response.status !== 200) throw new Error(method + " " + path + " failed HTTP " + response.status + ": " + raw.slice(0, 1000));
+            return body;
           };
-          const auditClean = (audit, label) => {
+          const assertAudit = (audit, label) => {
             const anomalies = Object.entries(audit.integrity).filter(([, value]) => value !== 0);
-            if (anomalies.length) throw new Error(label + " integrity anomalies: " + JSON.stringify(anomalies));
-            if (audit.counts.rasffAlerts !== audit.counts.rasffUniqueReferences ||
+            if (anomalies.length || audit.productDomains.missingOrStaleDimensionState !== 0 ||
+                audit.counts.rasffAlerts !== audit.counts.rasffUniqueReferences ||
                 audit.counts.rasffAlerts !== audit.counts.rasffSourceIdentities ||
                 audit.counts.rasffVersions !== audit.counts.rasffVersionCountSum)
-              throw new Error(label + " RASFF count balance failed");
+              throw new Error(label + " audit failed: " + JSON.stringify({ anomalies, counts:audit.counts }));
           };
-          const beforeObserve = await call("/api/rasff/sync?observe=1");
+          const counts = (audit) => ({ AESAN:audit.counts.aesanAlerts, RAPNA:audit.counts.rapnaAlerts,
+            RASFF:audit.counts.rasffAlerts, "SAFETY GATE":audit.counts.safetyGateAlerts, OECD:audit.counts.oecdAlerts,
+            versions:audit.counts.rasffVersions });
+          const validDeferred = (state) => (state.deferredDetails || []).every((item) =>
+            ["transport", "upstream"].includes(item.classification) &&
+            ["http-429", "http-5xx", "timeout", "aborted", "network"].includes(item.reason));
+          const initialObserve = await call("/api/rasff/sync?observe=1");
           const before = (await call("/api/rasff/sync?audit=1")).audit;
-          if (beforeObserve.lease !== null || beforeObserve.backfill?.status !== "completed" ||
-              beforeObserve.backfill?.coverage !== "official-index-complete" || beforeObserve.backfill?.detailFailures !== items.length)
-            throw new Error("Targeted repair preflight state is not exact");
-          auditClean(before, "before-repair");
-          if (expectedOperational - before.counts.rasffAlerts !== items.length)
-            throw new Error("Pre-repair D1 delta does not equal the exact deferred list");
-          console.log("REPAIR_BEFORE " + JSON.stringify({ observe:beforeObserve, audit:before, items }));
-
-          const pass1 = await call("/api/rasff/sync?mode=repair-detail", "POST", { items });
-          console.log("REPAIR_PASS_1 " + JSON.stringify(pass1));
-          let pass2 = { repaired:[], unchanged:[], failed:pass1.failed };
-          if (pass1.failed.length) {
-            await new Promise((resolve) => setTimeout(resolve, 30_000));
-            pass2 = await call("/api/rasff/sync?mode=repair-detail", "POST", { items:pass1.failed.map(({ reference, notifId }) => ({ reference, notifId })) });
-            console.log("REPAIR_PASS_2 " + JSON.stringify(pass2));
-          }
-          const afterObserve = await call("/api/rasff/sync?observe=1");
+          assertAudit(before, "recent-before");
+          if (initialObserve.lease !== null || initialObserve.backfill?.coverage !== "official-index-complete" ||
+              initialObserve.reconcile?.status !== "completed") throw new Error("Recent requires completed reconcile and free lease");
+          const first = (await call("/api/rasff/sync?mode=recent", "POST")).state;
+          const middleObserve = await call("/api/rasff/sync?observe=1");
+          const middle = (await call("/api/rasff/sync?audit=1")).audit;
+          assertAudit(middle, "recent-first");
+          if (first?.status !== "completed" || !validDeferred(first) ||
+              first.detailFailures !== (first.deferredDetails || []).length ||
+              first.leaseOwnerId !== null || middleObserve.lease !== null)
+            throw new Error("First recent state/deferred/lease contract failed: " + JSON.stringify(first));
+          const second = (await call("/api/rasff/sync?mode=recent", "POST")).state;
+          const finalObserve = await call("/api/rasff/sync?observe=1");
           const after = (await call("/api/rasff/sync?audit=1")).audit;
-          auditClean(after, "after-repair");
-          const repaired = [...pass1.repaired, ...pass2.repaired];
-          const unchanged = [...pass1.unchanged, ...pass2.unchanged];
-          const pending = pass2.failed;
-          if (afterObserve.lease !== null || expectedOperational - after.counts.rasffAlerts !== pending.length ||
-              after.counts.rasffAlerts - before.counts.rasffAlerts !== repaired.length)
-            throw new Error("Post-repair D1 delta does not equal targeted repair results");
-          console.log("REPAIR_FINAL " + JSON.stringify({ repaired, unchanged, pending, observe:afterObserve, audit:after,
-            delta:expectedOperational - after.counts.rasffAlerts }));
+          assertAudit(after, "recent-second");
+          if (second?.status !== "completed" || !validDeferred(second) ||
+              second.detailFailures !== (second.deferredDetails || []).length ||
+              second.newCount !== 0 || second.updatedCount !== 0 || second.recordsPersisted !== 0 ||
+              second.leaseOwnerId !== null || finalObserve.lease !== null)
+            throw new Error("Second recent is not idempotent: " + JSON.stringify(second));
+          const beforeCounts = counts(before), afterCounts = counts(after);
+          for (const source of ["AESAN", "RAPNA", "SAFETY GATE", "OECD"])
+            if (afterCounts[source] < beforeCounts[source]) throw new Error(source + " regressed during RASFF recent");
+          if (JSON.stringify(counts(middle)) !== JSON.stringify(afterCounts))
+            throw new Error("Corpus drifted between equivalent recent runs");
+          console.log("RECENT_BEFORE " + JSON.stringify(before));
+          console.log("RECENT_FIRST " + JSON.stringify(first));
+          console.log("RECENT_MIDDLE " + JSON.stringify(middle));
+          console.log("RECENT_SECOND " + JSON.stringify(second));
+          console.log("RECENT_AFTER " + JSON.stringify(after));
+          console.log("RECENT_FINAL_OBSERVE " + JSON.stringify(finalObserve));
           NODE
