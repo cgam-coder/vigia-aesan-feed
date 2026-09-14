@@ -1,8 +1,13 @@
 name: Update full AESAN archive
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/update-full-feed.yml"
   schedule:
     - cron: "27 3 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: write
