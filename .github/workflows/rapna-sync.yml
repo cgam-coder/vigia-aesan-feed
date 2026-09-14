@@ -3,6 +3,8 @@ name: VIGIA RAPNA recent sync
 on:
   schedule:
     - cron: "23 * * * *"
+    - cron: "41 4 * * *"
+  workflow_dispatch:
 
 concurrency:
   group: vigia-rapna-recent
@@ -13,6 +15,7 @@ permissions:
 
 jobs:
   sync:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '23 * * * *'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -52,3 +55,30 @@ jobs:
               skipped: body.skipped || null
             }));
           ' "${http_code}" "${response_file}"
+
+  current_parity:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '41 4 * * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Reconcile the complete RAPNA CURRENT index
+        env:
+          VIGIA_RAPNA_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/rapna/sync
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+          response_file="$RUNNER_TEMP/rapna-current-parity.json"
+          http_code="$(curl --silent --show-error --location --request POST \
+            --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" --retry 2 --retry-all-errors \
+            --max-time 1500 --output "$response_file" --write-out '%{http_code}' \
+            "$VIGIA_RAPNA_SYNC_URL?mode=current-parity&batchSize=6")"
+          node -e '
+            const fs=require("node:fs");
+            const status=Number(process.argv[1]);
+            const state=JSON.parse(fs.readFileSync(process.argv[2],"utf8"))?.state;
+            if(status!==200||state?.source!=="RAPNA"||state?.mode!=="current-parity"||state?.status!=="completed"||
+               state?.coverage!=="official-index-complete"||state?.lastError!==null||state?.pageErrors!==0)
+              throw new Error(`RAPNA CURRENT parity failed HTTP ${status}: ${JSON.stringify(state)}`);
+            console.log("RAPNA_CURRENT_PARITY "+JSON.stringify(state));
+          ' "$http_code" "$response_file"

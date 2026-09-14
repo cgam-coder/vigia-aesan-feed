@@ -1,0 +1,41 @@
+name: VIGIA OECD daily historical reconcile
+
+on:
+  schedule:
+    - cron: "4,9,14,19,24,29,34,39,44,49,54,59 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vigia-oecd-historical-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      VIGIA_OECD_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/oecd/sync
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+    steps:
+      - name: Continue the current UTC daily sweep
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+          response_file="$RUNNER_TEMP/oecd-historical.json"
+          http_code="$(curl --silent --show-error --location --request POST \
+            --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" --retry 1 --retry-all-errors \
+            --max-time 1200 --output "$response_file" --write-out '%{http_code}' \
+            "$VIGIA_OECD_SYNC_URL?mode=historical-reconcile&batchSize=12")"
+          node -e '
+            const fs=require("node:fs");
+            const status=Number(process.argv[1]);
+            const state=JSON.parse(fs.readFileSync(process.argv[2],"utf8"))?.state;
+            if(![200,202].includes(status)||state?.source!=="OECD"||state?.mode!=="historical-reconcile"||
+               !["partial","completed","skipped"].includes(state?.status)||state?.lastError)
+              throw new Error(`OECD historical reconcile failed HTTP ${status}: ${JSON.stringify(state)}`);
+            console.log("OECD_HISTORICAL_RECONCILE "+JSON.stringify(state));
+          ' "$http_code" "$response_file"
