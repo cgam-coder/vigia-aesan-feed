@@ -1,14 +1,137 @@
-name: VIGIA RASFF extraordinary carrier (stopped)
+name: VIGIA RASFF bounded deferred recovery
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/rasff-product-description-backfill.yml"
 
 permissions:
   contents: read
 
+concurrency:
+  group: vigia-rasff-controlled-activation
+  cancel-in-progress: false
+
 jobs:
-  stopped:
+  repair:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
-      - name: Confirm neutralized workflow
-        run: echo "This extraordinary RASFF writer is intentionally neutralized."
+      - name: Repair only the certified deferred identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+          node <<'NODE'
+          const base = process.env.VIGIA_BASE_URL;
+          const headers = { Authorization:"Bearer " + process.env.VIGIA_SYNC_TOKEN, "Content-Type":"application/json" };
+          const known = [
+            ["2022.4518",563471],["2022.4827",565971],["2022.6820",581438],["2022.7175",584299],
+            ["2023.0258",590576],["2023.0743",593935],["2023.2096",603355],["2023.2243",604694],
+            ["2023.3564",613521],["2023.3613",613394],["2023.5372",627424],["2023.5493",628446],
+            ["2023.6454",634224],["2023.6581",633489],["2023.7272",640503],["2024.1414",665628],
+            ["2024.2480",674245],["2024.3003",678239],["2024.3006",678211],["2024.3943",685998],
+            ["2024.4788",693051],["2024.4966",692360],["2024.5011",694197],["2024.6656",708893],
+            ["2024.7178",713592],["2025.2720",756612],["2025.5455",777370],["2025.5375",773733],
+          ].map(([reference, notifId]) => ({ reference, notifId }));
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          const call = async (path, method = "GET", body) => {
+            const response = await fetch(base + path, { method, headers, redirect:"follow",
+              body:body === undefined ? undefined : JSON.stringify(body), signal:AbortSignal.timeout(900_000) });
+            const raw = await response.text();
+            let parsed;
+            try { parsed = JSON.parse(raw); } catch { throw new Error(method + " " + path + " returned non-JSON HTTP " + response.status); }
+            if (response.status !== 200) throw new Error(method + " " + path + " failed HTTP " + response.status + ": " + raw.slice(0, 2000));
+            return parsed;
+          };
+          const getPending = async () => {
+            const pending = [];
+            for (let offset = 0; offset < known.length; offset += 8) {
+              const slice = known.slice(offset, offset + 8);
+              const rows = await Promise.all(slice.map(async (item) => {
+                const page = await call("/api/v2/alerts?source=RASFF&reference=" + encodeURIComponent(item.reference) + "&pageSize=5");
+                if (!Array.isArray(page.items) || page.items.length > 1 ||
+                    page.items.some((alert) => alert.id !== "rasff:" + item.reference || alert.reference !== item.reference))
+                  throw new Error("D1 identity lookup failed for " + item.reference + ": " + JSON.stringify(page.items));
+                return page.items.length ? null : item;
+              }));
+              pending.push(...rows.filter(Boolean));
+            }
+            return pending;
+          };
+          const snapshot = async (label) => {
+            const observe = await call("/api/rasff/sync?observe=1");
+            const audit = (await call("/api/rasff/sync?audit=1")).audit;
+            const preflight = await call("/api/rasff/sync?mode=preflight", "POST");
+            const official = (await call("/api/rasff/sync?mode=preview-reconcile&cursor=0&batchSize=1", "POST")).preview;
+            const pending = await getPending();
+            const expectedOperational = official.totalElements - official.archiveSkippedCount;
+            const delta = expectedOperational - audit.counts.rasffAlerts;
+            if (observe.lease !== null || observe.backfill?.status !== "completed" ||
+                observe.backfill.coverage !== "official-index-complete" || observe.backfill.cursor !== 0 || observe.backfill.cursorKey !== null ||
+                observe.reconcile?.status !== "completed" || observe.reconcile.coverage !== "official-index-complete" ||
+                observe.reconcile.cursor !== 0 || observe.reconcile.cursorKey !== null ||
+                preflight?.officialIndex?.totalElements !== official.totalElements || delta !== pending.length ||
+                audit.counts.rasffAlerts !== audit.counts.rasffUniqueReferences ||
+                audit.counts.rasffAlerts !== audit.counts.rasffSourceIdentities ||
+                audit.counts.rasffVersions !== audit.counts.rasffVersionCountSum ||
+                Object.values(audit.integrity).some((value) => value !== 0))
+              throw new Error(label + " snapshot failed: " + JSON.stringify({ observe, audit, preflight, official, expectedOperational, delta, pending }));
+            console.log("RECOVERY_SNAPSHOT " + JSON.stringify({ label, expectedOperational, delta, pending, observe, audit }));
+            return { observe, audit, expectedOperational, delta, pending };
+          };
+          const initial = await snapshot("initial");
+          const otherSources = {
+            aesan:initial.audit.counts.aesanAlerts, rapna:initial.audit.counts.rapnaAlerts,
+            safetyGate:initial.audit.counts.safetyGateAlerts, oecd:initial.audit.counts.oecdAlerts,
+          };
+          const passes = [];
+          const attempts = Object.fromEntries(known.map((item) => [item.reference, 0]));
+          const recovered = [];
+          const delays = [0, 30_000, 120_000, 300_000];
+          for (let index = 0; index < delays.length; index++) {
+            let pending = await getPending();
+            if (!pending.length) break;
+            if (delays[index]) await sleep(delays[index]);
+            pending = await getPending();
+            if (!pending.length) break;
+            const result = await call("/api/rasff/sync?mode=repair-detail", "POST", { items:pending });
+            const output = [...result.repaired, ...result.unchanged, ...result.failed];
+            const inputKeys = pending.map((item) => item.reference + "/" + item.notifId).sort();
+            const outputKeys = output.map((item) => item.reference + "/" + item.notifId).sort();
+            if (JSON.stringify(inputKeys) !== JSON.stringify(outputKeys) ||
+                result.failed.some((item) => item.deferred !== true ||
+                  !["transport", "upstream"].includes(item.classification) ||
+                  !["http-429", "http-5xx", "timeout", "aborted", "network"].includes(item.reason)))
+              throw new Error("Pass " + (index + 1) + " returned an invalid repair partition: " + JSON.stringify(result));
+            for (const item of result.failed) attempts[item.reference] += item.attempts;
+            recovered.push(...result.repaired);
+            const after = await snapshot("pass-" + (index + 1));
+            const failedKeys = result.failed.map((item) => item.reference + "/" + item.notifId).sort();
+            const pendingKeys = after.pending.map((item) => item.reference + "/" + item.notifId).sort();
+            if (JSON.stringify(failedKeys) !== JSON.stringify(pendingKeys) ||
+                after.audit.counts.rasffAlerts - initial.audit.counts.rasffAlerts !== known.length - after.pending.length ||
+                after.audit.counts.rasffVersions - initial.audit.counts.rasffVersions !== known.length - after.pending.length ||
+                after.audit.counts.aesanAlerts < otherSources.aesan || after.audit.counts.rapnaAlerts < otherSources.rapna ||
+                after.audit.counts.safetyGateAlerts < otherSources.safetyGate || after.audit.counts.oecdAlerts < otherSources.oecd)
+              throw new Error("Pass " + (index + 1) + " post-audit mismatch: " + JSON.stringify({ result, after }));
+            passes.push({ pass:index + 1, attempted:pending, result, after:{ delta:after.delta, pending:after.pending }, attempts:{...attempts} });
+            console.log("RECOVERY_PASS " + JSON.stringify(passes.at(-1)));
+          }
+          const final = await snapshot("final");
+          let idempotence = null;
+          if (!final.pending.length && recovered.length) {
+            idempotence = await call("/api/rasff/sync?mode=repair-detail", "POST", { items:known });
+            if (idempotence.repaired.length || idempotence.failed.length || idempotence.unchanged.length !== known.length)
+              throw new Error("Recovered identities are not idempotent: " + JSON.stringify(idempotence));
+            const stable = await snapshot("idempotence");
+            if (stable.audit.counts.rasffVersions !== final.audit.counts.rasffVersions)
+              throw new Error("Version churn after idempotence repair");
+          }
+          console.log("RECOVERY_FINAL " + JSON.stringify({ passes, recovered, final:{ delta:final.delta, pending:final.pending,
+            audit:final.audit, observe:final.observe }, attempts, idempotence }));
+          NODE
