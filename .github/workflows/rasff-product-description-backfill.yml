@@ -21,8 +21,8 @@ jobs:
       VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
       STAGE_BATCHES: "300"
-      STAGE_MARKER: "reconcile-1-stage-1"
-      ALLOW_EMPTY_STATE: "true"
+      STAGE_MARKER: "reconcile-1-stage-2"
+      ALLOW_EMPTY_STATE: "false"
     steps:
       - name: Reconcile exact official index with deferred-detail semantics
         shell: bash
