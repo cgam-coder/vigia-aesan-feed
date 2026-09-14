@@ -1,4 +1,4 @@
-name: VIGIA RASFF staged backfill completion
+name: VIGIA RASFF deferred-detail staged carrier
 
 on:
   push:
@@ -11,11 +11,168 @@ permissions:
 
 concurrency:
   group: vigia-rasff-controlled-activation
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  stopped:
+  staged-backfill:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+      STAGE_BATCHES: "100"
+      STAGE_MARKER: "stage-1"
     steps:
-      - name: Preserve checkpoint after persistent official RASFF 5xx
-        run: echo "RASFF writes remain stopped at the persisted checkpoint."
+      - name: Resume exact checkpoint with deferred-detail semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+          node <<'NODE'
+          const base = process.env.VIGIA_BASE_URL;
+          const token = process.env.VIGIA_SYNC_TOKEN;
+          const headers = { Authorization:"Bearer " + token, "Content-Type":"application/json" };
+          const MAX_BATCHES = Number(process.env.STAGE_BATCHES);
+          const BATCH_SIZE = 40;
+
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          const request = async (path, method = "GET", body, retryReadOnly = true) => {
+            const attempts = retryReadOnly ? 3 : 1;
+            let last;
+            for (let attempt = 1; attempt <= attempts; attempt++) {
+              try {
+                const response = await fetch(base + path, {
+                  method, headers, body:body === undefined ? undefined : JSON.stringify(body),
+                  redirect:"follow", signal:AbortSignal.timeout(600_000),
+                });
+                const text = await response.text();
+                let parsed;
+                try { parsed = JSON.parse(text); }
+                catch { throw new Error(method + " " + path + " returned non-JSON HTTP " + response.status + ": " + text.slice(0, 240)); }
+                if (response.status === 200) return parsed;
+                if (response.status === 202) throw new Error(method + " " + path + " unexpectedly skipped: " + text.slice(0, 500));
+                throw new Error(method + " " + path + " failed HTTP " + response.status + ": " + text.slice(0, 1000));
+              } catch (error) {
+                last = error;
+                if (!retryReadOnly || attempt === attempts) throw error;
+                await sleep(attempt * 3_000);
+              }
+            }
+            throw last;
+          };
+          const get = (path) => request(path, "GET", undefined, true);
+          const preview = (path) => request(path, "POST", undefined, true);
+          const write = (path, body) => request(path, "POST", body, false);
+          const sourceCounts = (audit) => ({
+            AESAN:audit.counts.aesanAlerts,
+            RAPNA:audit.counts.rapnaAlerts,
+            "SAFETY GATE":audit.counts.safetyGateAlerts,
+            OECD:audit.counts.oecdAlerts,
+          });
+          const assertIntegrity = (audit, label) => {
+            const anomalies = Object.entries(audit.integrity).filter(([, value]) => value !== 0);
+            if (anomalies.length) throw new Error(label + " integrity anomalies: " + JSON.stringify(anomalies));
+            const domains = audit.productDomains;
+            if (domains.humanFood + domains.animalFeed + domains.nonFood + domains.unknown !== audit.counts.rasffAlerts ||
+                domains.missingOrStaleDimensionState !== 0) throw new Error(label + " product-domain balance failed");
+            const geography = audit.geography;
+            if (geography.mappedRows + geography.unmappedRows !== geography.rows ||
+                geography.originRows + geography.notifyingRows + geography.distributionRows + geography.affectedRows !== geography.rows ||
+                geography.alertsWithGeography > audit.counts.rasffAlerts) throw new Error(label + " geography balance failed");
+            const hazards = audit.hazards;
+            if (hazards.mappedRows + hazards.unmappedRows + hazards.unknownRows !== hazards.rows ||
+                hazards.alertsWithHazards > audit.counts.rasffAlerts) throw new Error(label + " hazard balance failed");
+          };
+          const assertOtherSources = (baseline, audit, label) => {
+            const current = sourceCounts(audit);
+            for (const source of Object.keys(baseline)) {
+              if (current[source] < baseline[source]) throw new Error(label + ": " + source + " regressed from " + baseline[source] + " to " + current[source]);
+            }
+          };
+          const compact = (state) => ({
+            status:state.status, cursor:state.cursor, cursorKey:state.cursorKey,
+            totalUnits:state.totalUnits, pagesScanned:state.pagesScanned,
+            recordsObserved:state.recordsObserved, recordsPersisted:state.recordsPersisted,
+            newCount:state.newCount, updatedCount:state.updatedCount,
+            detailFailures:state.detailFailures, pageErrors:state.pageErrors,
+            coverage:state.coverage, lastError:state.lastError,
+            leaseOwnerId:state.leaseOwnerId, leaseMode:state.leaseMode,
+            leaseExpiresAt:state.leaseExpiresAt,
+          });
+
+          const observe = await get("/api/rasff/sync?observe=1");
+          const audit = (await get("/api/rasff/sync?audit=1")).audit;
+          assertIntegrity(audit, "initial");
+          if (observe.lease !== null) throw new Error("RASFF lease is active before staged backfill");
+          const initial = observe.backfill;
+          if (!initial || initial.cursor < 11515 || (initial.cursor > 0 && !initial.cursorKey))
+            throw new Error("RASFF cursor regressed or lost its anchor: " + JSON.stringify(initial));
+          if (initial.leaseOwnerId !== null || initial.leaseMode !== null || initial.leaseExpiresAt !== null)
+            throw new Error("Persisted RASFF backfill state retains a lease");
+
+          const preflight = await preview("/api/rasff/sync?mode=preflight");
+          const recentAnchor = encodeURIComponent(observe.recent?.cursorKey || "");
+          const previewRecent = await preview("/api/rasff/sync?mode=preview-recent&anchor=" + recentAnchor);
+          const previewReconcile = await preview("/api/rasff/sync?mode=preview-reconcile&cursor=" + initial.cursor +
+            "&cursorKey=" + encodeURIComponent(initial.cursorKey || "") + "&batchSize=40");
+          if (preflight.source !== "RASFF" || preflight.officialIndex.totalElements < initial.cursor)
+            throw new Error("RASFF preflight total is incompatible with the checkpoint");
+          console.log("STAGE_MARKER " + process.env.STAGE_MARKER);
+          console.log("INITIAL_OBSERVE " + JSON.stringify(observe));
+          console.log("INITIAL_AUDIT " + JSON.stringify(audit));
+          console.log("PREFLIGHT " + JSON.stringify(preflight));
+          console.log("PREVIEW_RECENT " + JSON.stringify(previewRecent));
+          console.log("PREVIEW_RECONCILE " + JSON.stringify(previewReconcile));
+
+          const baselineSources = sourceCounts(audit);
+          let prior = initial;
+          let executed = 0;
+          for (let batch = 1; batch <= MAX_BATCHES && prior.status !== "completed"; batch++) {
+            const body = await write("/api/rasff/sync?mode=backfill&batchSize=" + BATCH_SIZE);
+            const state = body.state;
+            if (!state || state.source !== "RASFF" || state.mode !== "backfill" || !["partial", "completed"].includes(state.status))
+              throw new Error("Batch " + batch + " returned invalid state: " + JSON.stringify(body));
+            if (state.pageErrors !== prior.pageErrors) throw new Error("Batch " + batch + " changed pageErrors");
+            const deferred = Array.isArray(state.deferredDetails) ? state.deferredDetails : [];
+            const detailDelta = state.detailFailures - prior.detailFailures;
+            if (detailDelta !== deferred.length || detailDelta < 0)
+              throw new Error("Batch " + batch + " detailFailures/deferred mismatch: " + JSON.stringify({ detailDelta, deferred }));
+            if (deferred.some((item) => !item.reference || !Number.isSafeInteger(item.notifId) ||
+                !["http-429", "http-5xx", "timeout", "aborted", "network"].includes(item.classification)))
+              throw new Error("Batch " + batch + " returned an invalid deferred classification");
+            if (state.recordsObserved <= prior.recordsObserved || state.recordsPersisted < prior.recordsPersisted ||
+                state.newCount < prior.newCount || state.updatedCount < prior.updatedCount)
+              throw new Error("Batch " + batch + " counters did not advance monotonically");
+            if (state.status === "partial" && (state.cursor <= prior.cursor || !state.cursorKey || state.cursorKey === prior.cursorKey))
+              throw new Error("Batch " + batch + " cursor did not advance");
+            if (state.status === "completed" && (state.cursor !== 0 || state.cursorKey !== null || state.coverage !== "official-index-complete"))
+              throw new Error("Batch " + batch + " completed with invalid terminal cursor/coverage");
+            if (state.leaseOwnerId !== null || state.leaseMode !== null || state.leaseExpiresAt !== null)
+              throw new Error("Batch " + batch + " response retained lease state");
+
+            const verified = await get("/api/rasff/sync?observe=1");
+            if (verified.lease !== null || !verified.backfill) throw new Error("Batch " + batch + " left an active/missing lease");
+            for (const key of ["status", "cursor", "cursorKey", "recordsObserved", "recordsPersisted", "newCount",
+              "updatedCount", "detailFailures", "pageErrors", "coverage"]) {
+              if (verified.backfill[key] !== state[key]) throw new Error("Batch " + batch + " persisted-state drift at " + key);
+            }
+            executed++;
+            console.log("BACKFILL_BATCH " + JSON.stringify({ batch, stage:process.env.STAGE_MARKER,
+              state:compact(state), deferredDetails:deferred, lease:verified.lease }));
+            prior = state;
+
+            if (batch % 25 === 0 || state.status === "completed") {
+              const currentAudit = (await get("/api/rasff/sync?audit=1")).audit;
+              assertIntegrity(currentAudit, "batch-" + batch);
+              assertOtherSources(baselineSources, currentAudit, "batch-" + batch);
+              console.log("PERIODIC_AUDIT " + JSON.stringify({ batch, stage:process.env.STAGE_MARKER, audit:currentAudit }));
+            }
+          }
+          const finalObserve = await get("/api/rasff/sync?observe=1");
+          const finalAudit = (await get("/api/rasff/sync?audit=1")).audit;
+          assertIntegrity(finalAudit, "stage-final");
+          assertOtherSources(baselineSources, finalAudit, "stage-final");
+          if (finalObserve.lease !== null) throw new Error("Stage ended with an active RASFF lease");
+          console.log("STAGE_COMPLETE " + JSON.stringify({ marker:process.env.STAGE_MARKER, executed,
+            state:compact(finalObserve.backfill), audit:finalAudit }));
+          NODE
