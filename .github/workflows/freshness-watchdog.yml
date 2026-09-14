@@ -29,18 +29,23 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$VIGIA_SYNC_TOKEN"
-          response_file="$RUNNER_TEMP/freshness.json"
-          http_code="$(curl --silent --show-error --location --request POST \
-            --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" --retry 1 --retry-all-errors \
-            --max-time 1800 --output "$response_file" --write-out '%{http_code}' \
-            "$VIGIA_FRESHNESS_URL?audit=1&recover=1")"
-          node -e '
-            const fs=require("node:fs");
-            const status=Number(process.argv[1]);
-            const body=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
-            const states=body?.states;
-            if(!Array.isArray(states)||states.length!==5) throw new Error("Missing five-source freshness state");
-            for(const state of states) console.log("FRESHNESS "+JSON.stringify(state));
-            if(status!==200||body?.allFresh!==true||states.some((state)=>state.status!=="fresh"))
-              throw new Error(`Freshness watchdog failed closed with HTTP ${status}`);
-          ' "$http_code" "$response_file"
+          node --input-type=module - <<'NODE'
+          const sources=["AESAN","RAPNA","RASFF","SAFETY GATE","OECD"];
+          const states=[];
+          let failed=false;
+          for(const source of sources){
+            const url=new URL(process.env.VIGIA_FRESHNESS_URL);
+            url.searchParams.set("audit","1");
+            url.searchParams.set("recover","1");
+            url.searchParams.set("source",source);
+            const response=await fetch(url,{method:"POST",headers:{Authorization:`Bearer ${process.env.VIGIA_SYNC_TOKEN}`},
+              signal:AbortSignal.timeout(1_800_000)});
+            const body=await response.json();
+            const state=Array.isArray(body?.states)&&body.states.length===1?body.states[0]:null;
+            if(!state||state.source!==source) throw new Error(`Missing freshness state for ${source}`);
+            states.push(state);
+            console.log("FRESHNESS "+JSON.stringify(state));
+            if(response.status!==200||body.allFresh!==true||state.status!=="fresh") failed=true;
+          }
+          if(states.length!==5||failed) throw new Error("Five-source freshness watchdog failed closed");
+          NODE
