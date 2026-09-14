@@ -13,9 +13,135 @@ concurrency:
   group: vigia-rasff-controlled-activation
   cancel-in-progress: true
 
+env:
+  VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+  VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+
 jobs:
-  stopped:
+  recover_expired_lease:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Preserve current checkpoint after Sites divergence STOP
-        run: echo "RASFF writes remain stopped pending explicit authorization."
+      - name: Repeat read-only gate and recover the cancelled run lease
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+          node <<'NODE'
+          const base = process.env.VIGIA_BASE_URL;
+          const headers = { Authorization:`Bearer ${process.env.VIGIA_SYNC_TOKEN}` };
+          const call = async (path, method = "GET") => {
+            const response = await fetch(base + path, {
+              method, headers, redirect:"follow", signal:AbortSignal.timeout(600_000),
+            });
+            const text = await response.text();
+            let body;
+            try { body = JSON.parse(text); }
+            catch { throw new Error(`${method} ${path} non-JSON HTTP ${response.status}: ${text.slice(0,240)}`); }
+            return { status:response.status, body };
+          };
+          const ok = async (path, method = "GET") => {
+            const result = await call(path, method);
+            if (result.status !== 200) throw new Error(`${method} ${path} HTTP ${result.status}: ${JSON.stringify(result.body).slice(0,500)}`);
+            return result.body;
+          };
+          const sourceCounts = (audit) => ({
+            AESAN:audit.counts.aesanAlerts,
+            RAPNA:audit.counts.rapnaAlerts,
+            "SAFETY GATE":audit.counts.safetyGateAlerts,
+            OECD:audit.counts.oecdAlerts,
+          });
+          const observe = await ok("/api/rasff/sync?observe=1");
+          const audit = (await ok("/api/rasff/sync?audit=1")).audit;
+          const preflight = await ok("/api/rasff/sync?mode=preflight", "POST");
+          const state = observe.backfill;
+          if (!state || state.cursor < 9955 || state.recordsObserved < 9955 ||
+              state.recordsPersisted < 9640 || state.detailFailures !== 0)
+            throw new Error(`Checkpoint drift before lease recovery: ${JSON.stringify(state)}`);
+          if (!preflight?.authorized || preflight?.source !== "RASFF" ||
+              preflight?.officialIndex?.totalElements < 32492 ||
+              !preflight?.officialIndex?.newest?.reference || !Number.isSafeInteger(preflight.officialIndex.newest.notifId))
+            throw new Error(`Official preflight drift: ${JSON.stringify(preflight)}`);
+          const baseline = sourceCounts(audit);
+          for (const [source, minimum] of Object.entries({AESAN:127,RAPNA:2567,"SAFETY GATE":21071,OECD:28394})) {
+            if (baseline[source] < minimum) throw new Error(`${source} regressed before RASFF recovery`);
+          }
+          if (observe.lease === null) {
+            console.log("LEASE_RECOVERY_NOT_REQUIRED " + JSON.stringify({state,baseline,preflight}));
+            process.exit(0);
+          }
+          if (!observe.lease.expiresAt || Date.parse(observe.lease.expiresAt) >= Date.now())
+            throw new Error(`RASFF lease is active or malformed: ${JSON.stringify(observe.lease)}`);
+
+          const result = await call("/api/rasff/sync?mode=backfill&batchSize=40", "POST");
+          const next = result.body?.state;
+          if (result.status !== 200 || !next || !["partial","completed"].includes(next.status) ||
+              next.cursor <= state.cursor || next.recordsObserved <= state.recordsObserved ||
+              next.recordsPersisted < state.recordsPersisted || next.pageErrors !== state.pageErrors ||
+              next.detailFailures !== 0 || next.lastError !== null ||
+              next.leaseOwnerId !== null || next.leaseMode !== null || next.leaseExpiresAt !== null)
+            throw new Error(`Expired lease recovery failed: HTTP ${result.status} ${JSON.stringify(next)}`);
+          const after = await ok("/api/rasff/sync?observe=1");
+          if (after.lease !== null || !after.backfill || after.backfill.cursor !== next.cursor)
+            throw new Error(`Lease was not released after recovery batch: ${JSON.stringify(after)}`);
+          const afterAudit = (await ok("/api/rasff/sync?audit=1")).audit;
+          const afterCounts = sourceCounts(afterAudit);
+          for (const source of Object.keys(baseline)) {
+            if (afterCounts[source] < baseline[source])
+              throw new Error(`${source} regressed during lease recovery`);
+          }
+          console.log("LEASE_RECOVERY_INITIAL " + JSON.stringify({state,lease:observe.lease,baseline,preflight}));
+          console.log("LEASE_RECOVERY_FINAL " + JSON.stringify({state:next,afterCounts}));
+          NODE
+
+  stage_1:
+    needs: recover_expired_lease
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      RASFF_STAGE: "1"
+      MAX_SUCCESSFUL_BATCHES: "160"
+      REQUIRE_COMPLETE: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resume RASFF from the current checkpoint — stage 1
+        run: node scripts/resume-rasff-backfill.mjs
+
+  stage_2:
+    needs: stage_1
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      RASFF_STAGE: "2"
+      MAX_SUCCESSFUL_BATCHES: "160"
+      REQUIRE_COMPLETE: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resume RASFF from the current checkpoint — stage 2
+        run: node scripts/resume-rasff-backfill.mjs
+
+  stage_3:
+    needs: stage_2
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      RASFF_STAGE: "3"
+      MAX_SUCCESSFUL_BATCHES: "160"
+      REQUIRE_COMPLETE: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resume RASFF from the current checkpoint — stage 3
+        run: node scripts/resume-rasff-backfill.mjs
+
+  stage_4:
+    needs: stage_3
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      RASFF_STAGE: "4"
+      MAX_SUCCESSFUL_BATCHES: "160"
+      REQUIRE_COMPLETE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Complete and certify the RASFF backfill — stage 4
+        run: node scripts/resume-rasff-backfill.mjs
