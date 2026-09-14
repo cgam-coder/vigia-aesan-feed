@@ -1,77 +1,14 @@
-name: VIGIA RASFF final recent idempotence
+name: VIGIA RASFF extraordinary carrier (stopped)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/rasff-product-description-backfill.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: vigia-rasff-controlled-activation
-  cancel-in-progress: false
-
 jobs:
-  recent:
+  stopped:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
-      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
-      - name: Run recent twice and certify stability
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "$VIGIA_SYNC_TOKEN"
-          node <<'NODE'
-          const base = process.env.VIGIA_BASE_URL;
-          const headers = { Authorization:"Bearer " + process.env.VIGIA_SYNC_TOKEN, "Content-Type":"application/json" };
-          const call = async (path, method = "GET") => {
-            const response = await fetch(base + path, { method, headers, redirect:"follow", signal:AbortSignal.timeout(600_000) });
-            const raw = await response.text();
-            let body;
-            try { body = JSON.parse(raw); } catch { throw new Error(method + " " + path + " returned non-JSON HTTP " + response.status); }
-            if (response.status !== 200) throw new Error(method + " " + path + " failed HTTP " + response.status + ": " + raw.slice(0, 2000));
-            return body;
-          };
-          const auditClean = (audit, label) => {
-            if (Object.values(audit.integrity).some((value) => value !== 0) ||
-                audit.counts.rasffAlerts !== audit.counts.rasffUniqueReferences ||
-                audit.counts.rasffAlerts !== audit.counts.rasffSourceIdentities ||
-                audit.counts.rasffVersions !== audit.counts.rasffVersionCountSum)
-              throw new Error(label + " audit failed: " + JSON.stringify(audit));
-          };
-          const beforeObserve = await call("/api/rasff/sync?observe=1");
-          const before = (await call("/api/rasff/sync?audit=1")).audit;
-          auditClean(before, "before");
-          if (beforeObserve.lease !== null) throw new Error("Recent started with an active RASFF lease");
-          const first = (await call("/api/rasff/sync?mode=recent", "POST")).state;
-          const middle = (await call("/api/rasff/sync?audit=1")).audit;
-          const second = (await call("/api/rasff/sync?mode=recent", "POST")).state;
-          const afterObserve = await call("/api/rasff/sync?observe=1");
-          const after = (await call("/api/rasff/sync?audit=1")).audit;
-          auditClean(middle, "middle"); auditClean(after, "after");
-          for (const [label, state] of [["first", first], ["second", second]]) {
-            const deferred = state.deferredDetails || [];
-            if (state.source !== "RASFF" || state.mode !== "recent" || state.status !== "completed" ||
-                state.leaseOwnerId !== null || state.leaseMode !== null || state.leaseExpiresAt !== null ||
-                state.detailFailures !== deferred.length || deferred.some((item) =>
-                  !["transport", "upstream"].includes(item.classification) ||
-                  !["http-429", "http-5xx", "timeout", "aborted", "network"].includes(item.reason)))
-              throw new Error(label + " recent contract failed: " + JSON.stringify(state));
-          }
-          if (second.recordsPersisted !== 0 || second.newCount !== 0 || second.updatedCount !== 0 ||
-              afterObserve.lease !== null || after.counts.rasffAlerts !== middle.counts.rasffAlerts ||
-              after.counts.rasffVersions !== middle.counts.rasffVersions)
-            throw new Error("Second recent is not idempotent");
-          for (const key of ["aesanAlerts", "rapnaAlerts", "safetyGateAlerts", "oecdAlerts"])
-            if (after.counts[key] < before.counts[key]) throw new Error(key + " regressed during recent");
-          console.log("RECENT_BEFORE " + JSON.stringify({ observe:beforeObserve, audit:before }));
-          console.log("RECENT_FIRST " + JSON.stringify(first));
-          console.log("RECENT_MIDDLE " + JSON.stringify(middle));
-          console.log("RECENT_SECOND " + JSON.stringify(second));
-          console.log("RECENT_AFTER " + JSON.stringify({ observe:afterObserve, audit:after }));
-          NODE
+      - name: Confirm neutralized workflow
+        run: echo "This extraordinary RASFF writer is intentionally neutralized."
