@@ -20,9 +20,9 @@ jobs:
     env:
       VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-      STAGE_BATCHES: "400"
-      STAGE_MARKER: "reconcile-1-recovery-20"
-      BATCH_SIZE: "20"
+      STAGE_BATCHES: "500"
+      STAGE_MARKER: "reconcile-1-recovery-10"
+      BATCH_SIZE: "10"
       ALLOW_EMPTY_STATE: "false"
     steps:
       - name: Reconcile exact official index with deferred-detail semantics
@@ -43,6 +43,30 @@ jobs:
             catch { throw new Error(method + " " + path + " returned non-JSON HTTP " + response.status); }
             if (response.status !== 200) throw new Error(method + " " + path + " failed HTTP " + response.status + ": " + text.slice(0, 1000));
             return body;
+          };
+          let globalRecoveries = 0;
+          const reconcileBatch = async () => {
+            for (let attempt = 1; attempt <= 5; attempt++) {
+              const path = "/api/rasff/sync?mode=reconcile&batchSize=" + BATCH_SIZE;
+              const response = await fetch(base + path, { method:"POST", headers, redirect:"follow",
+                signal:AbortSignal.timeout(600_000) });
+              const raw = await response.text();
+              let body;
+              try { body = JSON.parse(raw); }
+              catch { throw new Error("POST " + path + " returned non-JSON HTTP " + response.status); }
+              if (response.status === 200) return body;
+              const state = body?.state;
+              const recoverableD1Oom = response.status === 503 && state?.status === "failed" &&
+                state.lastError === "D1_ERROR: out of memory: SQLITE_NOMEM" &&
+                state.leaseOwnerId === null && state.leaseMode === null && state.leaseExpiresAt === null;
+              if (!recoverableD1Oom) throw new Error("POST " + path + " failed HTTP " + response.status + ": " + raw.slice(0, 1000));
+              globalRecoveries++;
+              console.log("RECONCILE_RECOVERABLE_GLOBAL " + JSON.stringify({ marker:process.env.STAGE_MARKER,
+                attempt, cursor:state.cursor, cursorKey:state.cursorKey, pageErrors:state.pageErrors,
+                lastError:state.lastError }));
+              if (attempt === 5) throw new Error("RASFF reconcile exceeded five exact D1 OOM retries at cursor " + state.cursor);
+              await new Promise((resolve) => setTimeout(resolve, attempt * 5_000));
+            }
           };
           const sourceCounts = (audit) => ({ AESAN:audit.counts.aesanAlerts, RAPNA:audit.counts.rapnaAlerts,
             "SAFETY GATE":audit.counts.safetyGateAlerts, OECD:audit.counts.oecdAlerts });
@@ -88,12 +112,14 @@ jobs:
           const baselineSources = sourceCounts(initialAudit);
           let executed = 0;
           for (let batch = 1; batch <= MAX_BATCHES && prior.status !== "completed"; batch++) {
-            const body = await call("/api/rasff/sync?mode=reconcile&batchSize=" + BATCH_SIZE, "POST");
+            const recoveriesBefore = globalRecoveries;
+            const body = await reconcileBatch();
             const state = body.state;
             if (!state || state.source !== "RASFF" || state.mode !== "reconcile" || !["partial", "completed"].includes(state.status))
               throw new Error("Reconcile batch " + batch + " returned invalid state");
             const deferred = Array.isArray(state.deferredDetails) ? state.deferredDetails : [];
-            if (state.pageErrors !== prior.pageErrors || state.detailFailures - prior.detailFailures !== deferred.length ||
+            if (state.pageErrors - prior.pageErrors !== globalRecoveries - recoveriesBefore ||
+                state.detailFailures - prior.detailFailures !== deferred.length ||
                 deferred.some((item) => !["transport", "upstream"].includes(item.classification) ||
                   !["http-429", "http-5xx", "timeout", "aborted", "network"].includes(item.reason)))
               throw new Error("Reconcile batch " + batch + " error classification/counter mismatch");
@@ -124,5 +150,5 @@ jobs:
           assertAudit(finalAudit, "reconcile-stage-final");
           if (finalObserve.lease !== null) throw new Error("Reconcile stage ended with active lease");
           console.log("RECONCILE_STAGE_COMPLETE " + JSON.stringify({ marker:process.env.STAGE_MARKER, executed,
-            state:compact(finalObserve.reconcile), audit:finalAudit }));
+            globalRecoveries, state:compact(finalObserve.reconcile), audit:finalAudit }));
           NODE
