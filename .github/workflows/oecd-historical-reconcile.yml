@@ -1,6 +1,10 @@
 name: VIGIA OECD daily historical reconcile
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/oecd-historical-reconcile.yml"
   schedule:
     - cron: "4,9,14,19,24,29,34,39,44,49,54,59 * * * *"
   workflow_dispatch:

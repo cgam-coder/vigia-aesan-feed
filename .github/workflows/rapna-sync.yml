@@ -1,6 +1,10 @@
 name: VIGIA RAPNA recent sync
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/rapna-sync.yml"
   schedule:
     - cron: "23 * * * *"
     - cron: "41 4 * * *"
@@ -57,7 +61,7 @@ jobs:
           ' "${http_code}" "${response_file}"
 
   current_parity:
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '41 4 * * *'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.schedule == '41 4 * * *'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
