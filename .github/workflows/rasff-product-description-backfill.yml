@@ -21,7 +21,7 @@ jobs:
       VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
       STAGE_BATCHES: "150"
-      STAGE_MARKER: "stage-2"
+      STAGE_MARKER: "stage-3"
     steps:
       - name: Resume exact checkpoint with deferred-detail semantics
         shell: bash
