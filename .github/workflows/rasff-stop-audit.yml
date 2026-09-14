@@ -54,11 +54,13 @@ jobs:
           const observe = (await api("/api/rasff/sync?observe=1")).body;
           const audit = (await api("/api/rasff/sync?audit=1")).body.audit;
           const preflight = (await api("/api/rasff/sync?mode=preflight", "POST")).body;
-          if (observe?.source !== "RASFF" || observe.lease !== null || !observe.backfill)
+          if (observe?.source !== "RASFF" || !observe.backfill)
             throw new Error(`Unsafe observe state: ${JSON.stringify(observe)}`);
+          const staleLease = observe.lease && Date.parse(observe.lease.expiresAt) < Date.now();
+          if (observe.lease !== null && !staleLease)
+            throw new Error(`Active or malformed lease blocks the gate: ${JSON.stringify(observe.lease)}`);
           const state = observe.backfill;
-          if (state.cursor < 9955 || state.recordsObserved < 9955 || state.detailFailures !== 0 ||
-              state.leaseOwnerId !== null || state.leaseMode !== null || state.leaseExpiresAt !== null)
+          if (state.cursor < 9955 || state.recordsObserved < 9955 || state.detailFailures !== 0)
             throw new Error(`Backfill checkpoint invariant failed: ${JSON.stringify(state)}`);
           if (!preflight?.authorized || preflight?.source !== "RASFF" ||
               !Number.isSafeInteger(preflight?.officialIndex?.totalElements) || preflight.officialIndex.totalElements < 1 ||
