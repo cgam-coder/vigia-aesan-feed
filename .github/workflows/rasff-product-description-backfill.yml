@@ -20,8 +20,8 @@ jobs:
     env:
       VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-      STAGE_BATCHES: "500"
-      STAGE_MARKER: "reconcile-1-stage-followup-20"
+      STAGE_BATCHES: "100"
+      STAGE_MARKER: "reconcile-1-terminal-20"
       BATCH_SIZE: "20"
       ALLOW_EMPTY_STATE: "false"
     steps:
