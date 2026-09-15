@@ -38,20 +38,39 @@ jobs:
           let previous = null;
           let executed = 0;
           let skipped = 0;
+          let transportRetries = 0;
           let budgetExhausted = false;
+          const call = async () => {
+            for (let attempt = 1; attempt <= 5; attempt++) {
+              try {
+                const response = await fetch(url, {
+                  method:"POST", headers, redirect:"follow", signal:AbortSignal.timeout(1_200_000),
+                });
+                const raw = await response.text();
+                let body;
+                try { body = JSON.parse(raw); } catch {
+                  throw new Error("OECD historical reconcile returned non-JSON HTTP " + response.status);
+                }
+                if (response.status === 200 || response.status === 202) return { response, body };
+                if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 5)
+                  throw new Error("OECD historical reconcile failed HTTP " + response.status + ": " + raw.slice(0, 1000));
+              } catch (error) {
+                if (attempt === 5 || error instanceof Error && error.message.startsWith("OECD historical reconcile failed HTTP"))
+                  throw error;
+                transportRetries++;
+                console.log("OECD_HISTORICAL_RECONCILE_RETRY " + JSON.stringify({ attempt,
+                  error:error instanceof Error ? error.message : String(error) }));
+              }
+              await new Promise((resolve) => setTimeout(resolve, attempt * 5_000));
+            }
+            throw new Error("OECD historical reconcile exhausted retries");
+          };
           for (let index = 1; index <= MAX_BATCHES; index++) {
             if (Date.now() >= deadline) {
               budgetExhausted = true;
               break;
             }
-            const response = await fetch(url, {
-              method:"POST", headers, redirect:"follow", signal:AbortSignal.timeout(1_200_000),
-            });
-            const raw = await response.text();
-            let body;
-            try { body = JSON.parse(raw); } catch {
-              throw new Error("OECD historical reconcile returned non-JSON HTTP " + response.status);
-            }
+            const { response, body } = await call();
             const state = body?.state;
             if (response.status === 202 && state?.status === "skipped") {
               skipped++;
@@ -78,5 +97,5 @@ jobs:
             throw new Error("OECD historical reconcile did not complete: " +
               JSON.stringify({ executed, skipped, budgetExhausted, state:previous }));
           console.log("OECD_HISTORICAL_RECONCILE_COMPLETE " +
-            JSON.stringify({ executed, skipped, budgetExhausted, state:previous }));
+            JSON.stringify({ executed, skipped, transportRetries, budgetExhausted, state:previous }));
           NODE
