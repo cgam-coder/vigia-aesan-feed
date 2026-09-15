@@ -19,7 +19,7 @@ concurrency:
 jobs:
   reconcile:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 225
     env:
       VIGIA_OECD_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/oecd/sync
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
@@ -29,17 +29,54 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$VIGIA_SYNC_TOKEN"
-          response_file="$RUNNER_TEMP/oecd-historical.json"
-          http_code="$(curl --silent --show-error --location --request POST \
-            --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" --retry 1 --retry-all-errors \
-            --max-time 1200 --output "$response_file" --write-out '%{http_code}' \
-            "$VIGIA_OECD_SYNC_URL?mode=historical-reconcile&batchSize=12")"
-          node -e '
-            const fs=require("node:fs");
-            const status=Number(process.argv[1]);
-            const state=JSON.parse(fs.readFileSync(process.argv[2],"utf8"))?.state;
-            if(![200,202].includes(status)||state?.source!=="OECD"||state?.mode!=="historical-reconcile"||
-               !["partial","completed","skipped"].includes(state?.status)||state?.lastError)
-              throw new Error(`OECD historical reconcile failed HTTP ${status}: ${JSON.stringify(state)}`);
-            console.log("OECD_HISTORICAL_RECONCILE "+JSON.stringify(state));
-          ' "$http_code" "$response_file"
+          node <<'NODE'
+          const url = process.env.VIGIA_OECD_SYNC_URL + "?mode=historical-reconcile&batchSize=12";
+          const headers = { Authorization:"Bearer " + process.env.VIGIA_SYNC_TOKEN };
+          const MAX_BATCHES = 300;
+          const TIME_BUDGET_MS = 210 * 60_000;
+          const deadline = Date.now() + TIME_BUDGET_MS;
+          let previous = null;
+          let executed = 0;
+          let skipped = 0;
+          let budgetExhausted = false;
+          for (let index = 1; index <= MAX_BATCHES; index++) {
+            if (Date.now() >= deadline) {
+              budgetExhausted = true;
+              break;
+            }
+            const response = await fetch(url, {
+              method:"POST", headers, redirect:"follow", signal:AbortSignal.timeout(1_200_000),
+            });
+            const raw = await response.text();
+            let body;
+            try { body = JSON.parse(raw); } catch {
+              throw new Error("OECD historical reconcile returned non-JSON HTTP " + response.status);
+            }
+            const state = body?.state;
+            if (response.status === 202 && state?.status === "skipped") {
+              skipped++;
+              console.log("OECD_HISTORICAL_RECONCILE_SKIPPED " + JSON.stringify(state));
+              await new Promise((resolve) => setTimeout(resolve, 30_000));
+              continue;
+            }
+            if (response.status !== 200 || state?.source !== "OECD" ||
+                state.mode !== "historical-reconcile" || !["partial", "completed"].includes(state.status) ||
+                state.lastError || state.leaseOwnerId !== null || state.leaseMode !== null ||
+                state.leaseExpiresAt !== null)
+              throw new Error("OECD historical reconcile failed HTTP " + response.status + ": " + JSON.stringify(state));
+            if (previous && state.status === "partial" && state.cursor <= previous.cursor)
+              throw new Error("OECD historical reconcile cursor did not advance");
+            if (previous && (state.recordsObserved <= previous.recordsObserved ||
+                state.recordsPersisted < previous.recordsPersisted))
+              throw new Error("OECD historical reconcile counters did not advance");
+            executed++;
+            previous = state;
+            console.log("OECD_HISTORICAL_RECONCILE " + JSON.stringify({ index, state }));
+            if (state.status === "completed") break;
+          }
+          if (previous?.status !== "completed")
+            throw new Error("OECD historical reconcile did not complete: " +
+              JSON.stringify({ executed, skipped, budgetExhausted, state:previous }));
+          console.log("OECD_HISTORICAL_RECONCILE_COMPLETE " +
+            JSON.stringify({ executed, skipped, budgetExhausted, state:previous }));
+          NODE
