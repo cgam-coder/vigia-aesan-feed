@@ -7,7 +7,7 @@ on:
       - ".github/workflows/rasff-control.yml"
   schedule:
     - cron: "9,39 * * * *"
-    - cron: "17 */4 * * *"
+    - cron: "17 * * * *"
   workflow_dispatch:
     inputs:
       lane:
@@ -64,7 +64,7 @@ jobs:
           NODE
 
   reconcile:
-    if: github.event_name == 'push' || github.event_name == 'schedule' && github.event.schedule == '17 */4 * * *' || github.event_name == 'workflow_dispatch' && inputs.lane == 'reconcile'
+    if: github.event_name == 'push' || github.event_name == 'schedule' && github.event.schedule == '17 * * * *' || github.event_name == 'workflow_dispatch' && inputs.lane == 'reconcile'
     runs-on: ubuntu-latest
     timeout-minutes: 360
     concurrency:

@@ -10,8 +10,8 @@ test("RASFF recent and reconcile lanes are independently serialized", () => {
   assert.equal((workflow.match(/group: vigia-rasff-/gu) ?? []).length, 2);
 });
 
-test("RASFF reconcile cadence and budget can cover the measured 32k corpus", () => {
-  assert.match(workflow, /cron: "17 \*\/4 \* \* \*"/u);
+test("RASFF reconcile cadence and budget can cover the measured 32k corpus with scheduling margin", () => {
+  assert.match(workflow, /cron: "17 \* \* \* \*"/u);
   assert.match(workflow, /timeout-minutes: 360/u);
   assert.match(workflow, /const BATCH_SIZE = 20;/u);
   assert.match(workflow, /const MAX_BATCHES = 2_000;/u);
