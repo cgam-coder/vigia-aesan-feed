@@ -1,9 +1,13 @@
 name: VIGIA RASFF production scheduler
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/rasff-control.yml"
   schedule:
     - cron: "9,39 * * * *"
-    - cron: "27 2 * * *"
+    - cron: "17 */4 * * *"
   workflow_dispatch:
     inputs:
       lane:
@@ -17,15 +21,14 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: vigia-rasff-controlled-activation
-  cancel-in-progress: false
-
 jobs:
   recent:
     if: github.event_name == 'schedule' && github.event.schedule == '9,39 * * * *' || github.event_name == 'workflow_dispatch' && inputs.lane == 'recent'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    concurrency:
+      group: vigia-rasff-recent
+      cancel-in-progress: false
     env:
       VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
@@ -61,9 +64,12 @@ jobs:
           NODE
 
   reconcile:
-    if: github.event_name == 'schedule' && github.event.schedule == '27 2 * * *' || github.event_name == 'workflow_dispatch' && inputs.lane == 'reconcile'
+    if: github.event_name == 'push' || github.event_name == 'schedule' && github.event.schedule == '17 */4 * * *' || github.event_name == 'workflow_dispatch' && inputs.lane == 'reconcile'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 360
+    concurrency:
+      group: vigia-rasff-reconcile
+      cancel-in-progress: false
     env:
       VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
@@ -78,13 +84,17 @@ jobs:
           const headers = { Authorization:"Bearer " + process.env.VIGIA_SYNC_TOKEN, "Content-Type":"application/json" };
           const SEARCH_URL = "https://webgate.ec.europa.eu/rasff-window/backend/public/notification/search/consolidated/en/";
           const BATCH_SIZE = 20;
-          const MAX_BATCHES = 500;
+          const MAX_BATCHES = 2_000;
+          const TIME_BUDGET_MS = 340 * 60_000;
+          const deadline = Date.now() + TIME_BUDGET_MS;
           const recoverableGlobalFailure = (state) => Boolean(state?.status === "failed" &&
             state.leaseOwnerId === null && state.leaseMode === null && state.leaseExpiresAt === null && (
               state.lastError === "D1_ERROR: out of memory: SQLITE_NOMEM" ||
               state.lastError === "RASFF agotó el timeout para " + SEARCH_URL ||
               state.lastError === "RASFF abortó la petición para " + SEARCH_URL ||
               state.lastError === "RASFF sufrió un fallo de red para " + SEARCH_URL ||
+              state.lastError === "RASFF reconciliation index changed during cursor recovery" ||
+              state.lastError === "RASFF reconciliation index changed during batch discovery" ||
               /^RASFF devolvió HTTP (?:429|5\d\d) para https:\/\/webgate\.ec\.europa\.eu\/rasff-window\/backend\/public\/notification\/search\/consolidated\/en\/$/u.test(state.lastError || "")
             ));
           const call = async (path, method = "GET") => {
@@ -126,7 +136,12 @@ jobs:
                 detailFailures:0, pageErrors:0 }
             : observe.reconcile;
           let executed = 0;
+          let budgetExhausted = false;
           for (let index = 1; index <= MAX_BATCHES; index++) {
+            if (Date.now() >= deadline) {
+              budgetExhausted = true;
+              break;
+            }
             const recoveriesBefore = globalRecoveries;
             const body = await batch();
             if (body?.state?.status === "skipped") break;
@@ -162,6 +177,8 @@ jobs:
           }
           const finalObserve = await call("/api/rasff/sync?observe=1");
           if (finalObserve.lease !== null) throw new Error("RASFF scheduler left an active lease");
-          console.log("RASFF_RECONCILE_STAGE_COMPLETE " + JSON.stringify({ executed, globalRecoveries,
+          if (finalObserve.reconcile?.status === "failed")
+            throw new Error("RASFF scheduler ended in failed state: " + JSON.stringify(finalObserve.reconcile));
+          console.log("RASFF_RECONCILE_STAGE_COMPLETE " + JSON.stringify({ executed, globalRecoveries, budgetExhausted,
             state:finalObserve.reconcile }));
           NODE
