@@ -4,7 +4,7 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-09-12T12:07:20.207Z",
+  "generatedAt": "2026-09-15T15:39:08.037Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
     "totalAlerts": 127,
@@ -756,9 +756,15 @@
       "sourceRecordId": "bba745c0-3f3b-4322-a67e-d566d4ace8a0",
       "sourceRecordIdType": "idAlert",
       "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "00f60bb402d4e818b45919cf4bc7cfd9ad944d669e3a4da0e66b924f2bed71fc",
+      "sourceRecordHash": "031fdb2f55b2a744cf6b01d637bdeaae914b67eeb64cd84ebba1cc3f8b980a78",
       "previousReferences": [],
-      "referenceHistory": [],
+      "referenceHistory": [
+        {
+          "reference": "ES2026/478",
+          "title": "Advertencia para personas con a alergia a la mostaza: Presencia de mostaza no declarada en pasta alimenticia “cabello de ángel” procedente de Marruecos (Ref.ES2026/478)",
+          "contentHash": "cda1f3ae9d13321a8ad9d07c0bfc1745cd5d50ad53c85b801f5ef67d88a4fdaf"
+        }
+      ],
       "source": "AESAN",
       "type": "Alimentaria",
       "priority": "Media",
@@ -888,45 +894,38 @@
         },
         {
           "kind": "document",
-          "url": "https://www.aesan.gob.es/AECOSAN/docs/documentos/seguridad_alimentaria/gestion_riesgos/Cuadriptico_Alergias_Alimentarias_interactivo.pdf",
+          "url": "https://www.aesan.gob.es/dam/jcr:c2bccf06-9aea-45e8-9725-546a60eee891/Cuadriptico_Alergias_Alimentarias_interactivo.pdf",
           "label": "Información a los consumidores sobre alergias alimentarias",
           "sourceField": "article.link[1]",
           "order": 1
         },
         {
           "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/alergias_e_intolerancias.htm",
+          "url": "https://www.aesan.gob.es/seguridad-alimentaria/informacion-alimentaria/etiquetado-sustancias",
           "label": "Etiquetado de sustancias que causan alergias e intolerancias",
           "sourceField": "article.link[2]",
           "order": 2
         },
         {
           "kind": "document",
-          "url": "https://www.aesan.gob.es/AECOSAN/docs/documentos/publicaciones/seguridad_alimentaria/intolerancia_lactosa.pdf",
+          "url": "https://www.aesan.gob.es/dam/jcr:63990b52-7b41-4d8c-ba93-745d68b63471/intolerancia_lactosa.pdf",
           "label": "Intolerancia a la lactosa",
           "sourceField": "article.link[3]",
           "order": 3
         },
         {
           "kind": "document",
-          "url": "https://www.aesan.gob.es/AECOSAN/docs/documentos/publicaciones/seguridad_alimentaria/enfermedad_celiaca.pdf",
+          "url": "https://www.aesan.gob.es/dam/jcr:a9d14dd3-f957-4638-8448-c2b3e007ec0c/enfermedad_celiaca.pdf",
           "label": "Enfermedad celiaca",
           "sourceField": "article.link[4]",
           "order": 4
         },
         {
           "kind": "document",
-          "url": "https://www.aesan.gob.es/AECOSAN/docs/documentos/publicaciones/seguridad_alimentaria/GUIA_ETIQUETADO_DE_ALIMENTOS_QUE_CONTIENEN_CEREALES_CON_GLUTEN.pdf",
+          "url": "https://www.aesan.gob.es/dam/jcr:738ee87d-9f8f-4f46-bf93-f6ba9766ee71/GUIA_ETIQUETADO_DE_ALIMENTOS_QUE_CONTIENEN_CEREALES_CON_GLUTEN.pdf",
           "label": "Guía de etiquetado de alimentos que contienen cereales con gluten",
           "sourceField": "article.link[5]",
           "order": 5
-        },
-        {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/informacion_gluten.htm",
-          "label": "Información sobre la ausencia o presencia reducida de gluten",
-          "sourceField": "article.link[6]",
-          "order": 6
         }
       ],
       "officialDates": [
@@ -940,9 +939,9 @@
       "url": "https://www.aesan.gob.es/alertas/2026_63",
       "publishedAt": "2026-08-16T22:00:00.000Z",
       "detectedAt": "2026-08-17T13:56:00.648Z",
-      "updatedAt": "2026-08-16T22:00:00.000Z",
-      "contentHash": "cda1f3ae9d13321a8ad9d07c0bfc1745cd5d50ad53c85b801f5ef67d88a4fdaf",
-      "versionCount": 1,
+      "updatedAt": "2026-09-15T15:39:08.037Z",
+      "contentHash": "031fdb2f55b2a744cf6b01d637bdeaae914b67eeb64cd84ebba1cc3f8b980a78",
+      "versionCount": 2,
       "isUpdate": false
     },
     {
@@ -8934,9 +8933,15 @@
       "sourceRecordId": "1f76ccae-5e59-4f87-95fd-59c297b0e36a",
       "sourceRecordIdType": "idAlert",
       "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "7420538a9cdf66b7729621ad9f0c69a7d0da8dc709963d7290c5f543bfc96d95",
+      "sourceRecordHash": "ea675b053055cb20a847adeeba3b0214a6bdcdd5b0f7845678698d5d7a7e8d53",
       "previousReferences": [],
-      "referenceHistory": [],
+      "referenceHistory": [
+        {
+          "reference": "ES2026/198",
+          "title": "Alerta por presencia de sildenafilo en complemento alimenticio procedente de Colombia. (Ref. ES2026/198)",
+          "contentHash": "23c590173e36078ab69037a854e2998b8df0142d26c42a2fe9345bf382864e86"
+        }
+      ],
       "source": "AESAN",
       "type": "Alimentaria",
       "priority": "Alta",
@@ -9019,14 +9024,14 @@
         },
         {
           "kind": "document",
-          "url": "https://www.aesan.gob.es/AECOSAN/docs/documentos/publicaciones/seguridad_alimentaria/saber_complementos.pdf",
+          "url": "https://www.aesan.gob.es/dam/jcr:6a31e263-dccf-4897-b79b-f3aa3110a5db/saber_complementos.pdf",
           "label": "¿Qué necesito saber sobre los complementos alimenticios?",
           "sourceField": "article.link[1]",
           "order": 1
         },
         {
           "kind": "document",
-          "url": "https://www.aesan.gob.es/AECOSAN/docs/documentos/publicaciones/seguridad_alimentaria/Decalogo_consumo_responsable_complementos_alimenticios.pdf",
+          "url": "https://www.aesan.gob.es/dam/jcr:13495cbc-0bd5-4956-bff4-68b177ce1643/Decalogo_consumo_responsable_complementos_alimenticios.pdf",
           "label": "Decálogo para un consumo responsable de los complementos alimenticios",
           "sourceField": "article.link[2]",
           "order": 2
@@ -9056,9 +9061,9 @@
       "url": "https://www.aesan.gob.es/alertas/2026_29",
       "publishedAt": "2026-04-09T22:00:00.000Z",
       "detectedAt": "2026-08-14T11:24:15.349Z",
-      "updatedAt": "2026-04-09T22:00:00.000Z",
-      "contentHash": "23c590173e36078ab69037a854e2998b8df0142d26c42a2fe9345bf382864e86",
-      "versionCount": 1,
+      "updatedAt": "2026-09-15T15:39:08.037Z",
+      "contentHash": "ea675b053055cb20a847adeeba3b0214a6bdcdd5b0f7845678698d5d7a7e8d53",
+      "versionCount": 2,
       "isUpdate": false
     },
     {
