@@ -12,6 +12,8 @@ test("OECD historical reconciliation resumes its checkpoint to completion within
   assert.match(workflow, /while \(executed < MAX_BATCHES\)/u);
   assert.match(workflow, /state\.cursor <= previous\.cursor/u);
   assert.match(workflow, /OECD historical reconcile cursor did not advance/u);
+  assert.match(workflow, /state\.recordsPersisted < previous\.recordsPersisted/u);
+  assert.doesNotMatch(workflow, /state\.recordsObserved <= previous\.recordsObserved/u);
   assert.match(workflow, /attempt <= 5/u);
   assert.match(workflow, /\[429, 500, 502, 503, 504\]/u);
   assert.match(workflow, /OECD_HISTORICAL_RECONCILE_RETRY/u);

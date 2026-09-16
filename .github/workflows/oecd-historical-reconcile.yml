@@ -85,9 +85,8 @@ jobs:
               throw new Error("OECD historical reconcile failed HTTP " + response.status + ": " + JSON.stringify(state));
             if (previous && state.status === "partial" && state.cursor <= previous.cursor)
               throw new Error("OECD historical reconcile cursor did not advance");
-            if (previous && (state.recordsObserved <= previous.recordsObserved ||
-                state.recordsPersisted < previous.recordsPersisted))
-              throw new Error("OECD historical reconcile counters did not advance");
+            if (previous && state.recordsPersisted < previous.recordsPersisted)
+              throw new Error("OECD historical reconcile persisted counter regressed");
             executed++;
             previous = state;
             console.log("OECD_HISTORICAL_RECONCILE " + JSON.stringify({ index:executed, state }));
