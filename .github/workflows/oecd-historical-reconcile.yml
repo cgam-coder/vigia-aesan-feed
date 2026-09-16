@@ -30,10 +30,10 @@ jobs:
           set -euo pipefail
           test -n "$VIGIA_SYNC_TOKEN"
           node <<'NODE'
-          const url = process.env.VIGIA_OECD_SYNC_URL + "?mode=historical-reconcile&batchSize=12";
+          const url = process.env.VIGIA_OECD_SYNC_URL + "?mode=historical-reconcile&batchSize=2";
           const headers = { Authorization:"Bearer " + process.env.VIGIA_SYNC_TOKEN };
-          const MAX_BATCHES = 300;
-          const TIME_BUDGET_MS = 210 * 60_000;
+          const MAX_BATCHES = 2_000;
+          const TIME_BUDGET_MS = 185 * 60_000;
           const deadline = Date.now() + TIME_BUDGET_MS;
           let previous = null;
           let executed = 0;
@@ -65,7 +65,7 @@ jobs:
             }
             throw new Error("OECD historical reconcile exhausted retries");
           };
-          for (let index = 1; index <= MAX_BATCHES; index++) {
+          while (executed < MAX_BATCHES) {
             if (Date.now() >= deadline) {
               budgetExhausted = true;
               break;
@@ -90,12 +90,12 @@ jobs:
               throw new Error("OECD historical reconcile counters did not advance");
             executed++;
             previous = state;
-            console.log("OECD_HISTORICAL_RECONCILE " + JSON.stringify({ index, state }));
+            console.log("OECD_HISTORICAL_RECONCILE " + JSON.stringify({ index:executed, state }));
             if (state.status === "completed") break;
           }
-          if (previous?.status !== "completed")
+          if (previous?.status !== "completed" && !budgetExhausted)
             throw new Error("OECD historical reconcile did not complete: " +
               JSON.stringify({ executed, skipped, budgetExhausted, state:previous }));
-          console.log("OECD_HISTORICAL_RECONCILE_COMPLETE " +
+          console.log("OECD_HISTORICAL_RECONCILE_STAGE_COMPLETE " +
             JSON.stringify({ executed, skipped, transportRetries, budgetExhausted, state:previous }));
           NODE
