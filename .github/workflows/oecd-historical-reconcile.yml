@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: vigia-oecd-historical-reconcile
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   reconcile:
