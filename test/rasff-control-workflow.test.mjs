@@ -23,6 +23,7 @@ test("RASFF reconcile cadence and budget can cover the measured 32k corpus with 
 test("the persisted checkpoint resumes after the former monotonic-growth failure", () => {
   assert.match(workflow, /index changed during cursor recovery/u);
   assert.match(workflow, /index changed during batch discovery/u);
+  assert.match(workflow, /D1_ERROR: internal error; reference = \\[a-z0-9\\]/u);
   assert.match(workflow, /state\.cursor <= prior\.cursor/u);
   assert.match(workflow, /RASFF reconcile cursor did not advance/u);
   assert.match(workflow, /finalObserve\.reconcile\?\.status === "failed"/u);

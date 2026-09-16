@@ -90,6 +90,7 @@ jobs:
           const recoverableGlobalFailure = (state) => Boolean(state?.status === "failed" &&
             state.leaseOwnerId === null && state.leaseMode === null && state.leaseExpiresAt === null && (
               state.lastError === "D1_ERROR: out of memory: SQLITE_NOMEM" ||
+              /^D1_ERROR: internal error; reference = [a-z0-9]+$/u.test(state.lastError || "") ||
               state.lastError === "RASFF agotó el timeout para " + SEARCH_URL ||
               state.lastError === "RASFF abortó la petición para " + SEARCH_URL ||
               state.lastError === "RASFF sufrió un fallo de red para " + SEARCH_URL ||
