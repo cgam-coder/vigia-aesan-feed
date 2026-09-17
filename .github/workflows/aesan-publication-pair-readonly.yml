@@ -1,0 +1,32 @@
+name: AESAN publication pair read-only proof
+on:
+  push:
+    branches: ["ops/incident-readonly-20260917"]
+    paths: [".github/workflows/aesan-publication-pair-readonly.yml"]
+permissions:
+  contents: read
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Read the two official publication identities and explicit expansion wording
+        run: |
+          set -euo pipefail
+          node --input-type=module - <<'NODE'
+          import {sourceIdentityForHtml,stripHtml} from './scripts/aesan.mjs';
+          for(const suffix of ['2026_65','2026_65_rev']) {
+            const url='https://www.aesan.gob.es/alertas/'+suffix;
+            const response=await fetch(url,{method:'GET',headers:{'User-Agent':'NagameAlert-Identity-Audit/1.0'},signal:AbortSignal.timeout(60000)});
+            if(!response.ok) throw new Error('Official page HTTP '+response.status);
+            const html=await response.text();
+            const title=stripHtml(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1]||'');
+            const paragraphs=[...html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].map(m=>stripHtml(m[1]));
+            const relation=paragraphs.filter(p=>/^Como ampliaci[oó]n|^La Agencia.*ampl[ií]a/i.test(p));
+            console.log('VERIFIED_PUBLICATION_PAIR '+JSON.stringify({checkedAt:new Date().toISOString(),url,identity:sourceIdentityForHtml(html,url),title,relation}));
+          }
+          console.log('GET_ONLY_NO_PRODUCTION_ACCESS_NO_WRITES');
+          NODE
