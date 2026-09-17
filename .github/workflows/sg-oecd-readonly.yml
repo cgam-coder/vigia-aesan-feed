@@ -1,0 +1,66 @@
+name: Safety Gate transport and OECD identity read-only proof
+on:
+  push:
+    branches: [ops/sg-oecd-readonly-20260917]
+    paths: [.github/workflows/sg-oecd-readonly.yml]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Read official endpoints and exact stored public identities (no writes or secrets)
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          const SG = 'https://ec.europa.eu/safety-gate-alerts';
+          const RUNTIME = 'https://vigia-alertas.csar68.chatgpt.site';
+          const results = [];
+          async function read(label, url, init = {}) {
+            const origin = new URL(url).origin;
+            if (![new URL(SG).origin, new URL(RUNTIME).origin].includes(origin)) throw new Error('Unapproved diagnostic origin');
+            try {
+              const response = await fetch(url, { ...init, redirect: 'error', signal: AbortSignal.timeout(30000) });
+              const reader = response.body?.getReader();
+              const chunks = [];
+              let bytes = 0;
+              if (reader) for (;;) {
+                const {done,value} = await reader.read();
+                if (done) break;
+                bytes += value.byteLength;
+                if (bytes > 3 * 1024 * 1024) { await reader.cancel(); throw new Error('Response exceeds diagnostic byte budget'); }
+                chunks.push(value);
+              }
+              const text = Buffer.concat(chunks).toString('utf8');
+              let body = null;
+              try { body = JSON.parse(text); } catch {}
+              const records = Array.isArray(body?.content) ? body.content : Array.isArray(body?.items) ? body.items : null;
+              const result = {label, checkedAt: new Date().toISOString(), url, status: response.status,
+                contentType: response.headers.get('content-type'), bytes,
+                returned: records?.length ?? null,
+                references: records?.map(item => ({reference: item.reference, id: item.id,
+                  publishedAt: item.publishedAt ?? item.publicationDate, versionCount: item.versionCount})),
+                totalPages: body?.totalPages, totalElements: body?.totalElements,
+                error: !response.ok ? text.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').slice(0,240) : undefined,
+                xmlReportIndex: label === 'SG weekly XML index' ? /<weeklyReport[\s>]/.test(text) : undefined};
+              results.push(result);
+              console.log(JSON.stringify(result));
+            } catch (error) {
+              const result = {label, checkedAt: new Date().toISOString(), url, error: String(error)};
+              results.push(result);
+              console.log(JSON.stringify(result));
+            }
+          }
+          // The official mostRecent POST is a read-only public search operation.
+          for (const size of [20,100]) await read(`SG official mostRecent size ${size}`, `${SG}/public/api/notification/mostRecent/?`, {
+            method: 'POST', headers: {Accept: 'application/json', 'Content-Type': 'application/json', language: 'es'},
+            body: JSON.stringify({language: 'es', page: '0', pageSize: String(size)})});
+          await read('SG weekly XML index', `${SG}/api/download/weeklyReport/list/xml/en`, {headers:{Accept:'application/xml,text/xml'}});
+          await read('OECD stored latest 20', `${RUNTIME}/api/v2/alerts?source=OECD&pageSize=20`);
+          for (const reference of ['EN/US/26748','EN/US/26749','EN/US/26750','EN/US/26752']) {
+            await read(`OECD exact ${reference}`, `${RUNTIME}/api/v2/alerts?source=OECD&pageSize=1&reference=${encodeURIComponent(reference)}`);
+          }
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, '# Read-only diagnostic\n\nNo production writes, sync, recovery, checkpoints or secrets. A successful diagnostic job is not a declaration of source health.\n\n```json\n' + JSON.stringify(results,null,2) + '\n```\n');
+          NODE
