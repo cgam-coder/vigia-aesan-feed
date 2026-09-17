@@ -1,0 +1,62 @@
+name: AESAN identity collision read-only evidence
+on:
+  push:
+    branches: ["ops/incident-readonly-20260917"]
+    paths: [".github/workflows/aesan-identity-readonly.yml"]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Compare published feed identities and their official pages without any write
+        run: |
+          set -euo pipefail
+          node --input-type=module - <<'NODE'
+          import {parseListCards,stripHtml,sourceIdentityForHtml,consolidateListCards} from './scripts/aesan.mjs';
+          const headers={Authorization:'Bearer '+process.env.GH_TOKEN,Accept:'application/vnd.github+json'};
+          const api='https://api.github.com/repos/'+process.env.GITHUB_REPOSITORY;
+          async function read(url, headers={}) {
+            const response=await fetch(url,{method:'GET',headers,signal:AbortSignal.timeout(60000)});
+            if(!response.ok) throw new Error('GET '+new URL(url).pathname+' HTTP '+response.status);
+            return response.text();
+          }
+          const selected=new Set(['Update AESAN feed','Update full AESAN archive','VIGIA RASFF production scheduler','VIGIA OECD daily historical reconcile','VIGIA Safety Gate + OECD recent sync','VIGIA five-source freshness watchdog']);
+          for(const workflow of JSON.parse(await read(api+'/actions/workflows?per_page=100',headers)).workflows.filter(x=>selected.has(x.name))) {
+            const runs=JSON.parse(await read(api+'/actions/workflows/'+workflow.id+'/runs?branch=main&per_page=2',headers)).workflow_runs;
+            console.log('SOURCE_RUNS '+JSON.stringify({name:workflow.name,state:workflow.state,runs:runs.map(r=>({id:r.id,status:r.status,conclusion:r.conclusion,sha:r.head_sha,event:r.event,createdAt:r.created_at}))}));
+          }
+          const root='https://raw.githubusercontent.com/cgam-coder/vigia-aesan-feed/';
+          const before=JSON.parse(await read(root+'d8da640a70992e7cec2b863f4980f17c565eb634/feed.json'));
+          const after=JSON.parse(await read(root+'main/feed.json?incident=20260917'));
+          const summary=a=>({id:a.id,reference:a.reference,url:a.url,sourceRecordId:a.sourceRecordId,sourceRecordIdType:a.sourceRecordIdType,title:a.title,publishedAt:a.publishedAt,detectedAt:a.detectedAt,versionCount:a.versionCount,hash:a.contentHash});
+          const old=new Map(before.alerts.map(a=>[a.id,a]));
+          const changed=after.alerts.filter(a=>old.has(a.id)&&old.get(a.id).sourceRecordId!==a.sourceRecordId);
+          console.log('FEED_IDENTITY_TRANSITIONS '+JSON.stringify(changed.map(a=>({before:summary(old.get(a.id)),after:summary(a)}))));
+          const targetAfter=after.alerts.find(a=>a.reference==='ES2026/517'),targetBefore=before.alerts.find(a=>a.reference==='ES2026/517');
+          console.log('AESAN_517 '+JSON.stringify({before:targetBefore&&summary(targetBefore),after:targetAfter&&summary(targetAfter)}));
+          const urls=[...new Set([targetBefore?.url,targetAfter?.url].filter(Boolean))];
+          for(const url of urls) {
+            const html=await read(url,{'User-Agent':'NagameAlert-Incident-ReadOnly/1.0'});
+            const article=html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1]||html;
+            const links=[...article.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)].map(m=>({url:m[1],text:stripHtml(m[2])}));
+            const paragraphs=[...article.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].map(m=>stripHtml(m[1])).filter(x=>/amplia|actualiz|publicad|fecha|comunicad|alerta/i.test(x)).slice(0,5);
+            console.log('OFFICIAL_PUBLICATION '+JSON.stringify({url,identity:sourceIdentityForHtml(html,url),title:stripHtml(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1]||''),links:links.filter(x=>/alertas|AECOSAN/.test(x.url)),paragraphs}));
+          }
+          for(const page of [1,2]) {
+            const html=await read('https://www.aesan.gob.es/alertas/buscador-alertas'+(page===1?'':'/'+page));
+            const cards=parseListCards(html).filter(a=>a.reference==='ES2026/517');
+            console.log('OFFICIAL_517_CARDS '+JSON.stringify({page,cards,selected:consolidateListCards(cards)}));
+          }
+          const observations=JSON.parse(await read('https://vigia-alertas.csar68.chatgpt.site/api/aesan/sync?observe=1',{Authorization:'Bearer '+process.env.VIGIA_SYNC_TOKEN}));
+          console.log('AESAN_RUNTIME_OBSERVE '+JSON.stringify(observations));
+          console.log('NO_POST_NO_RECOVERY_NO_DATA_WRITES');
+          NODE
