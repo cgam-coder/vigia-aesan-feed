@@ -1,0 +1,81 @@
+name: VIGIA OECD recent freshness retry
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/oecd-recent-freshness-retry.yml"
+  schedule:
+    - cron: "2,32 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retry-recent-if-stale:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    concurrency:
+      group: vigia-oecd-recent
+      cancel-in-progress: false
+    env:
+      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+    steps:
+      - name: Refresh OECD only when the recent lane is aging
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+          node <<'NODE'
+          const base = process.env.VIGIA_BASE_URL;
+          const headers = { Authorization:`Bearer ${process.env.VIGIA_SYNC_TOKEN}`, "Content-Type":"application/json" };
+          const observe = async () => {
+            const response = await fetch(base + "/api/oecd/sync?observe=1", {
+              headers, redirect:"follow", signal:AbortSignal.timeout(60_000),
+            });
+            const body = await response.json();
+            if (response.status !== 200) throw new Error("OECD observe failed HTTP " + response.status);
+            return body;
+          };
+
+          const initial = await observe();
+          const last = initial?.recent?.lastSuccessAt;
+          const ageMs = last ? Date.now() - Date.parse(last) : Number.POSITIVE_INFINITY;
+          const thresholdMs = 45 * 60_000;
+          if (Number.isFinite(ageMs) && ageMs <= thresholdMs) {
+            console.log("OECD_RECENT_FRESH_NOOP " + JSON.stringify({ lastSuccessAt:last, ageMinutes:Math.round(ageMs/60_000) }));
+            process.exit(0);
+          }
+
+          for (let attempt=1; attempt<=15; attempt++) {
+            const response = await fetch(base + "/api/oecd/sync?mode=recent", {
+              method:"POST", headers, redirect:"follow", signal:AbortSignal.timeout(840_000),
+            });
+            const raw = await response.text();
+            let body;
+            try { body = JSON.parse(raw); } catch { throw new Error("OECD recent returned non-JSON HTTP " + response.status); }
+            const state = body?.state;
+            if (response.status === 200) {
+              if (state?.source !== "OECD" || state?.mode !== "recent" || !["partial","completed"].includes(state.status) ||
+                  state.lastError !== null || state.leaseOwnerId !== null || state.leaseMode !== null || state.leaseExpiresAt !== null) {
+                throw new Error("OECD recent contract failed: " + raw.slice(0,1500));
+              }
+              console.log("OECD_RECENT_RECOVERED " + JSON.stringify({ attempt, status:state.status,
+                lastSuccessAt:state.lastSuccessAt, recordsObserved:state.recordsObserved,
+                newCount:state.newCount, updatedCount:state.updatedCount }));
+              process.exit(0);
+            }
+            if (response.status === 202 && state?.status === "skipped" && state?.lastSkipReason === "already-running" &&
+                state?.leaseMode === "historical-reconcile") {
+              console.log("OECD_RECENT_WAITING_FOR_HISTORICAL_LEASE " + JSON.stringify({ attempt, leaseExpiresAt:state.leaseExpiresAt }));
+              if (attempt < 15) {
+                await new Promise((resolve) => setTimeout(resolve, 60_000));
+                continue;
+              }
+            }
+            throw new Error("OECD recent retry failed HTTP " + response.status + ": " + raw.slice(0,1500));
+          }
+          throw new Error("OECD recent could not acquire the source lease within the bounded retry window");
+          NODE
