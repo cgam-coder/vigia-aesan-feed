@@ -1,0 +1,55 @@
+name: Incident read-only evidence
+on:
+  push:
+    branches: ["ops/incident-readonly-20260917"]
+    paths: [".github/workflows/incident-readonly.yml"]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+    steps:
+      - name: Read workflow metadata and existing runtime observations without recovery or writes
+        run: |
+          set -euo pipefail
+          node --input-type=module - <<'NODE'
+          const api = "https://api.github.com/repos/" + process.env.GITHUB_REPOSITORY;
+          const ghHeaders = {Authorization:"Bearer " + process.env.GH_TOKEN,Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"};
+          async function get(url, headers, timeout = 60_000) {
+            const response = await fetch(url,{method:"GET",headers,signal:AbortSignal.timeout(timeout)});
+            if (!response.ok) throw new Error("Read failed HTTP " + response.status + " for " + new URL(url).pathname);
+            return response.json();
+          }
+          const workflows = (await get(api + "/actions/workflows", ghHeaders)).workflows;
+          for (const workflow of workflows) console.log("WORKFLOW " + JSON.stringify({id:workflow.id,name:workflow.name,path:workflow.path,state:workflow.state}));
+          for (const workflow of workflows.filter(item => /AESAN|Safety Gate|OECD|RASFF|freshness/i.test(item.name))) {
+            const runs = (await get(api + "/actions/workflows/" + workflow.id + "/runs?branch=main&per_page=2", ghHeaders)).workflow_runs;
+            for (const run of runs) {
+              console.log("RUN " + JSON.stringify({id:run.id,name:run.name,status:run.status,conclusion:run.conclusion,event:run.event,createdAt:run.created_at,updatedAt:run.updated_at,sha:run.head_sha}));
+            }
+            const representative = runs.find(run => run.status === "completed" && run.conclusion === "failure");
+            if (!representative) continue;
+            const jobs = (await get(api + "/actions/runs/" + representative.id + "/jobs", ghHeaders)).jobs;
+            for (const job of jobs.filter(item => item.conclusion === "failure")) {
+              console.log("FAILED_JOB " + JSON.stringify({runId:representative.id,jobId:job.id,name:job.name,steps:job.steps.map(step => ({name:step.name,conclusion:step.conclusion}))}));
+              const response = await fetch(api + "/actions/jobs/" + job.id + "/logs",{method:"GET",headers:ghHeaders,signal:AbortSignal.timeout(60_000)});
+              if (!response.ok) continue;
+              const lines = (await response.text()).split("\n");
+              const diagnostic = lines.filter(line => /(?:Error:|##\[error\]|FRESHNESS \{|_STAGE_COMPLETE |contract failed|did not advance|not ok [0-9]+ -)/u.test(line) && !line.includes("\u001b[36;1m"));
+              console.log("FAILED_LOG_EXCERPT " + JSON.stringify({runId:representative.id,jobId:job.id,lines:diagnostic.slice(-12).map(line => line.slice(0,6000))}));
+            }
+          }
+          if (!process.env.VIGIA_SYNC_TOKEN) throw new Error("Runtime observation authorization unavailable");
+          const headers = {Authorization:"Bearer " + process.env.VIGIA_SYNC_TOKEN};
+          for (const path of ["/api/rasff/sync?observe=1","/api/rasff/sync?audit=1","/api/oecd/sync?observe=1"]) {
+            const body = await get(process.env.VIGIA_BASE_URL + path, headers, 300_000);
+            console.log("RUNTIME_OBSERVATION " + JSON.stringify({path,body}));
+          }
+          console.log("READ_ONLY_EVIDENCE_COMPLETE_NO_POST_NO_RECOVERY_NO_DATA_WRITES");
+          NODE
