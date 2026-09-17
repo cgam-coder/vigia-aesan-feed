@@ -4,13 +4,13 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-09-15T15:39:08.037Z",
+  "generatedAt": "2026-09-17T08:52:06.148Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
     "totalAlerts": 127,
     "earliestPublishedAt": "2025-01-01T23:00:00.000Z",
     "latestPublishedAt": "2026-09-10T22:00:00.000Z",
-    "lastFullSyncAt": "2026-09-12T12:07:20.207Z",
+    "lastFullSyncAt": "2026-09-17T08:52:06.148Z",
     "pagesScanned": 9,
     "legacyIndexesScanned": 0
   },
@@ -21,13 +21,18 @@
       "sourceRecordId": "f15fbfe8-aa09-4203-b932-6700decbe1d8",
       "sourceRecordIdType": "idAlert",
       "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "8cbf813407f0e274e5d1e8add7276d493e3ed2eef12b9099a5adc59d9ee14ee5",
+      "sourceRecordHash": "2246fa933285977168e79b8203638a027971896dd339fdeedb0a8d9b82ba2762",
       "previousReferences": [],
       "referenceHistory": [
         {
           "reference": "ES2026/517",
           "title": "Advertencia por presencia de gluten: gluten no declarado en salsas etiquetadas \"sin gluten\" procedentes de España. (Ref. ES2026/517 )",
           "contentHash": "568f6dbdf22d29cd52f1ae450d4c6b69e5eeb45a0e358f16370abfc0989added"
+        },
+        {
+          "reference": "ES2026/517",
+          "title": "Ampliación de información sobre la alerta por presencia de gluten no declarado en salsas etiquetadas \"sin gluten\" procedentes de España (Ref. ES2026/517)",
+          "contentHash": "8cbf813407f0e274e5d1e8add7276d493e3ed2eef12b9099a5adc59d9ee14ee5"
         }
       ],
       "source": "AESAN",
@@ -408,7 +413,7 @@
         },
         {
           "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/alergias_e_intolerancias.htm",
+          "url": "https://www.aesan.gob.es/seguridad-alimentaria/informacion-alimentaria/etiquetado-sustancias",
           "label": "Etiquetado de sustancias que causan alergias e intolerancias",
           "sourceField": "article.link[4]",
           "order": 4
@@ -433,13 +438,6 @@
           "label": "Guía de etiquetado de alimentos que contienen cereales con gluten",
           "sourceField": "article.link[7]",
           "order": 7
-        },
-        {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/informacion_gluten.htm",
-          "label": "Información sobre la ausencia o presencia reducida de gluten",
-          "sourceField": "article.link[8]",
-          "order": 8
         }
       ],
       "officialDates": [
@@ -453,9 +451,9 @@
       "url": "https://www.aesan.gob.es/alertas/2026_65_rev",
       "publishedAt": "2026-09-10T22:00:00.000Z",
       "detectedAt": "2026-08-28T00:51:40.885Z",
-      "updatedAt": "2026-09-12T12:07:20.207Z",
-      "contentHash": "8cbf813407f0e274e5d1e8add7276d493e3ed2eef12b9099a5adc59d9ee14ee5",
-      "versionCount": 2,
+      "updatedAt": "2026-09-17T08:52:06.148Z",
+      "contentHash": "2246fa933285977168e79b8203638a027971896dd339fdeedb0a8d9b82ba2762",
+      "versionCount": 3,
       "isUpdate": true
     },
     {
@@ -6910,9 +6908,15 @@
       "sourceRecordId": "4afc87c3-b685-4088-ac26-297aeb3af85a",
       "sourceRecordIdType": "idAlert",
       "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "55be75cf8a1b55c8e6067af7d2189453ed63fc1a3cfbc9c6e1d049200b477659",
+      "sourceRecordHash": "d7da76a860826697e0cd34b870369734dfe06097a82fc8770f81c6598d48cd95",
       "previousReferences": [],
-      "referenceHistory": [],
+      "referenceHistory": [
+        {
+          "reference": "ES2026/271",
+          "title": "Ampliación de información sobre la alerta por presencia de Listeria monocytogenes en queso fresco de vaca procedente de España (Ref. ES2026/271)",
+          "contentHash": "c35522e441b1f64c7865c2aa5f755d140e614242abf68401932095cb9642e63d"
+        }
+      ],
       "source": "AESAN",
       "type": "Alimentaria",
       "priority": "Alta",
@@ -7472,25 +7476,18 @@
           "order": 7
         },
         {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/para_el_consumidor/ampliacion/contaminacion_cruzada.htm",
-          "label": "medidas de higiene para evitar la contaminación cruzada con otros productos.",
-          "sourceField": "article.link[8]",
-          "order": 8
-        },
-        {
           "kind": "document",
           "url": "https://www.aesan.gob.es/dam/jcr:88348d48-2e3b-4756-b6b4-837a6da02d6c/Listeriosis.pdf",
           "label": "enlace",
-          "sourceField": "article.link[9]",
-          "order": 9
+          "sourceField": "article.link[8]",
+          "order": 8
         },
         {
           "kind": "link",
           "url": "https://www.aesan.gob.es/seguridad-alimentaria/riesgos-biologicos/enfermedades-transmision-alimentaria",
           "label": "enfermedades de transmisión alimentaria",
-          "sourceField": "article.link[10]",
-          "order": 10
+          "sourceField": "article.link[9]",
+          "order": 9
         }
       ],
       "officialDates": [
@@ -7510,9 +7507,9 @@
       "url": "https://www.aesan.gob.es/alertas/2026_38_Ampliacion_3",
       "publishedAt": "2026-05-18T22:00:00.000Z",
       "detectedAt": "2026-08-14T11:24:15.349Z",
-      "updatedAt": "2026-05-18T22:00:00.000Z",
-      "contentHash": "c35522e441b1f64c7865c2aa5f755d140e614242abf68401932095cb9642e63d",
-      "versionCount": 52,
+      "updatedAt": "2026-09-17T08:52:06.148Z",
+      "contentHash": "d7da76a860826697e0cd34b870369734dfe06097a82fc8770f81c6598d48cd95",
+      "versionCount": 53,
       "isUpdate": true
     },
     {
@@ -11311,9 +11308,15 @@
       "sourceRecordId": "1eec9047-aa0c-4e76-8664-bf2cf239139d",
       "sourceRecordIdType": "idAlert",
       "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "0458c19c1233b6fca2b5aa4cafc035d870e2da9f16b3361ee0441dd8bcdddf30",
+      "sourceRecordHash": "e8dee49bf292074bce539622d3eb7b45775932e28507298f2af940ac97fffe41",
       "previousReferences": [],
-      "referenceHistory": [],
+      "referenceHistory": [
+        {
+          "reference": "ES2026/103",
+          "title": "Advertencia para personas con alergia a las almendras: Presencia de almendra no declarada en el etiqutedado en yogur con muesli procedente de España (Ref. ES2026/103)",
+          "contentHash": "139c01cabeef179054e228a72a91a4a98a19ca99c36b0978a0c3662932522713"
+        }
+      ],
       "source": "AESAN",
       "type": "Alimentaria",
       "priority": "Media",
@@ -11446,7 +11449,7 @@
         },
         {
           "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/alergias_e_intolerancias.htm",
+          "url": "https://www.aesan.gob.es/seguridad-alimentaria/informacion-alimentaria/etiquetado-sustancias",
           "label": "Etiquetado de sustancias que causan alergias e intolerancias",
           "sourceField": "article.link[2]",
           "order": 2
@@ -11471,13 +11474,6 @@
           "label": "Guía de etiquetado de alimentos que contienen cereales con gluten",
           "sourceField": "article.link[5]",
           "order": 5
-        },
-        {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/seguridad-alimentaria/informacion-alimentaria/etiquetado-sustancias",
-          "label": "Información sobre la ausencia o presencia reducida de gluten",
-          "sourceField": "article.link[6]",
-          "order": 6
         }
       ],
       "officialDates": [
@@ -11497,9 +11493,9 @@
       "url": "https://www.aesan.gob.es/alertas/2026_16",
       "publishedAt": "2026-03-02T23:00:00.000Z",
       "detectedAt": "2026-08-14T11:24:15.349Z",
-      "updatedAt": "2026-03-02T23:00:00.000Z",
-      "contentHash": "139c01cabeef179054e228a72a91a4a98a19ca99c36b0978a0c3662932522713",
-      "versionCount": 1,
+      "updatedAt": "2026-09-17T08:52:06.148Z",
+      "contentHash": "e8dee49bf292074bce539622d3eb7b45775932e28507298f2af940ac97fffe41",
+      "versionCount": 2,
       "isUpdate": false
     },
     {
@@ -11508,9 +11504,15 @@
       "sourceRecordId": "fa92ab22-d469-4f3c-91b4-f3c84d761b2c",
       "sourceRecordIdType": "idAlert",
       "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "7f8843377a02557a40bbdaaf1b8b7cc0a4caa7de7b366b7dd20b433e7597d4ed",
+      "sourceRecordHash": "021a026d6f12d42e158c896514623d2b1fe1629ab3253a82482594679d58a6e6",
       "previousReferences": [],
-      "referenceHistory": [],
+      "referenceHistory": [
+        {
+          "reference": "ES2026/104",
+          "title": "Advertencia para personas con alergia o intolerancia a los componentes de la leche: Presencia de componentes de la leche no declarados en el etiquetado en biscotes procedentes de España (Ref ES2026/104)",
+          "contentHash": "a548ad4882ed0db0187995d8d8b501de8f53bf07f20570987b186595dcd66b4c"
+        }
+      ],
       "source": "AESAN",
       "type": "Alimentaria",
       "priority": "Media",
@@ -11643,7 +11645,7 @@
         },
         {
           "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/alergias_e_intolerancias.htm",
+          "url": "https://www.aesan.gob.es/seguridad-alimentaria/informacion-alimentaria/etiquetado-sustancias",
           "label": "Etiquetado de sustancias que causan alergias e intolerancias",
           "sourceField": "article.link[2]",
           "order": 2
@@ -11668,13 +11670,6 @@
           "label": "Guía de etiquetado de alimentos que contienen cereales con gluten",
           "sourceField": "article.link[5]",
           "order": 5
-        },
-        {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/seguridad-alimentaria/informacion-alimentaria/etiquetado-sustancias",
-          "label": "Información sobre la ausencia o presencia reducida de gluten",
-          "sourceField": "article.link[6]",
-          "order": 6
         }
       ],
       "officialDates": [
@@ -11694,9 +11689,9 @@
       "url": "https://www.aesan.gob.es/alertas/2026_15",
       "publishedAt": "2026-03-02T23:00:00.000Z",
       "detectedAt": "2026-08-14T11:24:15.349Z",
-      "updatedAt": "2026-03-02T23:00:00.000Z",
-      "contentHash": "a548ad4882ed0db0187995d8d8b501de8f53bf07f20570987b186595dcd66b4c",
-      "versionCount": 1,
+      "updatedAt": "2026-09-17T08:52:06.148Z",
+      "contentHash": "021a026d6f12d42e158c896514623d2b1fe1629ab3253a82482594679d58a6e6",
+      "versionCount": 2,
       "isUpdate": false
     },
     {
@@ -12291,9 +12286,15 @@
       "sourceRecordId": "2accf0ae-85fa-4ea6-b8d2-467fc454fe72",
       "sourceRecordIdType": "idAlert",
       "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "921d370b1d9ed553fa27f25c10b9624a42e16472039fa7759b00c7e9b8a51f11",
+      "sourceRecordHash": "76ff57a765991c6e34bfb4823e5f90a0d285d9c118d344be3a60cb40863d1a7a",
       "previousReferences": [],
-      "referenceHistory": [],
+      "referenceHistory": [
+        {
+          "reference": "ES2026/027",
+          "title": "Advertencia por presencia de gluten: presencia de gluten en mochis procedentes de Taiwan. (Ref. ES2026/027)",
+          "contentHash": "71081c6edf759b8e78bf755e4ef74f47d6dc2eb122fc4fa02e1d37bb943c699c"
+        }
+      ],
       "source": "AESAN",
       "type": "Alimentaria",
       "priority": "Media",
@@ -12422,7 +12423,7 @@
         },
         {
           "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/alergias_e_intolerancias.htm",
+          "url": "https://www.aesan.gob.es/seguridad-alimentaria/informacion-alimentaria/etiquetado-sustancias",
           "label": "Etiquetado de sustancias que causan alergias e intolerancias",
           "sourceField": "article.link[2]",
           "order": 2
@@ -12447,13 +12448,6 @@
           "label": "Guía de etiquetado de alimentos que contienen cereales con gluten",
           "sourceField": "article.link[5]",
           "order": 5
-        },
-        {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/seguridad-alimentaria/informacion-alimentaria/etiquetado-sustancias",
-          "label": "Información sobre la ausencia o presencia reducida de gluten",
-          "sourceField": "article.link[6]",
-          "order": 6
         }
       ],
       "officialDates": [
@@ -12473,9 +12467,9 @@
       "url": "https://www.aesan.gob.es/alertas/2026_09",
       "publishedAt": "2026-02-13T23:00:00.000Z",
       "detectedAt": "2026-08-14T11:24:15.349Z",
-      "updatedAt": "2026-02-13T23:00:00.000Z",
-      "contentHash": "71081c6edf759b8e78bf755e4ef74f47d6dc2eb122fc4fa02e1d37bb943c699c",
-      "versionCount": 1,
+      "updatedAt": "2026-09-17T08:52:06.148Z",
+      "contentHash": "76ff57a765991c6e34bfb4823e5f90a0d285d9c118d344be3a60cb40863d1a7a",
+      "versionCount": 2,
       "isUpdate": false
     },
     {
@@ -18818,9 +18812,15 @@
       "sourceRecordId": "a486dbd9-b557-4d31-a210-774681dd2d19",
       "sourceRecordIdType": "idAlert",
       "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "c4cbba23c39580814d983ad16b542b59289f56d6df181396666d2575a37334e6",
+      "sourceRecordHash": "3131b1ebb07ef107052d81f0fbd0aca1c3c36438e99736fe605fbb93f76c6d8f",
       "previousReferences": [],
-      "referenceHistory": [],
+      "referenceHistory": [
+        {
+          "reference": "ES2025/663",
+          "title": "Alerta por presencia de toxina estafilocócica en queso de cabrales procedente de España. (Ref ES2025/663)",
+          "contentHash": "48bedff8d703a76b0ffba25aa7ae0ff0c8b09427cbaee80234f6896e6749ee89"
+        }
+      ],
       "source": "AESAN",
       "type": "Alimentaria",
       "priority": "Alta",
@@ -18988,8 +18988,8 @@
           "order": 3
         },
         {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/intoxicacion_enterotoxinas_estafilococicas.htm",
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:a75ff785-ee26-468b-a8e5-d4ff7b5afd4f/Intoxicaci%C3%B3n%20por%20enterotoxinas%20estafiloc%C3%B3cicas.pdf",
           "label": "enlace",
           "sourceField": "article.link[4]",
           "order": 4
@@ -19019,9 +19019,9 @@
       "url": "https://www.aesan.gob.es/alertas/2025_57",
       "publishedAt": "2025-11-13T23:00:00.000Z",
       "detectedAt": "2026-08-14T11:24:15.349Z",
-      "updatedAt": "2025-11-13T23:00:00.000Z",
-      "contentHash": "48bedff8d703a76b0ffba25aa7ae0ff0c8b09427cbaee80234f6896e6749ee89",
-      "versionCount": 1,
+      "updatedAt": "2026-09-17T08:52:06.148Z",
+      "contentHash": "3131b1ebb07ef107052d81f0fbd0aca1c3c36438e99736fe605fbb93f76c6d8f",
+      "versionCount": 2,
       "isUpdate": false
     },
     {
@@ -20735,9 +20735,15 @@
       "sourceRecordId": "c310e03d-ef30-4a77-8a41-aecd31d1cdb1",
       "sourceRecordIdType": "idAlert",
       "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "8596a39f0970b916ecf4aeacb47734ae9c62fff78500e05f124cdd9c021d22ff",
+      "sourceRecordHash": "2490777a8d207ba7bf1b47f743a0862ad1b5ecaa29df4a34dcb99eca1d58d1c9",
       "previousReferences": [],
-      "referenceHistory": [],
+      "referenceHistory": [
+        {
+          "reference": "ES2025/483",
+          "title": "Ampliación de información sobre la alerta por presencia de Listeria monocytogenes en quesos procedentes de Francia. (Ref ES2025/483)",
+          "contentHash": "3cddbd6ad90587e57b00d25436359b037ab1a96932149e0782e9bc718a6d531d"
+        }
+      ],
       "source": "AESAN",
       "type": "Alimentaria",
       "priority": "Alta",
@@ -20956,32 +20962,25 @@
           "order": 0
         },
         {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/para_el_consumidor/ampliacion/Consejos_Embarazo.htm",
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:b3f8b893-2bf3-4a39-a7f5-1603cee0b4f8/embarazadas.pdf",
           "label": "recomendaciones de consumo durante el embarazo",
           "sourceField": "article.link[1]",
           "order": 1
         },
         {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/para_el_consumidor/ampliacion/contaminacion_cruzada.htm",
-          "label": "medidas de higiene para evitar la contaminación cruzada",
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:88348d48-2e3b-4756-b6b4-837a6da02d6c/Listeriosis.pdf",
+          "label": "enlace",
           "sourceField": "article.link[2]",
           "order": 2
         },
         {
           "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/listeria.htm",
-          "label": "enlace",
+          "url": "https://www.aesan.gob.es/seguridad-alimentaria/riesgos-biologicos/enfermedades-transmision-alimentaria",
+          "label": "enfermedades de transmisión alimentaria",
           "sourceField": "article.link[3]",
           "order": 3
-        },
-        {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/detalle/enfermedades_transmision_alimentaria.htm",
-          "label": "enfermedades de transmisión alimentaria",
-          "sourceField": "article.link[4]",
-          "order": 4
         }
       ],
       "officialDates": [
@@ -21001,9 +21000,9 @@
       "url": "https://www.aesan.gob.es/alertas/2025_43_Amp",
       "publishedAt": "2025-08-14T22:00:00.000Z",
       "detectedAt": "2026-08-14T11:24:15.349Z",
-      "updatedAt": "2025-08-14T22:00:00.000Z",
-      "contentHash": "3cddbd6ad90587e57b00d25436359b037ab1a96932149e0782e9bc718a6d531d",
-      "versionCount": 4,
+      "updatedAt": "2026-09-17T08:52:06.148Z",
+      "contentHash": "2490777a8d207ba7bf1b47f743a0862ad1b5ecaa29df4a34dcb99eca1d58d1c9",
+      "versionCount": 5,
       "isUpdate": true
     },
     {
@@ -21012,9 +21011,15 @@
       "sourceRecordId": "e64f7218-58ad-4c6e-be6d-a832d25b61dd",
       "sourceRecordIdType": "idAlert",
       "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "e90561f9c72eceee43c97064ed475eb6ae7dfaa820dbf70a7860ffd179a5a259",
+      "sourceRecordHash": "c5a45bbd018e86867e28612b173a8fa53cb2f0b64f49be63f63b8654463ab127",
       "previousReferences": [],
-      "referenceHistory": [],
+      "referenceHistory": [
+        {
+          "reference": "ES2025/459",
+          "title": "Advertencia para personas con alergia o intolerancia a los componentes de la leche: presencia de derivados lácteos no declarados en el etiquetado de bebidas espirituosas procedentes de España (Ref: ES2025/459)",
+          "contentHash": "de6b9ba8ceef7d4aca673a74fab6db6ee20540b64a0a67d55136b0dc88de468d"
+        }
+      ],
       "source": "AESAN",
       "type": "Alimentaria",
       "priority": "Media",
@@ -21143,7 +21148,7 @@
         },
         {
           "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/alergias_e_intolerancias.htm",
+          "url": "https://www.aesan.gob.es/seguridad-alimentaria/informacion-alimentaria/etiquetado-sustancias",
           "label": "Etiquetado de sustancias que causan alergias e intolerancias",
           "sourceField": "article.link[2]",
           "order": 2
@@ -21168,13 +21173,6 @@
           "label": "Guía de etiquetado de alimentos que contienen cereales con gluten",
           "sourceField": "article.link[5]",
           "order": 5
-        },
-        {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/seguridad-alimentaria/informacion-alimentaria/etiquetado-sustancias",
-          "label": "Información sobre la ausencia o presencia reducida de gluten",
-          "sourceField": "article.link[6]",
-          "order": 6
         }
       ],
       "officialDates": [
@@ -21194,9 +21192,9 @@
       "url": "https://www.aesan.gob.es/alertas/2025_42",
       "publishedAt": "2025-08-07T22:00:00.000Z",
       "detectedAt": "2026-08-14T11:24:15.349Z",
-      "updatedAt": "2025-08-07T22:00:00.000Z",
-      "contentHash": "de6b9ba8ceef7d4aca673a74fab6db6ee20540b64a0a67d55136b0dc88de468d",
-      "versionCount": 1,
+      "updatedAt": "2026-09-17T08:52:06.148Z",
+      "contentHash": "c5a45bbd018e86867e28612b173a8fa53cb2f0b64f49be63f63b8654463ab127",
+      "versionCount": 2,
       "isUpdate": false
     },
     {
@@ -21726,9 +21724,15 @@
       "sourceRecordId": "db6e7961-62b1-46db-8f76-d93bcd1a1687",
       "sourceRecordIdType": "idAlert",
       "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "424323ee1c14b09324d5d4df7b5292e7a259eb1fb9f122d4998c10896df4257e",
+      "sourceRecordHash": "041f221378e99bb5016f3c0591d6a9313ab9b2a03a55dc8c41e84f6f2943248c",
       "previousReferences": [],
-      "referenceHistory": [],
+      "referenceHistory": [
+        {
+          "reference": "ES2025/452",
+          "title": "Alerta por presencia de Salmonella en fuet procedente de España. (Ref. ES2025/452)",
+          "contentHash": "7cf542264a5e8c369a5669ab61cda20785dd861eb8aa16d3be4bcb62a1bd46c6"
+        }
+      ],
       "source": "AESAN",
       "type": "Alimentaria",
       "priority": "Alta",
@@ -22050,15 +22054,15 @@
           "order": 3
         },
         {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/salmonela.htm",
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:37bbaa0f-285b-4a57-b8b3-d72830efc0a9/Salmonelosis.pdf",
           "label": "enlace",
           "sourceField": "article.link[4]",
           "order": 4
         },
         {
           "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/detalle/enfermedades_transmision_alimentaria.htm",
+          "url": "https://www.aesan.gob.es/seguridad-alimentaria/riesgos-biologicos/enfermedades-transmision-alimentaria",
           "label": "enfermedades de transmisión alimentaria",
           "sourceField": "article.link[5]",
           "order": 5
@@ -22081,9 +22085,9 @@
       "url": "https://www.aesan.gob.es/alertas/2025_39",
       "publishedAt": "2025-07-31T22:00:00.000Z",
       "detectedAt": "2026-08-14T11:24:15.349Z",
-      "updatedAt": "2025-07-31T22:00:00.000Z",
-      "contentHash": "7cf542264a5e8c369a5669ab61cda20785dd861eb8aa16d3be4bcb62a1bd46c6",
-      "versionCount": 1,
+      "updatedAt": "2026-09-17T08:52:06.148Z",
+      "contentHash": "041f221378e99bb5016f3c0591d6a9313ab9b2a03a55dc8c41e84f6f2943248c",
+      "versionCount": 2,
       "isUpdate": false
     },
     {
@@ -23258,9 +23262,15 @@
       "sourceRecordId": "d84d719f-c483-43a5-bb45-4633f8105209",
       "sourceRecordIdType": "idAlert",
       "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "1ec12794d1fc99e384a184f05d36786918c1a9b256cf6f18af82ec2faa81b8d8",
+      "sourceRecordHash": "eb1a9ec215945df75687cfe6906176df10c5d229fe39336274f2b97e5a3b88ec",
       "previousReferences": [],
-      "referenceHistory": [],
+      "referenceHistory": [
+        {
+          "reference": "ES2025/373",
+          "title": "Advertencia por presencia de gluten: presencia de gluten en helado etiquetado “Sin gluten” (pictograma), procedente de España (Ref. ES2025/373)",
+          "contentHash": "d1e9525aab5de0e7c2a366df3cfa24f328af069f84d53df148d05e8d825be560"
+        }
+      ],
       "source": "AESAN",
       "type": "Alimentaria",
       "priority": "Media",
@@ -23419,13 +23429,6 @@
           "label": "Guía de etiquetado de alimentos que contienen cereales con gluten",
           "sourceField": "article.link[6]",
           "order": 6
-        },
-        {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/alertas_alimentarias/listado/aecosan_listado_alertas_alimentarias.htm",
-          "label": "Ver todas las Alertas Alimentarias de Alérgenos",
-          "sourceField": "article.link[7]",
-          "order": 7
         }
       ],
       "officialDates": [
@@ -23445,9 +23448,9 @@
       "url": "https://www.aesan.gob.es/alertas/2025_31",
       "publishedAt": "2025-07-02T22:00:00.000Z",
       "detectedAt": "2026-08-14T11:24:15.349Z",
-      "updatedAt": "2025-07-02T22:00:00.000Z",
-      "contentHash": "d1e9525aab5de0e7c2a366df3cfa24f328af069f84d53df148d05e8d825be560",
-      "versionCount": 1,
+      "updatedAt": "2026-09-17T08:52:06.148Z",
+      "contentHash": "eb1a9ec215945df75687cfe6906176df10c5d229fe39336274f2b97e5a3b88ec",
+      "versionCount": 2,
       "isUpdate": false
     },
     {
@@ -25701,9 +25704,15 @@
       "sourceRecordId": "6ca7ed35-2f89-424f-8bf5-57ca9ecaea90",
       "sourceRecordIdType": "idAlert",
       "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "fcdd1cbd47f6c877f23bdd874c5c0f6c0954956a452dd608384274b5b3641180",
+      "sourceRecordHash": "24760b2e13a428b73c62e34237cb3ebddee300d9d2a6328734e8314d8b0438a3",
       "previousReferences": [],
-      "referenceHistory": [],
+      "referenceHistory": [
+        {
+          "reference": "ES2025/205",
+          "title": "Alerta por presencia de Salmonella en burguer meat de pollo procedente de España (Ref. ES2025/205)",
+          "contentHash": "f14b43d5aa317f342e2cfb1dadd27ebdad04894d7fe48a682d5a62bccd596786"
+        }
+      ],
       "source": "AESAN",
       "type": "Alimentaria",
       "priority": "Alta",
@@ -25838,16 +25847,16 @@
           "order": 0
         },
         {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/salmonela.htm",
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:37bbaa0f-285b-4a57-b8b3-d72830efc0a9/Salmonelosis.pdf",
           "label": "enlace",
           "sourceField": "article.link[1]",
           "order": 1
         },
         {
           "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/detalle/enfermedades_transmision_alimentaria.htm",
-          "label": "enfermedades de transmisión alimentaria",
+          "url": "https://www.aesan.gob.es/seguridad-alimentaria/riesgos-biologicos/enfermedades-transmision-alimentaria",
+          "label": "sobre enfermedades de transmisión alimentaria",
           "sourceField": "article.link[2]",
           "order": 2
         }
@@ -25869,9 +25878,9 @@
       "url": "https://www.aesan.gob.es/alertas/2025_20",
       "publishedAt": "2025-04-15T22:00:00.000Z",
       "detectedAt": "2026-08-14T11:24:15.349Z",
-      "updatedAt": "2025-04-15T22:00:00.000Z",
-      "contentHash": "f14b43d5aa317f342e2cfb1dadd27ebdad04894d7fe48a682d5a62bccd596786",
-      "versionCount": 1,
+      "updatedAt": "2026-09-17T08:52:06.148Z",
+      "contentHash": "24760b2e13a428b73c62e34237cb3ebddee300d9d2a6328734e8314d8b0438a3",
+      "versionCount": 2,
       "isUpdate": false
     },
     {
@@ -25880,9 +25889,15 @@
       "sourceRecordId": "0c5be4ca-ea90-41cf-a309-607375bf5314",
       "sourceRecordIdType": "idAlert",
       "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "9311872b36690da31de1b3d5829d8c194badf4511f41d2848be0a2c09958605a",
+      "sourceRecordHash": "e96996f00b5da28180cf4f3e395fae2251a65a9ff357808f2be25757e37c0a21",
       "previousReferences": [],
-      "referenceHistory": [],
+      "referenceHistory": [
+        {
+          "reference": "ES2025/206",
+          "title": "Advertencia por presencia de gluten en barritas de proteínas procedentes de Hungría (Ref. ES2025/206)",
+          "contentHash": "b0bc44ef201d952968a16e74e51d36808b482658fcadb0ea149836e079c132f6"
+        }
+      ],
       "source": "AESAN",
       "type": "Alimentaria",
       "priority": "Media",
@@ -26485,7 +26500,7 @@
         },
         {
           "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/alergias_e_intolerancias.htm",
+          "url": "https://www.aesan.gob.es/seguridad-alimentaria/informacion-alimentaria/etiquetado-sustancias",
           "label": "Etiquetado de sustancias que causan alergias e intolerancias",
           "sourceField": "article.link[2]",
           "order": 2
@@ -26510,13 +26525,6 @@
           "label": "Guía de etiquetado de alimentos que contienen cereales con gluten",
           "sourceField": "article.link[5]",
           "order": 5
-        },
-        {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/seguridad-alimentaria/informacion-alimentaria/etiquetado-sustancias",
-          "label": "Información sobre la ausencia o presencia reducida de gluten",
-          "sourceField": "article.link[6]",
-          "order": 6
         }
       ],
       "officialDates": [
@@ -26536,9 +26544,9 @@
       "url": "https://www.aesan.gob.es/alertas/2025_21",
       "publishedAt": "2025-04-15T22:00:00.000Z",
       "detectedAt": "2026-08-14T11:24:15.349Z",
-      "updatedAt": "2025-04-15T22:00:00.000Z",
-      "contentHash": "b0bc44ef201d952968a16e74e51d36808b482658fcadb0ea149836e079c132f6",
-      "versionCount": 1,
+      "updatedAt": "2026-09-17T08:52:06.148Z",
+      "contentHash": "e96996f00b5da28180cf4f3e395fae2251a65a9ff357808f2be25757e37c0a21",
+      "versionCount": 2,
       "isUpdate": false
     },
     {
@@ -26547,9 +26555,15 @@
       "sourceRecordId": "a4fc95d3-a5ef-4a41-8249-55566faf9ee9",
       "sourceRecordIdType": "idAlert",
       "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "c8a6641aaa4163df4b5b6f60556abf3198362316ea4a377ffa94a41396aaed71",
+      "sourceRecordHash": "38846594703f7e77db0af1a6c285f119f75d522911fd1150a5f800b30027f673",
       "previousReferences": [],
-      "referenceHistory": [],
+      "referenceHistory": [
+        {
+          "reference": "ES2025/198",
+          "title": "Alerta por presencia de Listeria monocytogenes en boquerones en aceite y ajo procedentes de España. (Ref. ES2025/198)",
+          "contentHash": "b56b477913f2421a0b11171cc7f89fd164f54ecd1766b39899365ea549d3637e"
+        }
+      ],
       "source": "AESAN",
       "type": "Alimentaria",
       "priority": "Alta",
@@ -26703,25 +26717,18 @@
           "order": 1
         },
         {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/para_el_consumidor/ampliacion/contaminacion_cruzada.htm",
-          "label": "medidas de higiene para evitar la contaminación cruzada",
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:88348d48-2e3b-4756-b6b4-837a6da02d6c/Listeriosis.pdf",
+          "label": "enlace",
           "sourceField": "article.link[2]",
           "order": 2
         },
         {
           "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/listeria.htm",
-          "label": "enlace",
+          "url": "https://www.aesan.gob.es/seguridad-alimentaria/riesgos-biologicos/enfermedades-transmision-alimentaria",
+          "label": "enfermedades de transmisión alimentaria",
           "sourceField": "article.link[3]",
           "order": 3
-        },
-        {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/detalle/enfermedades_transmision_alimentaria.htm",
-          "label": "enfermedades de transmisión alimentaria",
-          "sourceField": "article.link[4]",
-          "order": 4
         }
       ],
       "officialDates": [
@@ -26741,9 +26748,9 @@
       "url": "https://www.aesan.gob.es/alertas/2025_18",
       "publishedAt": "2025-04-11T22:00:00.000Z",
       "detectedAt": "2026-08-14T11:24:15.349Z",
-      "updatedAt": "2025-04-11T22:00:00.000Z",
-      "contentHash": "b56b477913f2421a0b11171cc7f89fd164f54ecd1766b39899365ea549d3637e",
-      "versionCount": 1,
+      "updatedAt": "2026-09-17T08:52:06.148Z",
+      "contentHash": "38846594703f7e77db0af1a6c285f119f75d522911fd1150a5f800b30027f673",
+      "versionCount": 2,
       "isUpdate": false
     },
     {
@@ -28706,9 +28713,15 @@
       "sourceRecordId": "4a55c27a-9d7e-42f3-abbf-0be8e3b8f90d",
       "sourceRecordIdType": "idAlert",
       "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "0b30387abb11d366aa1fc1c87460bc95e89562f8a5bce23c58c33842a3d6abf2",
+      "sourceRecordHash": "fcc85b21c1050cfb2ca49c237a99f4940f7602797a46b88c2848d9dafba5aaac",
       "previousReferences": [],
-      "referenceHistory": [],
+      "referenceHistory": [
+        {
+          "reference": "ES2025/108",
+          "title": "Advertencia por presencia de gluten: Trazas de gluten en chocolatinas etiquetadas sin gluten procedentes de España (Ref ES2025/108)",
+          "contentHash": "b59c119b62d2f4d9a785daa864e0fc73c3bcf1b9567bf0635c11cab453c092f1"
+        }
+      ],
       "source": "AESAN",
       "type": "Alimentaria",
       "priority": "Media",
@@ -28908,7 +28921,7 @@
         },
         {
           "kind": "link",
-          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/alergias_e_intolerancias.htm",
+          "url": "https://www.aesan.gob.es/seguridad-alimentaria/informacion-alimentaria/etiquetado-sustancias",
           "label": "Etiquetado de sustancias que causan alergias e intolerancias",
           "sourceField": "article.link[3]",
           "order": 3
@@ -28933,13 +28946,6 @@
           "label": "Guía de etiquetado de alimentos que contienen cereales con gluten",
           "sourceField": "article.link[6]",
           "order": 6
-        },
-        {
-          "kind": "link",
-          "url": "https://www.aesan.gob.es/seguridad-alimentaria/informacion-alimentaria/etiquetado-sustancias",
-          "label": "Información sobre la ausencia o presencia reducida de gluten",
-          "sourceField": "article.link[7]",
-          "order": 7
         }
       ],
       "officialDates": [
@@ -28959,9 +28965,9 @@
       "url": "https://www.aesan.gob.es/alertas/2025_09",
       "publishedAt": "2025-02-20T23:00:00.000Z",
       "detectedAt": "2026-08-21T07:21:26.024Z",
-      "updatedAt": "2025-02-20T23:00:00.000Z",
-      "contentHash": "b59c119b62d2f4d9a785daa864e0fc73c3bcf1b9567bf0635c11cab453c092f1",
-      "versionCount": 1,
+      "updatedAt": "2026-09-17T08:52:06.148Z",
+      "contentHash": "fcc85b21c1050cfb2ca49c237a99f4940f7602797a46b88c2848d9dafba5aaac",
+      "versionCount": 2,
       "isUpdate": false
     },
     {
@@ -30251,9 +30257,15 @@
       "sourceRecordId": "a197a26e-2e13-4884-82ec-fde1d5c0981c",
       "sourceRecordIdType": "idAlert",
       "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "7658fa04345e315355579b4afccd8e4227330cd22580f0b0b2d1078357dc93ac",
+      "sourceRecordHash": "86651e7d2d443881c5f721fa1217bdfb78e563af433632827f9c0d5365e424fd",
       "previousReferences": [],
-      "referenceHistory": [],
+      "referenceHistory": [
+        {
+          "reference": "ES2025/002",
+          "title": "Alerta por presencia de Delta-9-tetrahidrocannabinol en aceite de semillas de cáñamo procedente de Estados Unidos (Ref. ES2025/002)",
+          "contentHash": "5659a03ff5afd2169bf6730461e59174d1aaf82f6c1ab1aa4e4969c74bd0b04f"
+        }
+      ],
       "source": "AESAN",
       "type": "Alimentaria",
       "priority": "Media",
@@ -30275,7 +30287,7 @@
       "lots": [
         "04761"
       ],
-      "imageUrl": "https://www.aesan.gob.es/dam/jcr:6cba1f8f-3357-4fbf-b35e-1b86fea43352/aceite_semillas_1_02012025.jpg",
+      "imageUrl": "https://www.aesan.gob.es/dam/jcr:9ae05d50-d187-46e8-b879-36bf86d10bf7/aceite_semillas_1_02012025.2026-08-13-12-55-39.jpg",
       "officialTitle": "Alerta por presencia de Delta-9-tetrahidrocannabinol en aceite de semillas de cáñamo procedente de Estados Unidos (Ref. ES2025/002)",
       "publishedFields": [
         {
@@ -30370,14 +30382,14 @@
       "resources": [
         {
           "kind": "image",
-          "url": "https://www.aesan.gob.es/dam/jcr:6cba1f8f-3357-4fbf-b35e-1b86fea43352/aceite_semillas_1_02012025.jpg",
+          "url": "https://www.aesan.gob.es/dam/jcr:9ae05d50-d187-46e8-b879-36bf86d10bf7/aceite_semillas_1_02012025.2026-08-13-12-55-39.jpg",
           "label": null,
           "sourceField": "article.image[0]",
           "order": 0
         },
         {
           "kind": "image",
-          "url": "https://www.aesan.gob.es/dam/jcr:9633989e-81d6-4da0-b14c-718a1ad61624/aceite_semillas_2_02012025.jpg",
+          "url": "https://www.aesan.gob.es/dam/jcr:b891c2f3-f9ca-4151-9f10-3a1a55453945/aceite_semillas_2_02012025.2026-08-13-12-55-39.jpg",
           "label": null,
           "sourceField": "article.image[1]",
           "order": 1
@@ -30407,9 +30419,9 @@
       "url": "https://www.aesan.gob.es/alertas/2024_94",
       "publishedAt": "2025-01-01T23:00:00.000Z",
       "detectedAt": "2026-08-21T07:21:26.024Z",
-      "updatedAt": "2025-01-01T23:00:00.000Z",
-      "contentHash": "5659a03ff5afd2169bf6730461e59174d1aaf82f6c1ab1aa4e4969c74bd0b04f",
-      "versionCount": 1,
+      "updatedAt": "2026-09-17T08:52:06.148Z",
+      "contentHash": "86651e7d2d443881c5f721fa1217bdfb78e563af433632827f9c0d5365e424fd",
+      "versionCount": 2,
       "isUpdate": false
     }
   ]
