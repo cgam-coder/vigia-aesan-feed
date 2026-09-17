@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 
 const workflow = readFileSync(new URL("../.github/workflows/rasff-control.yml", import.meta.url), "utf8");
 
@@ -23,10 +24,56 @@ test("RASFF reconcile cadence and budget can cover the measured 32k corpus with 
 test("the persisted checkpoint resumes after the former monotonic-growth failure", () => {
   assert.match(workflow, /index changed during cursor recovery/u);
   assert.match(workflow, /index changed during batch discovery/u);
-  assert.match(workflow, /D1_ERROR: internal error; reference = \\[a-z0-9\\]/u);
   assert.match(workflow, /state\.cursor <= prior\.cursor/u);
   assert.match(workflow, /RASFF reconcile cursor did not advance/u);
   assert.match(workflow, /finalObserve\.reconcile\?\.status === "failed"/u);
+});
+
+// Test the actual allowlist predicate, rather than a regex matching another
+// regex's textual escaping. Evaluation stops before any network code.
+function recoveryPredicate() {
+  const start = workflow.indexOf("const SEARCH_URL =");
+  const end = workflow.indexOf("const call =", start);
+  assert.ok(start >= 0 && end > start, "recoverability predicate must remain testable");
+  return runInNewContext(workflow.slice(start, end) + "\nrecoverableGlobalFailure", {}, { timeout: 1_000 });
+}
+
+test("RASFF recognizes only supported transient global errors with a released lease", () => {
+  const recoverable = recoveryPredicate();
+  const searchUrl = "https://webgate.ec.europa.eu/rasff-window/backend/public/notification/search/consolidated/en/";
+  const cleared = { status: "failed", leaseOwnerId: null, leaseMode: null, leaseExpiresAt: null };
+  for (const lastError of [
+    "D1_ERROR: out of memory: SQLITE_NOMEM",
+    "D1_ERROR: internal error; reference = abc123",
+    "RASFF agotó el timeout para " + searchUrl,
+    "RASFF abortó la petición para " + searchUrl,
+    "RASFF sufrió un fallo de red para " + searchUrl,
+    "RASFF reconciliation index changed during cursor recovery",
+    "RASFF reconciliation index changed during batch discovery",
+    "RASFF devolvió HTTP 429 para " + searchUrl,
+    "RASFF devolvió HTTP 503 para " + searchUrl,
+  ]) {
+    assert.equal(recoverable({ ...cleared, lastError }), true, lastError);
+    for (const key of ["leaseOwnerId", "leaseMode", "leaseExpiresAt"]) {
+      assert.equal(recoverable({ ...cleared, lastError, [key]: "active" }), false, key);
+      const missing = { ...cleared, lastError }; delete missing[key];
+      assert.equal(recoverable(missing), false, `missing ${key}`);
+    }
+  }
+});
+
+test("RASFF never recovers semantic errors or malformed D1 references as transient failures", () => {
+  const recoverable = recoveryPredicate();
+  const cleared = { status: "failed", leaseOwnerId: null, leaseMode: null, leaseExpiresAt: null };
+  for (const lastError of [
+    "identity conflict", "version_count_desynced", "", null,
+    "D1_ERROR: internal error; reference = ",
+    "D1_ERROR: internal error; reference = ABC123",
+    "D1_ERROR: internal error; reference = abc123 trailing",
+    "RASFF devolvió HTTP 401 para https://webgate.ec.europa.eu/rasff-window/backend/public/notification/search/consolidated/en/",
+  ]) assert.equal(recoverable({ ...cleared, lastError }), false, String(lastError));
+  assert.equal(recoverable(null), false);
+  assert.equal(recoverable({ ...cleared, status: "completed", lastError: "D1_ERROR: internal error; reference = abc123" }), false);
 });
 
 test("a workflow release activates one reconcile without restarting the corpus", () => {
