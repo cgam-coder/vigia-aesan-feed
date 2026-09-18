@@ -310,20 +310,16 @@ jobs:
             console.log("FINAL_AUDIT "+JSON.stringify(audit));
           ' "$response_file"
 
+      - name: Checkout bounded OECD retry helper
+        if: steps.observe.outputs.gap_recovery != 'true'
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: Normal bounded recent
         if: steps.observe.outputs.gap_recovery != 'true'
+        timeout-minutes: 14
         shell: bash
-        run: |
-          set -euo pipefail
-          response_file="$RUNNER_TEMP/oecd-sync.json"
-          http_code="$(curl --silent --show-error --location --request POST \
-            --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" --max-time 840 \
-            --output "$response_file" --write-out '%{http_code}' "$VIGIA_OECD_SYNC_URL?mode=recent")"
-          test "$http_code" = "200"
-          node -e '
-            const fs=require("node:fs");
-            const state=JSON.parse(fs.readFileSync(process.argv[1],"utf8"))?.state;
-            if(state?.status!=="completed"||state?.pageErrors!==0||state?.detailFailures!==0||state?.lastError!==null) throw new Error(state?.lastError||"OECD recent failed");
-            if(state?.leaseOwnerId!==null||state?.leaseMode!==null||state?.leaseExpiresAt!==null) throw new Error("OECD recent lease not released");
-            console.log("RECENT "+JSON.stringify(state));
-          ' "$response_file"
+        # <= 780s network/backoff plus preflight/observe <= 90s within the 900s job.
+        # A skipped response remains retryable, never successful.
+        run: node scripts/oecd-normal-recent-retry.mjs
