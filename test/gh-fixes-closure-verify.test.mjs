@@ -167,5 +167,8 @@ test("workflow imports the tested validator and keeps bounded timeouts coherent"
   assert.match(workflow, /LEASE_WAIT_ATTEMPTS=20, LEASE_WAIT_MS=15_000/u);
   assert.match(workflow, /compatibleRasffReconcile/u);
   assert.match(workflow, /observe\.lease\?\.mode==="reconcile"/u);
+  assert.match(workflow, /RASFF_PREVIEW_RETRY_ATTEMPTS=180, RASFF_PREVIEW_RETRY_MS=1_000/u);
+  assert.match(workflow, /result\.body\?\.error!=="RASFF version-count repair aborted: active or invalid sync lease"/u);
+  assert.match(workflow, /RASFF preview could not acquire a bounded idle interval/u);
   assert.doesNotMatch(workflow, /1_800_000/u);
 });
