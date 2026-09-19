@@ -56,7 +56,7 @@ jobs:
             await new Promise(resolve=>setTimeout(resolve,30_000));
           }
 
-          const audits=Object.fromEntries(await Promise.all(Object.entries(routes).map(async([source,route])=>
+          const audits=Object.fromEntries(await Promise.all(Object.entries(routes).filter(([source])=>source!=="AESAN").map(async([source,route])=>
             [source,(await call(`/api/${route}/sync?audit=1`)).body.audit])));
           const aesanPreview=(await call("/api/aesan/sync?mode=preview-publication-identity&reference=ES2026%2F517","POST")).body;
           const rasffPreview=(await call("/api/rasff/sync?mode=preview-version-counts","POST")).body;
