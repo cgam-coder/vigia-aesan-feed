@@ -38,6 +38,7 @@ jobs:
           const headers={Authorization:`Bearer ${process.env.VIGIA_SYNC_TOKEN}`,"Content-Type":"application/json"};
           const routes={AESAN:"aesan",RAPNA:"rapna",RASFF:"rasff","SAFETY GATE":"safety-gate",OECD:"oecd"};
           const REQUEST_TIMEOUT_MS=120_000, LEASE_WAIT_ATTEMPTS=20, LEASE_WAIT_MS=15_000;
+          const RASFF_PREVIEW_RETRY_ATTEMPTS=180, RASFF_PREVIEW_RETRY_MS=1_000;
           const call=async(pathname,method="GET",allowed=[200])=>{
             const response=await fetch(base+pathname,{method,headers,redirect:"follow",signal:AbortSignal.timeout(REQUEST_TIMEOUT_MS)});
             const raw=await response.text();
@@ -68,10 +69,29 @@ jobs:
             compatibleRasffReconcile(source,value)).map(([source])=>source);
           if(compatibleLeases.length)console.log(`OBSERVE_COMPATIBLE_LEASES ${compatibleLeases.join(",")}`);
 
+          const previewRasffWhenIdle=async()=>{
+            for(let attempt=1;attempt<=RASFF_PREVIEW_RETRY_ATTEMPTS;attempt+=1){
+              const observed=(await call("/api/rasff/sync?observe=1")).body;
+              if(activeLease(observed)){
+                if(!compatibleRasffReconcile("RASFF",observed))
+                  throw new Error("RASFF preview blocked by an incompatible active lease");
+              }else{
+                const result=await call("/api/rasff/sync?mode=preview-version-counts","POST",[200,409]);
+                if(result.http===200)return result.body;
+                if(result.body?.error!=="RASFF version-count repair aborted: active or invalid sync lease")
+                  throw new Error(`RASFF preview failed HTTP 409: ${JSON.stringify(result.body).slice(0,600)}`);
+              }
+              if(attempt===RASFF_PREVIEW_RETRY_ATTEMPTS)
+                throw new Error("RASFF preview could not acquire a bounded idle interval");
+              if(attempt%15===0)console.log(`WAIT_RASFF_PREVIEW_IDLE attempt=${attempt}`);
+              await new Promise(resolve=>setTimeout(resolve,RASFF_PREVIEW_RETRY_MS));
+            }
+          };
+
           const audits=Object.fromEntries(await Promise.all(Object.entries(routes).filter(([source])=>source!=="AESAN").map(async([source,route])=>
             [source,(await call(`/api/${route}/sync?audit=1`)).body.audit])));
           const aesanPreview=(await call("/api/aesan/sync?mode=preview-publication-identity&reference=ES2026%2F517","POST")).body;
-          const rasffPreview=(await call("/api/rasff/sync?mode=preview-version-counts","POST")).body;
+          const rasffPreview=await previewRasffWhenIdle();
           const freshnessAudit=await call("/api/freshness?audit=1","POST",[200,503]);
           const freshnessObserve=(await call("/api/freshness?observe=1")).body;
           const evidence={checkedAt:new Date().toISOString(),observes,audits,aesanPreview,rasffPreview,
