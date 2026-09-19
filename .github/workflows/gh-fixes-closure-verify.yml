@@ -67,14 +67,31 @@ jobs:
           const evidencePath=path.join(process.env.RUNNER_TEMP,"gh-fixes-closure-read-only-evidence.json");
           fs.writeFileSync(evidencePath,JSON.stringify(evidence,null,2));
 
-          const nonZeroIntegrity=Object.entries(audits).flatMap(([source,audit])=>
-            Object.entries(audit?.integrity??{}).filter(([,value])=>value!==0).map(([key,value])=>`${source}.${key}=${value}`));
+          const structuralIntegrityKeys={
+            OECD:["duplicateReferenceGroups","invalidIdentities","emptyCanonicalRows","invalidOfficialUrls"],
+          };
+          const nonZeroIntegrity=Object.entries(audits).flatMap(([source,audit])=>{
+            const integrity=audit?.integrity??{};
+            const keys=structuralIntegrityKeys[source]??Object.keys(integrity);
+            return keys.filter(key=>integrity[key]!==0).map(key=>`${source}.${key}=${integrity[key]}`);
+          });
+          const countInvariantFailures=[];
+          const rasffCounts=audits.RASFF?.counts??{};
+          if(rasffCounts.rasffAlerts!==rasffCounts.rasffUniqueReferences)
+            countInvariantFailures.push(`RASFF alerts/references ${rasffCounts.rasffAlerts}/${rasffCounts.rasffUniqueReferences}`);
+          if(rasffCounts.rasffAlerts!==rasffCounts.rasffSourceIdentities)
+            countInvariantFailures.push(`RASFF alerts/identities ${rasffCounts.rasffAlerts}/${rasffCounts.rasffSourceIdentities}`);
+          if(rasffCounts.rasffVersions!==rasffCounts.rasffVersionCountSum)
+            countInvariantFailures.push(`RASFF versions/version-count sum ${rasffCounts.rasffVersions}/${rasffCounts.rasffVersionCountSum}`);
           console.log("AESAN_IDEMPOTENCE "+JSON.stringify({status:aesanPreview.status,repaired:aesanPreview.repaired,
             reference:aesanPreview.reference,versionCount:aesanPreview.versionCount}));
           console.log("RASFF_IDEMPOTENCE "+JSON.stringify({remaining:rasffPreview.remaining,repaired:rasffPreview.repaired}));
           console.log("OECD_OBSERVE "+JSON.stringify({recent:observes.OECD?.recent,historicalReconcile:observes.OECD?.historicalReconcile,
             activeLease:activeLease(observes.OECD)}));
-          console.log("SOURCE_INTEGRITY "+JSON.stringify({nonZeroIntegrity}));
+          console.log("SOURCE_INTEGRITY "+JSON.stringify({nonZeroIntegrity,countInvariantFailures,
+            oecdOfficialDataCharacteristics:{sentinelPublishedDates:audits.OECD?.integrity?.sentinelPublishedDates,
+              missingPublishedAt:audits.OECD?.integrity?.missingPublishedAt,
+              unclassifiedDomains:audits.OECD?.integrity?.unclassifiedDomains}}));
           console.log("FIVE_SOURCE_FRESHNESS "+JSON.stringify({http:freshnessAudit.http,allFresh:freshnessAudit.body.allFresh,
             states:freshnessAudit.body.states?.map(({source,status,lastSyncSuccessAt,revisionStatus,revisionLastSuccessAt,revisionProgress,revisionTotal,error})=>
               ({source,status,lastSyncSuccessAt,revisionStatus,revisionLastSuccessAt,revisionProgress,revisionTotal,error}))}));
@@ -82,6 +99,7 @@ jobs:
           if(aesanPreview.status!=="already-repaired"||aesanPreview.repaired!==false)throw new Error("AESAN repair is not idempotently verified");
           if(rasffPreview.remaining!==0||rasffPreview.repaired!==0)throw new Error("RASFF version-count preview is not clean");
           if(nonZeroIntegrity.length)throw new Error(`Source integrity audit failed: ${nonZeroIntegrity.join(";")}`);
+          if(countInvariantFailures.length)throw new Error(`Source count invariant failed: ${countInvariantFailures.join(";")}`);
           if(freshnessAudit.http!==200||freshnessAudit.body.allFresh!==true||freshnessAudit.body.states?.length!==5)
             throw new Error("Five-source freshness watchdog failed closed");
           NODE
