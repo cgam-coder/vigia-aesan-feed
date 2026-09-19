@@ -79,6 +79,22 @@ test("accepts complete closure evidence and legitimate OECD data characteristics
   assert.equal(result.rasffCompletedAt, COMPLETED);
 });
 
+test("accepts only a coherent active RASFF reconcile over a prior complete certification", () => {
+  const evidence = validEvidence();
+  const lease = { source:"RASFF", ownerId:"owner-1", mode:"reconcile",
+    acquiredAt:"2026-09-19T20:29:00.000Z", heartbeatAt:"2026-09-19T20:29:30.000Z",
+    expiresAt:"2026-09-19T20:31:00.000Z" };
+  evidence.observes.RASFF.lease = lease;
+  Object.assign(evidence.observes.RASFF.reconcile, { status:"running", leaseOwnerId:lease.ownerId,
+    leaseMode:lease.mode, leaseExpiresAt:lease.expiresAt });
+  assert.equal(validateClosureEvidence(evidence).rasffCompletedAt, COMPLETED);
+
+  const incompatible = structuredClone(evidence);
+  incompatible.observes.RASFF.lease.mode = "recent";
+  incompatible.observes.RASFF.reconcile.leaseMode = "recent";
+  assert.throws(() => validateClosureEvidence(incompatible), /RASFF has an incompatible active lease/u);
+});
+
 test("rejects absent audits and absent or empty integrity objects", () => {
   const absentAudit = validEvidence();
   delete absentAudit.audits.RAPNA;
@@ -149,5 +165,7 @@ test("workflow imports the tested validator and keeps bounded timeouts coherent"
   assert.match(workflow, /timeout-minutes: 20/u);
   assert.match(workflow, /REQUEST_TIMEOUT_MS=120_000/u);
   assert.match(workflow, /LEASE_WAIT_ATTEMPTS=20, LEASE_WAIT_MS=15_000/u);
+  assert.match(workflow, /compatibleRasffReconcile/u);
+  assert.match(workflow, /observe\.lease\?\.mode==="reconcile"/u);
   assert.doesNotMatch(workflow, /1_800_000/u);
 });
