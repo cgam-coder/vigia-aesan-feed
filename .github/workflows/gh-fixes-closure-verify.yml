@@ -17,11 +17,13 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     env:
       VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
+      - name: Check out verifier module
+        uses: actions/checkout@v4
       - name: Wait for idle control plane and audit every source
         shell: bash
         run: |
@@ -30,12 +32,14 @@ jobs:
           node --input-type=module - <<'NODE'
           import fs from "node:fs";
           import path from "node:path";
+          import { validateClosureEvidence } from "./scripts/gh-fixes-closure-verify.mjs";
 
           const base=process.env.VIGIA_BASE_URL;
           const headers={Authorization:`Bearer ${process.env.VIGIA_SYNC_TOKEN}`,"Content-Type":"application/json"};
           const routes={AESAN:"aesan",RAPNA:"rapna",RASFF:"rasff","SAFETY GATE":"safety-gate",OECD:"oecd"};
+          const REQUEST_TIMEOUT_MS=120_000, LEASE_WAIT_ATTEMPTS=20, LEASE_WAIT_MS=15_000;
           const call=async(pathname,method="GET",allowed=[200])=>{
-            const response=await fetch(base+pathname,{method,headers,redirect:"follow",signal:AbortSignal.timeout(1_800_000)});
+            const response=await fetch(base+pathname,{method,headers,redirect:"follow",signal:AbortSignal.timeout(REQUEST_TIMEOUT_MS)});
             const raw=await response.text();
             let body;
             try{body=JSON.parse(raw)}catch{throw new Error(`${method} ${pathname} returned non-JSON HTTP ${response.status}`)}
@@ -47,13 +51,13 @@ jobs:
           const activeLease=(observe)=>observe?.lease&&Number.isFinite(Date.parse(observe.lease.expiresAt))&&Date.parse(observe.lease.expiresAt)>Date.now();
 
           let observes;
-          for(let attempt=0;attempt<21;attempt+=1){
+          for(let attempt=0;attempt<LEASE_WAIT_ATTEMPTS;attempt+=1){
             observes=await observeAll();
             const active=Object.entries(observes).filter(([source,value])=>source!=="OECD"&&activeLease(value)).map(([source])=>source);
             if(!active.length)break;
-            if(attempt===20)throw new Error(`Control plane did not become idle: ${active.join(",")}`);
+            if(attempt===LEASE_WAIT_ATTEMPTS-1)throw new Error(`Control plane did not become idle: ${active.join(",")}`);
             console.log(`WAIT_ACTIVE_LEASES ${active.join(",")}`);
-            await new Promise(resolve=>setTimeout(resolve,30_000));
+            await new Promise(resolve=>setTimeout(resolve,LEASE_WAIT_MS));
           }
 
           const audits=Object.fromEntries(await Promise.all(Object.entries(routes).filter(([source])=>source!=="AESAN").map(async([source,route])=>
@@ -66,42 +70,20 @@ jobs:
             freshnessAudit:freshnessAudit.body,freshnessAuditHttp:freshnessAudit.http,freshnessObserve};
           const evidencePath=path.join(process.env.RUNNER_TEMP,"gh-fixes-closure-read-only-evidence.json");
           fs.writeFileSync(evidencePath,JSON.stringify(evidence,null,2));
-
-          const structuralIntegrityKeys={
-            OECD:["duplicateReferenceGroups","invalidIdentities","emptyCanonicalRows","invalidOfficialUrls"],
-          };
-          const nonZeroIntegrity=Object.entries(audits).flatMap(([source,audit])=>{
-            const integrity=audit?.integrity??{};
-            const keys=structuralIntegrityKeys[source]??Object.keys(integrity);
-            return keys.filter(key=>integrity[key]!==0).map(key=>`${source}.${key}=${integrity[key]}`);
-          });
-          const countInvariantFailures=[];
-          const rasffCounts=audits.RASFF?.counts??{};
-          if(rasffCounts.rasffAlerts!==rasffCounts.rasffUniqueReferences)
-            countInvariantFailures.push(`RASFF alerts/references ${rasffCounts.rasffAlerts}/${rasffCounts.rasffUniqueReferences}`);
-          if(rasffCounts.rasffAlerts!==rasffCounts.rasffSourceIdentities)
-            countInvariantFailures.push(`RASFF alerts/identities ${rasffCounts.rasffAlerts}/${rasffCounts.rasffSourceIdentities}`);
-          if(rasffCounts.rasffVersions!==rasffCounts.rasffVersionCountSum)
-            countInvariantFailures.push(`RASFF versions/version-count sum ${rasffCounts.rasffVersions}/${rasffCounts.rasffVersionCountSum}`);
+          const summary=validateClosureEvidence(evidence);
           console.log("AESAN_IDEMPOTENCE "+JSON.stringify({status:aesanPreview.status,repaired:aesanPreview.repaired,
             reference:aesanPreview.reference,versionCount:aesanPreview.versionCount}));
           console.log("RASFF_IDEMPOTENCE "+JSON.stringify({remaining:rasffPreview.remaining,repaired:rasffPreview.repaired}));
           console.log("OECD_OBSERVE "+JSON.stringify({recent:observes.OECD?.recent,historicalReconcile:observes.OECD?.historicalReconcile,
             activeLease:activeLease(observes.OECD)}));
-          console.log("SOURCE_INTEGRITY "+JSON.stringify({nonZeroIntegrity,countInvariantFailures,
+          console.log("SOURCE_INTEGRITY "+JSON.stringify({
             oecdOfficialDataCharacteristics:{sentinelPublishedDates:audits.OECD?.integrity?.sentinelPublishedDates,
               missingPublishedAt:audits.OECD?.integrity?.missingPublishedAt,
               unclassifiedDomains:audits.OECD?.integrity?.unclassifiedDomains}}));
           console.log("FIVE_SOURCE_FRESHNESS "+JSON.stringify({http:freshnessAudit.http,allFresh:freshnessAudit.body.allFresh,
             states:freshnessAudit.body.states?.map(({source,status,lastSyncSuccessAt,revisionStatus,revisionLastSuccessAt,revisionProgress,revisionTotal,error})=>
               ({source,status,lastSyncSuccessAt,revisionStatus,revisionLastSuccessAt,revisionProgress,revisionTotal,error}))}));
-
-          if(aesanPreview.status!=="already-repaired"||aesanPreview.repaired!==false)throw new Error("AESAN repair is not idempotently verified");
-          if(rasffPreview.remaining!==0||rasffPreview.repaired!==0)throw new Error("RASFF version-count preview is not clean");
-          if(nonZeroIntegrity.length)throw new Error(`Source integrity audit failed: ${nonZeroIntegrity.join(";")}`);
-          if(countInvariantFailures.length)throw new Error(`Source count invariant failed: ${countInvariantFailures.join(";")}`);
-          if(freshnessAudit.http!==200||freshnessAudit.body.allFresh!==true||freshnessAudit.body.states?.length!==5)
-            throw new Error("Five-source freshness watchdog failed closed");
+          console.log("STRICT_CLOSURE_VALIDATION "+JSON.stringify(summary));
           NODE
       - name: Preserve read-only closure evidence
         if: always()
