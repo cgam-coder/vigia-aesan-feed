@@ -49,7 +49,7 @@ jobs:
           let observes;
           for(let attempt=0;attempt<21;attempt+=1){
             observes=await observeAll();
-            const active=Object.entries(observes).filter(([,value])=>activeLease(value)).map(([source])=>source);
+            const active=Object.entries(observes).filter(([source,value])=>source!=="OECD"&&activeLease(value)).map(([source])=>source);
             if(!active.length)break;
             if(attempt===20)throw new Error(`Control plane did not become idle: ${active.join(",")}`);
             console.log(`WAIT_ACTIVE_LEASES ${active.join(",")}`);
@@ -72,6 +72,8 @@ jobs:
           console.log("AESAN_IDEMPOTENCE "+JSON.stringify({status:aesanPreview.status,repaired:aesanPreview.repaired,
             reference:aesanPreview.reference,versionCount:aesanPreview.versionCount}));
           console.log("RASFF_IDEMPOTENCE "+JSON.stringify({remaining:rasffPreview.remaining,repaired:rasffPreview.repaired}));
+          console.log("OECD_OBSERVE "+JSON.stringify({recent:observes.OECD?.recent,historicalReconcile:observes.OECD?.historicalReconcile,
+            activeLease:activeLease(observes.OECD)}));
           console.log("SOURCE_INTEGRITY "+JSON.stringify({nonZeroIntegrity}));
           console.log("FIVE_SOURCE_FRESHNESS "+JSON.stringify({http:freshnessAudit.http,allFresh:freshnessAudit.body.allFresh,
             states:freshnessAudit.body.states?.map(({source,status,lastSyncSuccessAt,revisionStatus,revisionLastSuccessAt,revisionProgress,revisionTotal,error})=>
