@@ -83,14 +83,34 @@ function array(value, label) {
   return value;
 }
 
-function validateLease(observe, source) {
-  const lease = own(observe, "lease", `observes.${source}`);
-  if (lease === null) return;
-  object(lease, `observes.${source}.lease`);
-  isoDate(own(lease, "expiresAt", `observes.${source}.lease`), `observes.${source}.lease.expiresAt`);
+function nonEmptyString(value, label) {
+  if (typeof value !== "string" || !value) fail(`${label} must be a non-empty string`);
+  return value;
 }
 
-function validateRevisionState(source, observe) {
+function validateLease(observe, source) {
+  const lease = own(observe, "lease", `observes.${source}`);
+  if (lease === null) return null;
+  object(lease, `observes.${source}.lease`);
+  if (own(lease, "source", `observes.${source}.lease`) !== source)
+    fail(`observes.${source}.lease.source is invalid`);
+  nonEmptyString(own(lease, "ownerId", `observes.${source}.lease`), `observes.${source}.lease.ownerId`);
+  const mode = nonEmptyString(own(lease, "mode", `observes.${source}.lease`), `observes.${source}.lease.mode`);
+  const acquiredAt = isoDate(own(lease, "acquiredAt", `observes.${source}.lease`),
+    `observes.${source}.lease.acquiredAt`);
+  const heartbeatAt = isoDate(own(lease, "heartbeatAt", `observes.${source}.lease`),
+    `observes.${source}.lease.heartbeatAt`);
+  const expiresAt = isoDate(own(lease, "expiresAt", `observes.${source}.lease`),
+    `observes.${source}.lease.expiresAt`);
+  if (Date.parse(acquiredAt) > Date.parse(heartbeatAt) || Date.parse(heartbeatAt) > Date.parse(expiresAt))
+    fail(`observes.${source}.lease timestamps are inconsistent`);
+  if (source === "RASFF" && mode !== "reconcile") fail("RASFF has an incompatible active lease");
+  if (source === "OECD" && mode !== "historical-reconcile") fail("OECD has an incompatible active lease");
+  if (source !== "RASFF" && source !== "OECD") fail(`observes.${source} has an incompatible active lease`);
+  return lease;
+}
+
+function validateRevisionState(source, observe, lease) {
   const contract = REVISION_CONTRACT[source];
   if (!contract.observeKey) return;
   const state = object(own(observe, contract.observeKey, `observes.${source}`),
@@ -100,7 +120,7 @@ function validateRevisionState(source, observe) {
   if (own(state, "mode", `observes.${source}.${contract.observeKey}`) !== contract.mode)
     fail(`observes.${source}.${contract.observeKey}.mode is invalid`);
   const status = own(state, "status", `observes.${source}.${contract.observeKey}`);
-  const allowed = source === "RASFF" ? ["partial","completed"] : ["completed"];
+  const allowed = source === "RASFF" ? ["running","partial","completed"] : ["completed"];
   if (!allowed.includes(status)) fail(`observes.${source}.${contract.observeKey}.status is invalid`);
   const cursor = count(own(state, "cursor", `observes.${source}.${contract.observeKey}`),
     `observes.${source}.${contract.observeKey}.cursor`);
@@ -115,7 +135,16 @@ function validateRevisionState(source, observe) {
     `observes.${source}.${contract.observeKey}.lastSuccessAt`);
   const completedAt = isoDate(own(state, "completedAt", `observes.${source}.${contract.observeKey}`),
     `observes.${source}.${contract.observeKey}.completedAt`);
-  if (status === "completed") {
+  if (status === "running") {
+    if (!lease || lease.mode !== "reconcile") fail("RASFF running state lacks its reconcile lease");
+    if (own(state, "leaseOwnerId", `observes.${source}.${contract.observeKey}`) !== lease.ownerId ||
+        own(state, "leaseMode", `observes.${source}.${contract.observeKey}`) !== lease.mode)
+      fail("RASFF running state disagrees with its active lease");
+    isoDate(own(state, "leaseExpiresAt", `observes.${source}.${contract.observeKey}`),
+      `observes.${source}.${contract.observeKey}.leaseExpiresAt`);
+    if (own(state, "coverage", `observes.${source}.${contract.observeKey}`) !== "partial")
+      fail(`observes.${source}.${contract.observeKey}.coverage is not partial`);
+  } else if (status === "completed") {
     if (cursor !== 0 && cursor !== total) fail(`observes.${source}.${contract.observeKey}.cursor is not terminal`);
     if (own(state, "coverage", `observes.${source}.${contract.observeKey}`) !== "official-index-complete")
       fail(`observes.${source}.${contract.observeKey}.coverage is not complete`);
@@ -142,8 +171,8 @@ function validateObserves(observes) {
   const completedAt = {};
   for (const source of EXPECTED_SOURCES) {
     const observe = object(observes[source], `observes.${source}`);
-    validateLease(observe, source);
-    completedAt[source] = validateRevisionState(source, observe) ?? null;
+    const lease = validateLease(observe, source);
+    completedAt[source] = validateRevisionState(source, observe, lease) ?? null;
   }
   return completedAt;
 }

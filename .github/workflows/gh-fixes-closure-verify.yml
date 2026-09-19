@@ -49,16 +49,24 @@ jobs:
           const observeAll=async()=>Object.fromEntries(await Promise.all(Object.entries(routes).map(async([source,route])=>
             [source,(await call(`/api/${route}/sync?observe=1`)).body])));
           const activeLease=(observe)=>observe?.lease&&Number.isFinite(Date.parse(observe.lease.expiresAt))&&Date.parse(observe.lease.expiresAt)>Date.now();
+          const compatibleRasffReconcile=(source,observe)=>source==="RASFF"&&activeLease(observe)&&
+            observe.lease?.source==="RASFF"&&observe.lease?.mode==="reconcile"&&
+            observe.reconcile?.mode==="reconcile"&&["running","partial"].includes(observe.reconcile.status)&&
+            Number.isFinite(Date.parse(observe.reconcile.completedAt));
 
           let observes;
           for(let attempt=0;attempt<LEASE_WAIT_ATTEMPTS;attempt+=1){
             observes=await observeAll();
-            const active=Object.entries(observes).filter(([source,value])=>source!=="OECD"&&activeLease(value)).map(([source])=>source);
+            const active=Object.entries(observes).filter(([source,value])=>source!=="OECD"&&activeLease(value)&&
+              !compatibleRasffReconcile(source,value)).map(([source])=>source);
             if(!active.length)break;
             if(attempt===LEASE_WAIT_ATTEMPTS-1)throw new Error(`Control plane did not become idle: ${active.join(",")}`);
             console.log(`WAIT_ACTIVE_LEASES ${active.join(",")}`);
             await new Promise(resolve=>setTimeout(resolve,LEASE_WAIT_MS));
           }
+          const compatibleLeases=Object.entries(observes).filter(([source,value])=>
+            compatibleRasffReconcile(source,value)).map(([source])=>source);
+          if(compatibleLeases.length)console.log(`OBSERVE_COMPATIBLE_LEASES ${compatibleLeases.join(",")}`);
 
           const audits=Object.fromEntries(await Promise.all(Object.entries(routes).filter(([source])=>source!=="AESAN").map(async([source,route])=>
             [source,(await call(`/api/${route}/sync?audit=1`)).body.audit])));
