@@ -1,0 +1,80 @@
+name: Public SEO read-only validation snapshot
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  public-snapshot:
+    if: github.repository == 'cgam-coder/vigia-aesan-feed'
+    defaults:
+      run:
+        working-directory: public-monitoring/seo
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            public-monitoring/seo
+            .github/workflows
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Test HTTP evidence extraction and workflow wiring
+        run: node --test tests/seo-home-contracts.test.mjs tests/seo-workflow-wiring.test.mjs
+      - name: Capture live homepage HTML without executing browser JavaScript
+        run: |
+          mkdir -p seo-validation-evidence
+          node --input-type=module <<'NODE'
+          import { writeFile, appendFile } from "node:fs/promises";
+          import { HOME_SNAPSHOT_TARGETS, extractHomepageSignals } from "./scripts/seo-home-contracts.mjs";
+          const rows = [];
+          for (const { name, path } of HOME_SNAPSHOT_TARGETS) {
+            const url = `https://nagamealert.com${path}`;
+            try {
+              const response = await fetch(url, {
+                headers:{ "user-agent":"NagameAlert-SEO-Validation/1.0", "cache-control":"no-cache" },
+                signal:AbortSignal.timeout(30_000),
+              });
+              const html = await response.text();
+              await writeFile(`seo-validation-evidence/${name}.html`, html);
+              rows.push({ url, fetchedAt:new Date().toISOString(), status:response.status, finalUrl:response.url,
+                bytes:Buffer.byteLength(html), dateHeader:response.headers.get("date"), age:response.headers.get("age"),
+                cacheStatus:response.headers.get("cf-cache-status"), xRobots:response.headers.get("x-robots-tag"),
+                ...extractHomepageSignals(html),
+              });
+              if (response.status !== 200) process.exitCode = 1;
+            } catch (error) {
+              rows.push({ url, fetchedAt:new Date().toISOString(), error:error instanceof Error ? error.message : String(error) });
+              process.exitCode = 1;
+            }
+          }
+          const report = { inspectedCode:process.env.GITHUB_SHA, pages:rows,
+            note:"Read-only live HTTP evidence. inspectedCode is the audit checkout, NOT the deployed commit. No Google indexing status is claimed." };
+          const json = JSON.stringify(report, null, 2);
+          console.log(json);
+          await writeFile("seo-validation-evidence/homepages.json", json);
+          await appendFile(process.env.GITHUB_STEP_SUMMARY, `### Live homepage snapshot\n\n\`\`\`json\n${json}\n\`\`\`\n`);
+          NODE
+      - name: Enforce homepage discovery and campaign landing contracts
+        if: always()
+        run: |
+          set -o pipefail
+          node scripts/seo-home-contracts.mjs seo-validation-evidence/homepages.json | tee seo-validation-evidence/home-contracts.json
+      - name: Verify existing five-source SEO contracts against production
+        if: always()
+        run: |
+          set -o pipefail
+          node scripts/seo-indexability-watchdog.mjs | tee seo-validation-evidence/watchdog.json
+      - name: Preserve raw evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: seo-readonly-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: public-monitoring/seo/seo-validation-evidence/
+          retention-days: 7

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Public HTTP SEO contracts only; no ingestion or private repository access.",
+  "files": {
+    "scripts/seo-home-contracts.mjs": "a339f16ad99b001b4ac0ec5bef66d2f6e01415f4",
+    "scripts/seo-indexability-watchdog.mjs": "b5e81313cde820f9bbf24044082fd94958ee0265",
+    "tests/seo-home-contracts.test.mjs": "949e8424da3f140e3ba2da506230c546b2619903"
+  }
+}
