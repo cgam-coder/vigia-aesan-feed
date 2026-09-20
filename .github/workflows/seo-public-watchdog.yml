@@ -1,0 +1,30 @@
+name: NagameAlert public SEO watchdog
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "public-monitoring/seo/**"
+      - ".github/workflows/seo-public-watchdog.yml"
+      - ".github/workflows/seo-public-snapshot.yml"
+  pull_request:
+    paths:
+      - "public-monitoring/seo/**"
+      - ".github/workflows/seo-public-watchdog.yml"
+      - ".github/workflows/seo-public-snapshot.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nagame-public-seo-${{ github.event.pull_request.number || 'production' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  audit:
+    # Cloned repositories must not start their own scheduled production monitor.
+    if: github.repository == 'cgam-coder/vigia-aesan-feed'
+    uses: ./.github/workflows/seo-public-snapshot.yml
