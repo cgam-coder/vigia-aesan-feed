@@ -12,7 +12,8 @@ const REVISION_CONTRACT = Object.freeze({
   RAPNA:{ observeKey:"currentParity", mode:"current-parity", revisionStatus:"fresh" },
   RASFF:{ observeKey:"reconcile", mode:"reconcile", revisionStatus:"fresh" },
   "SAFETY GATE":{ observeKey:null, mode:null, revisionStatus:"not-required" },
-  OECD:{ observeKey:"historicalReconcile", mode:"historical-reconcile", revisionStatus:"fresh" },
+  OECD:{ observeKey:"historicalReconcile", certificationKey:"revisionCertification",
+    mode:"historical-reconcile", revisionStatus:"fresh" },
 });
 
 const REQUIRED_INTEGRITY_KEYS = Object.freeze({
@@ -120,7 +121,7 @@ function validateRevisionState(source, observe, lease) {
   if (own(state, "mode", `observes.${source}.${contract.observeKey}`) !== contract.mode)
     fail(`observes.${source}.${contract.observeKey}.mode is invalid`);
   const status = own(state, "status", `observes.${source}.${contract.observeKey}`);
-  const allowed = source === "RASFF" ? ["running","partial","completed"] : ["completed"];
+  const allowed = source === "RASFF" || source === "OECD" ? ["running","partial","completed"] : ["completed"];
   if (!allowed.includes(status)) fail(`observes.${source}.${contract.observeKey}.status is invalid`);
   const cursor = count(own(state, "cursor", `observes.${source}.${contract.observeKey}`),
     `observes.${source}.${contract.observeKey}.cursor`);
@@ -133,13 +134,14 @@ function validateRevisionState(source, observe, lease) {
     `observes.${source}.${contract.observeKey}.pageErrors`);
   isoDate(own(state, "lastSuccessAt", `observes.${source}.${contract.observeKey}`),
     `observes.${source}.${contract.observeKey}.lastSuccessAt`);
-  const completedAt = isoDate(own(state, "completedAt", `observes.${source}.${contract.observeKey}`),
+  const completedValue = own(state, "completedAt", `observes.${source}.${contract.observeKey}`);
+  const completedAt = completedValue === null ? null : isoDate(completedValue,
     `observes.${source}.${contract.observeKey}.completedAt`);
   if (status === "running") {
-    if (!lease || lease.mode !== "reconcile") fail("RASFF running state lacks its reconcile lease");
+    if (!lease || lease.mode !== contract.mode) fail(`${source} running state lacks its ${contract.mode} lease`);
     if (own(state, "leaseOwnerId", `observes.${source}.${contract.observeKey}`) !== lease.ownerId ||
         own(state, "leaseMode", `observes.${source}.${contract.observeKey}`) !== lease.mode)
-      fail("RASFF running state disagrees with its active lease");
+      fail(`${source} running state disagrees with its active lease`);
     isoDate(own(state, "leaseExpiresAt", `observes.${source}.${contract.observeKey}`),
       `observes.${source}.${contract.observeKey}.leaseExpiresAt`);
     if (own(state, "coverage", `observes.${source}.${contract.observeKey}`) !== "partial")
@@ -163,6 +165,36 @@ function validateRevisionState(source, observe, lease) {
     if (state.pageErrors < failures)
       fail(`observes.${source}.${contract.observeKey}.pageErrors is inconsistent with deferred details`);
   }
+  if (source === "OECD" && (lastError !== null || state.detailFailures !== 0 || state.pageErrors !== 0))
+    fail("observes.OECD.historicalReconcile contains an uncertified current-cycle error");
+  if (source !== "OECD" && completedAt === null)
+    fail(`observes.${source}.${contract.observeKey}.completedAt is required`);
+  if (source === "OECD" && status === "completed" && completedAt === null)
+    fail("observes.OECD.historicalReconcile.completedAt is required for a completed cycle");
+  return completedAt;
+}
+
+function validateRevisionCertification(source, observe) {
+  const contract = REVISION_CONTRACT[source];
+  if (!contract.certificationKey) return null;
+  const label = `observes.${source}.${contract.certificationKey}`;
+  const certification = object(own(observe, contract.certificationKey, `observes.${source}`), label);
+  if (own(certification, "source", label) !== source || own(certification, "mode", label) !== contract.mode)
+    fail(`${label} identity is invalid`);
+  nonEmptyString(own(certification, "cycleId", label), `${label}.cycleId`);
+  const completedAt = isoDate(own(certification, "completedAt", label), `${label}.completedAt`);
+  const total = count(own(certification, "totalUnits", label), `${label}.totalUnits`);
+  if (total === 0) fail(`${label}.totalUnits must be positive`);
+  count(own(certification, "recordsObserved", label), `${label}.recordsObserved`);
+  if (own(certification, "coverage", label) !== "official-index-complete") fail(`${label}.coverage is invalid`);
+  if (own(certification, "auditStatus", label) !== "passed") fail(`${label}.auditStatus must be passed`);
+  const auditCheckedAt = isoDate(own(certification, "auditCheckedAt", label), `${label}.auditCheckedAt`);
+  if (Date.parse(auditCheckedAt) < Date.parse(completedAt)) fail(`${label} audit precedes completion`);
+  const evidence = object(own(certification, "evidence", label), `${label}.evidence`);
+  const audit = object(own(evidence, "audit", `${label}.evidence`), `${label}.evidence.audit`);
+  if (isoDate(own(audit, "checkedAt", `${label}.evidence.audit`), `${label}.evidence.audit.checkedAt`) !== auditCheckedAt)
+    fail(`${label}.auditCheckedAt disagrees with its evidence`);
+  validateAudit("OECD", audit);
   return completedAt;
 }
 
@@ -172,7 +204,8 @@ function validateObserves(observes) {
   for (const source of EXPECTED_SOURCES) {
     const observe = object(observes[source], `observes.${source}`);
     const lease = validateLease(observe, source);
-    completedAt[source] = validateRevisionState(source, observe, lease) ?? null;
+    const currentCompletedAt = validateRevisionState(source, observe, lease) ?? null;
+    completedAt[source] = validateRevisionCertification(source, observe) ?? currentCompletedAt;
   }
   return completedAt;
 }

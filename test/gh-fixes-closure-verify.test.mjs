@@ -34,6 +34,11 @@ function freshnessState(source) {
 
 function validEvidence() {
   const states = EXPECTED_SOURCES.map(freshnessState);
+  const oecdAudit = audit({ alerts:10, oecdAlerts:3, oecdUniqueReferences:3, oecdVersions:4,
+    oecdVersionCountSum:4 }, {
+    duplicateReferenceGroups:0, invalidIdentities:0, emptyCanonicalRows:0, invalidOfficialUrls:0,
+    sentinelPublishedDates:3, missingPublishedAt:3, unclassifiedDomains:7548,
+  });
   return {
     checkedAt:NOW,
     observes:{
@@ -41,7 +46,11 @@ function validEvidence() {
       RAPNA:{ lease:null, currentParity:revision("RAPNA", "current-parity") },
       RASFF:{ lease:null, reconcile:revision("RASFF", "reconcile", 10, { partial:true }) },
       "SAFETY GATE":{ lease:null },
-      OECD:{ lease:null, historicalReconcile:revision("OECD", "historical-reconcile") },
+      OECD:{ lease:null, historicalReconcile:revision("OECD", "historical-reconcile"),
+        revisionCertification:{ source:"OECD", mode:"historical-reconcile",
+          cycleId:"oecd-historical-reconcile-v2:2026-09-19T00:00:00.000Z", completedAt:COMPLETED,
+          totalUnits:3039, recordsObserved:57618, coverage:"official-index-complete", auditStatus:"passed",
+          auditCheckedAt:NOW, evidence:{ audit:structuredClone(oecdAudit) }, updatedAt:NOW } },
     },
     audits:{
       RAPNA:audit({ alerts:10, rapnaAlerts:2, rapnaUniqueReferences:2, rapnaVersions:2,
@@ -59,11 +68,7 @@ function validEvidence() {
         safetyGateVersions:2, safetyGateVersionCountSum:3 }, {
         duplicateReferenceGroups:0, invalidIdentities:0, emptyCanonicalRows:0, invalidOfficialUrls:0,
       }),
-      OECD:audit({ alerts:10, oecdAlerts:3, oecdUniqueReferences:3, oecdVersions:4,
-        oecdVersionCountSum:4 }, {
-        duplicateReferenceGroups:0, invalidIdentities:0, emptyCanonicalRows:0, invalidOfficialUrls:0,
-        sentinelPublishedDates:3, missingPublishedAt:3, unclassifiedDomains:7548,
-      }),
+      OECD:oecdAudit,
     },
     aesanPreview:{ status:"already-repaired", repaired:false, reference:"ES2026/517", versionCount:2 },
     rasffPreview:{ checkedAt:NOW, dryRun:true, repaired:0, remaining:0, rows:[] },
@@ -93,6 +98,34 @@ test("accepts only a coherent active RASFF reconcile over a prior complete certi
   incompatible.observes.RASFF.lease.mode = "recent";
   incompatible.observes.RASFF.reconcile.leaseMode = "recent";
   assert.throws(() => validateClosureEvidence(incompatible), /RASFF has an incompatible active lease/u);
+});
+
+test("accepts an OECD cycle in progress only with an independent complete certification", () => {
+  const evidence = validEvidence();
+  const lease = { source:"OECD", ownerId:"oecd-owner", mode:"historical-reconcile",
+    acquiredAt:"2026-09-19T20:29:00.000Z", heartbeatAt:"2026-09-19T20:29:30.000Z",
+    expiresAt:"2026-09-19T20:31:00.000Z" };
+  evidence.observes.OECD.lease = lease;
+  Object.assign(evidence.observes.OECD.historicalReconcile, { status:"running", cursor:12, totalUnits:3039,
+    coverage:"partial", completedAt:null, leaseOwnerId:lease.ownerId, leaseMode:lease.mode,
+    leaseExpiresAt:lease.expiresAt });
+  evidence.freshnessAudit.states[4].revisionProgress = 12;
+  evidence.freshnessAudit.states[4].revisionTotal = 3039;
+  evidence.freshnessObserve.states[4].revisionProgress = 12;
+  evidence.freshnessObserve.states[4].revisionTotal = 3039;
+  assert.equal(validateClosureEvidence(evidence).oecdCompletedAt, COMPLETED);
+
+  delete evidence.observes.OECD.revisionCertification;
+  assert.throws(() => validateClosureEvidence(evidence), /revisionCertification is required/u);
+});
+
+test("rejects an expired or structurally invalid OECD certification", () => {
+  const invalid = validEvidence();
+  invalid.observes.OECD.revisionCertification.evidence.audit.integrity.invalidOfficialUrls = 1;
+  assert.throws(() => validateClosureEvidence(invalid), /invalidOfficialUrls must be zero/u);
+  const mismatch = validEvidence();
+  mismatch.freshnessAudit.states[4].revisionLastSuccessAt = "2026-09-18T00:00:00.000Z";
+  assert.throws(() => validateClosureEvidence(mismatch), /disagrees with observed completedAt/u);
 });
 
 test("rejects absent audits and absent or empty integrity objects", () => {
@@ -162,13 +195,13 @@ test("workflow imports the tested validator and keeps bounded timeouts coherent"
   const workflow = readFileSync(new URL("../.github/workflows/gh-fixes-closure-verify.yml", import.meta.url), "utf8");
   assert.match(workflow, /import \{ validateClosureEvidence \} from "\.\/scripts\/gh-fixes-closure-verify\.mjs";/u);
   assert.match(workflow, /const summary=validateClosureEvidence\(evidence\);/u);
-  assert.match(workflow, /timeout-minutes: 20/u);
-  assert.match(workflow, /REQUEST_TIMEOUT_MS=120_000/u);
-  assert.match(workflow, /LEASE_WAIT_ATTEMPTS=20, LEASE_WAIT_MS=15_000/u);
-  assert.match(workflow, /compatibleRasffReconcile/u);
-  assert.match(workflow, /observe\.lease\?\.mode==="reconcile"/u);
-  assert.match(workflow, /RASFF_PREVIEW_RETRY_ATTEMPTS=180, RASFF_PREVIEW_RETRY_MS=1_000/u);
+  assert.match(workflow, /createDeadline, createEvidenceJournal/u);
+  assert.match(workflow, /timeout-minutes: 30/u);
+  assert.match(workflow, /totalMs:24\*60_000/u);
+  assert.match(workflow, /budget\.timeout\(120_000/u);
+  assert.match(workflow, /compatibleMaintenance/u);
+  assert.match(workflow, /journal\.record\("observes"/u);
+  assert.match(workflow, /journal\.fail\(error\)/u);
   assert.match(workflow, /result\.body\?\.error!=="RASFF version-count repair aborted: active or invalid sync lease"/u);
   assert.match(workflow, /RASFF preview could not acquire a bounded idle interval/u);
-  assert.doesNotMatch(workflow, /1_800_000/u);
 });

@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/gh-fixes-closure-verify.yml"
+      - "scripts/gh-fixes-closure-verify.mjs"
+      - "scripts/closure-evidence-runtime.mjs"
   workflow_dispatch:
 
 permissions:
@@ -17,30 +19,31 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
-      - name: Check out verifier module
-        uses: actions/checkout@v4
-      - name: Wait for idle control plane and audit every source
-        shell: bash
+      - uses: actions/checkout@v4
+      - name: Audit every source with a total deadline and phased evidence
         run: |
           set -euo pipefail
           test -n "$VIGIA_SYNC_TOKEN"
           node --input-type=module - <<'NODE'
           import fs from "node:fs";
           import path from "node:path";
+          import { createDeadline, createEvidenceJournal } from "./scripts/closure-evidence-runtime.mjs";
           import { validateClosureEvidence } from "./scripts/gh-fixes-closure-verify.mjs";
 
           const base=process.env.VIGIA_BASE_URL;
           const headers={Authorization:`Bearer ${process.env.VIGIA_SYNC_TOKEN}`,"Content-Type":"application/json"};
           const routes={AESAN:"aesan",RAPNA:"rapna",RASFF:"rasff","SAFETY GATE":"safety-gate",OECD:"oecd"};
-          const REQUEST_TIMEOUT_MS=120_000, LEASE_WAIT_ATTEMPTS=20, LEASE_WAIT_MS=15_000;
-          const RASFF_PREVIEW_RETRY_ATTEMPTS=180, RASFF_PREVIEW_RETRY_MS=1_000;
+          const budget=createDeadline({totalMs:24*60_000});
+          const evidencePath=path.join(process.env.RUNNER_TEMP,"gh-fixes-closure-read-only-evidence.json");
+          const journal=createEvidenceJournal({path:evidencePath,writeFileSync:fs.writeFileSync});
           const call=async(pathname,method="GET",allowed=[200])=>{
-            const response=await fetch(base+pathname,{method,headers,redirect:"follow",signal:AbortSignal.timeout(REQUEST_TIMEOUT_MS)});
+            const timeout=budget.timeout(120_000,`${method} ${pathname}`);
+            const response=await fetch(base+pathname,{method,headers,redirect:"follow",signal:AbortSignal.timeout(timeout)});
             const raw=await response.text();
             let body;
             try{body=JSON.parse(raw)}catch{throw new Error(`${method} ${pathname} returned non-JSON HTTP ${response.status}`)}
@@ -49,69 +52,59 @@ jobs:
           };
           const observeAll=async()=>Object.fromEntries(await Promise.all(Object.entries(routes).map(async([source,route])=>
             [source,(await call(`/api/${route}/sync?observe=1`)).body])));
-          const activeLease=(observe)=>observe?.lease&&Number.isFinite(Date.parse(observe.lease.expiresAt))&&Date.parse(observe.lease.expiresAt)>Date.now();
-          const compatibleRasffReconcile=(source,observe)=>source==="RASFF"&&activeLease(observe)&&
-            observe.lease?.source==="RASFF"&&observe.lease?.mode==="reconcile"&&
-            observe.reconcile?.mode==="reconcile"&&["running","partial"].includes(observe.reconcile.status)&&
-            Number.isFinite(Date.parse(observe.reconcile.completedAt));
+          const activeLease=(observe)=>observe?.lease&&Number.isFinite(Date.parse(observe.lease.expiresAt))&&
+            Date.parse(observe.lease.expiresAt)>Date.now();
+          const compatibleMaintenance=(source,observe)=>activeLease(observe)&&(
+            source==="RASFF"&&observe.lease?.mode==="reconcile"||
+            source==="OECD"&&observe.lease?.mode==="historical-reconcile");
 
-          let observes;
-          for(let attempt=0;attempt<LEASE_WAIT_ATTEMPTS;attempt+=1){
-            observes=await observeAll();
-            const active=Object.entries(observes).filter(([source,value])=>source!=="OECD"&&activeLease(value)&&
-              !compatibleRasffReconcile(source,value)).map(([source])=>source);
-            if(!active.length)break;
-            if(attempt===LEASE_WAIT_ATTEMPTS-1)throw new Error(`Control plane did not become idle: ${active.join(",")}`);
-            console.log(`WAIT_ACTIVE_LEASES ${active.join(",")}`);
-            await new Promise(resolve=>setTimeout(resolve,LEASE_WAIT_MS));
-          }
-          const compatibleLeases=Object.entries(observes).filter(([source,value])=>
-            compatibleRasffReconcile(source,value)).map(([source])=>source);
-          if(compatibleLeases.length)console.log(`OBSERVE_COMPATIBLE_LEASES ${compatibleLeases.join(",")}`);
+          try {
+            let observes;
+            for(let attempt=0;attempt<20;attempt+=1){
+              observes=await observeAll();
+              const active=Object.entries(observes).filter(([source,value])=>
+                activeLease(value)&&!compatibleMaintenance(source,value)).map(([source])=>source);
+              if(!active.length)break;
+              if(attempt===19)throw new Error(`Control plane did not become compatible: ${active.join(",")}`);
+              console.log(`WAIT_ACTIVE_LEASES ${active.join(",")}`);
+              await budget.pause(15_000,"waiting for incompatible leases");
+            }
+            journal.record("observes",{observes});
 
-          const previewRasffWhenIdle=async()=>{
-            for(let attempt=1;attempt<=RASFF_PREVIEW_RETRY_ATTEMPTS;attempt+=1){
+            const audits=Object.fromEntries(await Promise.all(Object.entries(routes).filter(([source])=>source!=="AESAN")
+              .map(async([source,route])=>[source,(await call(`/api/${route}/sync?audit=1`)).body.audit])));
+            journal.record("audits",{audits});
+
+            const aesanPreview=(await call("/api/aesan/sync?mode=preview-publication-identity&reference=ES2026%2F517","POST")).body;
+            journal.record("aesan-preview",{aesanPreview});
+
+            let rasffPreview;
+            for(let attempt=1;attempt<=180;attempt+=1){
               const observed=(await call("/api/rasff/sync?observe=1")).body;
-              if(activeLease(observed)){
-                if(!compatibleRasffReconcile("RASFF",observed))
-                  throw new Error("RASFF preview blocked by an incompatible active lease");
-              }else{
+              if(!activeLease(observed)){
                 const result=await call("/api/rasff/sync?mode=preview-version-counts","POST",[200,409]);
-                if(result.http===200)return result.body;
+                if(result.http===200){rasffPreview=result.body;break}
                 if(result.body?.error!=="RASFF version-count repair aborted: active or invalid sync lease")
                   throw new Error(`RASFF preview failed HTTP 409: ${JSON.stringify(result.body).slice(0,600)}`);
+              } else if(!compatibleMaintenance("RASFF",observed)) {
+                throw new Error("RASFF preview blocked by an incompatible active lease");
               }
-              if(attempt===RASFF_PREVIEW_RETRY_ATTEMPTS)
-                throw new Error("RASFF preview could not acquire a bounded idle interval");
-              if(attempt%15===0)console.log(`WAIT_RASFF_PREVIEW_IDLE attempt=${attempt}`);
-              await new Promise(resolve=>setTimeout(resolve,RASFF_PREVIEW_RETRY_MS));
+              if(attempt===180)throw new Error("RASFF preview could not acquire a bounded idle interval");
+              await budget.pause(1_000,"waiting for RASFF preview");
             }
-          };
+            journal.record("rasff-preview",{rasffPreview});
 
-          const audits=Object.fromEntries(await Promise.all(Object.entries(routes).filter(([source])=>source!=="AESAN").map(async([source,route])=>
-            [source,(await call(`/api/${route}/sync?audit=1`)).body.audit])));
-          const aesanPreview=(await call("/api/aesan/sync?mode=preview-publication-identity&reference=ES2026%2F517","POST")).body;
-          const rasffPreview=await previewRasffWhenIdle();
-          const freshnessAudit=await call("/api/freshness?audit=1","POST",[200,503]);
-          const freshnessObserve=(await call("/api/freshness?observe=1")).body;
-          const evidence={checkedAt:new Date().toISOString(),observes,audits,aesanPreview,rasffPreview,
-            freshnessAudit:freshnessAudit.body,freshnessAuditHttp:freshnessAudit.http,freshnessObserve};
-          const evidencePath=path.join(process.env.RUNNER_TEMP,"gh-fixes-closure-read-only-evidence.json");
-          fs.writeFileSync(evidencePath,JSON.stringify(evidence,null,2));
-          const summary=validateClosureEvidence(evidence);
-          console.log("AESAN_IDEMPOTENCE "+JSON.stringify({status:aesanPreview.status,repaired:aesanPreview.repaired,
-            reference:aesanPreview.reference,versionCount:aesanPreview.versionCount}));
-          console.log("RASFF_IDEMPOTENCE "+JSON.stringify({remaining:rasffPreview.remaining,repaired:rasffPreview.repaired}));
-          console.log("OECD_OBSERVE "+JSON.stringify({recent:observes.OECD?.recent,historicalReconcile:observes.OECD?.historicalReconcile,
-            activeLease:activeLease(observes.OECD)}));
-          console.log("SOURCE_INTEGRITY "+JSON.stringify({
-            oecdOfficialDataCharacteristics:{sentinelPublishedDates:audits.OECD?.integrity?.sentinelPublishedDates,
-              missingPublishedAt:audits.OECD?.integrity?.missingPublishedAt,
-              unclassifiedDomains:audits.OECD?.integrity?.unclassifiedDomains}}));
-          console.log("FIVE_SOURCE_FRESHNESS "+JSON.stringify({http:freshnessAudit.http,allFresh:freshnessAudit.body.allFresh,
-            states:freshnessAudit.body.states?.map(({source,status,lastSyncSuccessAt,revisionStatus,revisionLastSuccessAt,revisionProgress,revisionTotal,error})=>
-              ({source,status,lastSyncSuccessAt,revisionStatus,revisionLastSuccessAt,revisionProgress,revisionTotal,error}))}));
-          console.log("STRICT_CLOSURE_VALIDATION "+JSON.stringify(summary));
+            const freshnessAudit=await call("/api/freshness?audit=1","POST",[200,503]);
+            journal.record("freshness-audit",{freshnessAudit:freshnessAudit.body,freshnessAuditHttp:freshnessAudit.http});
+            const freshnessObserve=(await call("/api/freshness?observe=1")).body;
+            const evidence=journal.record("complete",{freshnessObserve});
+            const summary=validateClosureEvidence(evidence);
+            journal.record("validated",{summary});
+            console.log("STRICT_CLOSURE_VALIDATION "+JSON.stringify(summary));
+          } catch(error) {
+            journal.fail(error);
+            throw error;
+          }
           NODE
       - name: Preserve read-only closure evidence
         if: always()
@@ -119,5 +112,5 @@ jobs:
         with:
           name: gh-fixes-closure-read-only-evidence
           path: ${{ runner.temp }}/gh-fixes-closure-read-only-evidence.json
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
