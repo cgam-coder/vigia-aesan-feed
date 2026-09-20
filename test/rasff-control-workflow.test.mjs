@@ -1,45 +1,38 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { runInNewContext } from "node:vm";
+import { recoverableGlobalFailure as recoveryPredicate } from "../scripts/rasff-control.mjs";
 
 const workflow = readFileSync(new URL("../.github/workflows/rasff-control.yml", import.meta.url), "utf8");
+const controller = readFileSync(new URL("../scripts/rasff-control.mjs", import.meta.url), "utf8");
 
 test("RASFF recent and reconcile lanes are independently serialized", () => {
   assert.match(workflow, /group: vigia-rasff-recent\n\s+cancel-in-progress: false/u);
   assert.match(workflow, /group: vigia-rasff-reconcile\n\s+cancel-in-progress: false/u);
   assert.equal((workflow.match(/group: vigia-rasff-/gu) ?? []).length, 2);
+  assert.match(controller, /lane === "recent" && result\.status === "blocked"/u);
 });
 
 test("RASFF reconcile cadence and budget can cover the measured 32k corpus with scheduling margin", () => {
   assert.match(workflow, /cron: "17 \* \* \* \*"/u);
   assert.match(workflow, /timeout-minutes: 360/u);
-  assert.match(workflow, /const BATCH_SIZE = 20;/u);
-  assert.match(workflow, /const MAX_BATCHES = 2_000;/u);
-  assert.match(workflow, /const TIME_BUDGET_MS = 340 \* 60_000;/u);
-  assert.match(workflow, /budgetExhausted = true;/u);
-  assert.doesNotMatch(workflow, /mode=reconcile[^\n]*restart/u);
+  assert.match(controller, /batchSize=20/u);
+  assert.match(controller, /maxBatches = 2_000/u);
+  assert.match(controller, /340 \* 60_000/u);
+  assert.match(controller, /status:"budget-exhausted"/u);
+  assert.doesNotMatch(controller, /mode=reconcile[^\n]*restart/u);
 });
 
 test("the persisted checkpoint resumes after the former monotonic-growth failure", () => {
-  assert.match(workflow, /index changed during cursor recovery/u);
-  assert.match(workflow, /index changed during batch discovery/u);
-  assert.match(workflow, /state\.cursor <= prior\.cursor/u);
-  assert.match(workflow, /RASFF reconcile cursor did not advance/u);
-  assert.match(workflow, /finalObserve\.reconcile\?\.status === "failed"/u);
+  assert.match(controller, /index changed during cursor recovery/u);
+  assert.match(controller, /index changed during batch discovery/u);
+  assert.match(controller, /hasAdvanced\(prior, progress\)/u);
+  assert.match(controller, /reconcile batch did not advance/u);
+  assert.match(controller, /await observe\(transport, deadline\)/u);
 });
 
-// Test the actual allowlist predicate, rather than a regex matching another
-// regex's textual escaping. Evaluation stops before any network code.
-function recoveryPredicate() {
-  const start = workflow.indexOf("const SEARCH_URL =");
-  const end = workflow.indexOf("const call =", start);
-  assert.ok(start >= 0 && end > start, "recoverability predicate must remain testable");
-  return runInNewContext(workflow.slice(start, end) + "\nrecoverableGlobalFailure", {}, { timeout: 1_000 });
-}
-
 test("RASFF recognizes only supported transient global errors with a released lease", () => {
-  const recoverable = recoveryPredicate();
+  const recoverable = recoveryPredicate;
   const searchUrl = "https://webgate.ec.europa.eu/rasff-window/backend/public/notification/search/consolidated/en/";
   const cleared = { status: "failed", leaseOwnerId: null, leaseMode: null, leaseExpiresAt: null };
   for (const lastError of [
@@ -63,7 +56,7 @@ test("RASFF recognizes only supported transient global errors with a released le
 });
 
 test("RASFF never recovers semantic errors or malformed D1 references as transient failures", () => {
-  const recoverable = recoveryPredicate();
+  const recoverable = recoveryPredicate;
   const cleared = { status: "failed", leaseOwnerId: null, leaseMode: null, leaseExpiresAt: null };
   for (const lastError of [
     "identity conflict", "version_count_desynced", "", null,
@@ -79,5 +72,6 @@ test("RASFF never recovers semantic errors or malformed D1 references as transie
 test("a workflow release activates one reconcile without restarting the corpus", () => {
   assert.match(workflow, /push:\n\s+branches: \[main\]\n\s+paths:\n\s+- "\.github\/workflows\/rasff-control\.yml"/u);
   assert.match(workflow, /if: github\.event_name == 'push'/u);
+  assert.match(workflow, /node scripts\/rasff-control\.mjs reconcile/u);
   assert.doesNotMatch(workflow, /restart=1/u);
 });
