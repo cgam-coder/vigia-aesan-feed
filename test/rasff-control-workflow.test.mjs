@@ -10,6 +10,7 @@ test("RASFF recent and reconcile lanes are independently serialized", () => {
   assert.match(workflow, /group: vigia-rasff-recent\n\s+cancel-in-progress: false/u);
   assert.match(workflow, /group: vigia-rasff-reconcile\n\s+cancel-in-progress: false/u);
   assert.equal((workflow.match(/group: vigia-rasff-/gu) ?? []).length, 2);
+  assert.match(controller, /lane === "recent" && result\.status === "blocked"/u);
 });
 
 test("RASFF reconcile cadence and budget can cover the measured 32k corpus with scheduling margin", () => {

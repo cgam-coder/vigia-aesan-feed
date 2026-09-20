@@ -217,7 +217,7 @@ async function main() {
     lane === "reconcile" ? await runReconcileControl({ transport, now }) : null;
   if (!result) throw new Error("Usage: node scripts/rasff-control.mjs <recent|reconcile>");
   console.log(`RASFF_${lane.toUpperCase()}_STAGE_COMPLETE ${JSON.stringify(result)}`);
-  if (result.status === "blocked-recent") process.exitCode = 1;
+  if (result.status === "blocked-recent" || lane === "recent" && result.status === "blocked") process.exitCode = 1;
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) await main();
