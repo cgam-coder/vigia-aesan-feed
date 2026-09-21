@@ -1,10 +1,6 @@
 name: GH fixes closure read-only verification
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/gh-fixes-closure-verify.yml"
   workflow_dispatch:
 
 permissions:
@@ -18,14 +14,16 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
-      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
       - name: Check out verifier module
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Wait for idle control plane and audit every source
         shell: bash
+        env:
+          VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           set -euo pipefail
           test -n "$VIGIA_SYNC_TOKEN"
@@ -115,7 +113,7 @@ jobs:
           NODE
       - name: Preserve read-only closure evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gh-fixes-closure-read-only-evidence
           path: ${{ runner.temp }}/gh-fixes-closure-read-only-evidence.json
