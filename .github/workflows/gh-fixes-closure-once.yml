@@ -1,10 +1,12 @@
 name: WORK GH-FIXES-CLOSURE production closure
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/gh-fixes-closure-once.yml"
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type RUN-GH-FIXES-CLOSURE to authorize this extraordinary repair
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -17,12 +19,19 @@ jobs:
   repair-and-verify:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
-      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
+      - name: Require explicit manual confirmation
+        shell: bash
+        env:
+          GH_FIXES_CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          test "$GH_FIXES_CONFIRM" = "RUN-GH-FIXES-CLOSURE"
       - name: Preview, repair only when required, and re-audit
         shell: bash
+        env:
+          VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           set -euo pipefail
           test -n "$VIGIA_SYNC_TOKEN"
@@ -145,7 +154,7 @@ jobs:
           NODE
       - name: Preserve bounded before and after evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gh-fixes-closure-production-evidence
           path: ${{ runner.temp }}/gh-fixes-closure-evidence.json

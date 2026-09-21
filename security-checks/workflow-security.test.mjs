@@ -21,9 +21,42 @@ test("current public workflow contract has no unreviewed security regression", (
   ]);
   assert.equal(
     FLOATING_ACTION_EXCEPTIONS.reduce((sum, item) => sum + item.maxOccurrences, 0),
-    10,
+    9,
   );
   assert.ok(FLOATING_ACTION_EXCEPTIONS.every((item) => item.rationale && item.removalGate));
+});
+
+
+test("extraordinary repair remains manual-only, confirmed and step-scoped", () => {
+  const source = repositoryWorkflows.get("gh-fixes-closure-once.yml");
+  assert.match(source, /^  workflow_dispatch:/mu);
+  assert.doesNotMatch(source, /^  (?:push|schedule):/mu);
+  assert.match(source, /^      confirm:/mu);
+  assert.match(source, /RUN-GH-FIXES-CLOSURE/u);
+  assert.equal((source.match(/VIGIA_SYNC_TOKEN:\s*\$\{\{\s*secrets\.VIGIA_SYNC_TOKEN\s*\}\}/gu) ?? []).length, 1);
+  assert.match(source, /^          VIGIA_SYNC_TOKEN:/mu);
+  assert.match(source, /actions\/upload-artifact@[0-9a-f]{40}/u);
+});
+
+test("extraordinary repair cannot regain an automatic trigger", () => {
+  const mutated = cloneWorkflows();
+  mutated.set(
+    "gh-fixes-closure-once.yml",
+    mutated.get("gh-fixes-closure-once.yml").replace(
+      "  workflow_dispatch:\n",
+      "  push:\n    branches: [main]\n",
+    ),
+  );
+  assertViolation(mutated, "EXTRAORDINARY_AUTOMATIC_TRIGGER");
+});
+
+test("extraordinary repair cannot lose explicit confirmation", () => {
+  const mutated = cloneWorkflows();
+  mutated.set(
+    "gh-fixes-closure-once.yml",
+    mutated.get("gh-fixes-closure-once.yml").replaceAll("RUN-GH-FIXES-CLOSURE", "REMOVED-CONFIRMATION"),
+  );
+  assertViolation(mutated, "EXTRAORDINARY_CONFIRMATION");
 });
 
 test("a production secret added to public SEO fails", () => {
