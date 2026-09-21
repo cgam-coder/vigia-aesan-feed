@@ -32,17 +32,13 @@ export const FLOATING_ACTION_EXCEPTIONS = Object.freeze([
     "AESAN publisher credentials and push path must be validated together."),
   debt("update-feed.yml", "actions/setup-node", "v4", 1,
     "AESAN recent publisher pin remains an operational change."),
-  debt("gh-fixes-closure-verify.yml", "actions/checkout", "v4", 1,
-    "Closure verifier is controlled by GITHUB FIXES."),
-  debt("gh-fixes-closure-verify.yml", "actions/upload-artifact", "v4", 1,
-    "Closure evidence channel is controlled by GITHUB FIXES."),
 ]);
 
 export const KNOWN_DEBT = Object.freeze([
   {
     id: "PUB-DEBT-01",
     scope: "operational-action-pins",
-    statement: "Nine operational action references remain on reviewed @v4 exceptions.",
+    statement: "Seven operational action references remain on reviewed @v4 exceptions.",
     removalGate: "Coordinate each carrier, preserve behavior and observe a legitimate run.",
   },
   {
@@ -98,6 +94,7 @@ export function analyzeWorkflows(workflows) {
     checkRunBlocks(file, source, violations);
     checkArtifacts(file, source, violations);
     checkExtraordinaryClosure(file, source, violations);
+    checkRetiredClosureVerifier(file, source, violations);
 
     for (const actionUse of findActionUses(source)) {
       if (actionUse.local || actionUse.pinned) continue;
@@ -197,6 +194,33 @@ function checkExtraordinaryClosure(file, source, violations) {
     violations.push(problem(file, "EXTRAORDINARY_SECRET_SCOPE",
       "VIGIA_SYNC_TOKEN must exist exactly once at the authenticated step scope.",
       secretLines[0]?.index ?? null));
+  }
+}
+
+
+function checkRetiredClosureVerifier(file, source, violations) {
+  if (file !== "gh-fixes-closure-verify.yml") return;
+  if (/^\s{2}(?:push|schedule):/mu.test(source)) {
+    violations.push(problem(file, "RETIRED_VERIFIER_AUTOMATIC_TRIGGER",
+      "Retired closure verification must not run from push or schedule."));
+  }
+  if (!/^\s{2}workflow_dispatch:/mu.test(source)) {
+    violations.push(problem(file, "RETIRED_VERIFIER_MANUAL_ONLY",
+      "Retired closure verification must remain manually dispatchable only."));
+  }
+  const secretLines = source.split(/\r?\n/u)
+    .map((line, index) => ({ line, index:index + 1 }))
+    .filter(({ line }) => /VIGIA_SYNC_TOKEN:\s*\$\{\{\s*secrets\.VIGIA_SYNC_TOKEN\s*\}\}/u.test(line));
+  if (secretLines.length !== 1 || !/^\s{10}VIGIA_SYNC_TOKEN:/u.test(secretLines[0]?.line ?? "")) {
+    violations.push(problem(file, "RETIRED_VERIFIER_SECRET_SCOPE",
+      "VIGIA_SYNC_TOKEN must exist exactly once at the authenticated verifier step scope.",
+      secretLines[0]?.index ?? null));
+  }
+  if (!/actions\/checkout@[0-9a-f]{40}/u.test(source) ||
+      !/actions\/upload-artifact@[0-9a-f]{40}/u.test(source) ||
+      !/persist-credentials:\s*false/u.test(source)) {
+    violations.push(problem(file, "RETIRED_VERIFIER_ACTION_BOUNDARY",
+      "Retired verifier actions must stay pinned and checkout credentials must not persist."));
   }
 }
 
