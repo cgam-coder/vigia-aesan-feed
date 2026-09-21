@@ -173,10 +173,16 @@ export async function runReconcileControl({ transport, now = () => Date.now(), s
   if (current.backfill?.coverage !== "official-index-complete") throw new Error("RASFF historical coverage is not complete");
   if (current.reconcile?.status === "failed" && !recoverableGlobalFailure(current.reconcile))
     throw new Error(`RASFF reconcile is semantically failed: ${current.reconcile.lastError}`);
-  let prior = reconcileProgress(current.reconcile?.status === "completed" || !current.reconcile ? {
+  const recoverableCheckpoint = current.reconcile?.status === "failed" && recoverableGlobalFailure(current.reconcile);
+  const checkpoint = current.reconcile?.status === "completed" || !current.reconcile ? {
     source:"RASFF", mode:"reconcile", status:"partial", cursor:0, recordsObserved:0, recordsPersisted:0,
     newCount:0, updatedCount:0, detailFailures:0, pageErrors:0,
-  } : current.reconcile);
+  } : recoverableCheckpoint ? { ...current.reconcile, status:"partial" } : current.reconcile;
+  if (recoverableCheckpoint) log(`RASFF_RECONCILE_RESUMING_RECOVERABLE_CHECKPOINT ${JSON.stringify({
+    cursor:current.reconcile.cursor, recordsObserved:current.reconcile.recordsObserved,
+    lastError:current.reconcile.lastError,
+  })}`);
+  let prior = reconcileProgress(checkpoint);
   if (!prior) throw new Error("RASFF reconcile checkpoint is malformed");
   let executed = 0;
   for (let index = 1; index <= maxBatches && now() < deadline; index += 1) {

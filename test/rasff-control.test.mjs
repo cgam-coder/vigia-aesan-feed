@@ -114,3 +114,28 @@ test("el umbral de recent se calcula por última finalización real", () => {
   assert.equal(recentDue(recent("2026-09-20T05:26:00.000Z"), NOW), false);
   assert.equal(recentDue(recent("2026-09-20T05:25:00.000Z"), NOW), true);
 });
+
+test("un checkpoint failed recuperable se reanuda desde el cursor persistido", async () => {
+  const searchUrl = "https://webgate.ec.europa.eu/rasff-window/backend/public/notification/search/consolidated/en/";
+  let current = { ...reconcile(100, "failed"), lastError:"RASFF devolvió HTTP 503 para " + searchUrl,
+    leaseOwnerId:null, leaseMode:null, leaseExpiresAt:null };
+  let posts = 0, time = NOW;
+  const logs = [];
+  const result = await runReconcileControl({ transport:async (path) => {
+    if (path.includes("observe=1")) return observed({ current });
+    posts += 1;
+    current = reconcile(120);
+    return { http:200, body:{ state:current }, raw:"{}" };
+  }, now:() => time++, sleep:async () => {}, log:(line) => logs.push(line),
+  deadline:NOW + 60_000, maxBatches:1 });
+  assert.equal(posts, 1);
+  assert.equal(result.state.cursor, 120);
+  assert.ok(logs.some((line) => line.startsWith("RASFF_RECONCILE_RESUMING_RECOVERABLE_CHECKPOINT ")));
+});
+
+test("un checkpoint failed semántico sigue fallando cerrado", async () => {
+  const current = { ...reconcile(100, "failed"), lastError:"identity conflict",
+    leaseOwnerId:null, leaseMode:null, leaseExpiresAt:null };
+  await assert.rejects(() => runReconcileControl({ transport:async () => observed({ current }),
+    now:() => NOW, sleep:async () => {}, log:() => {} }), /semantically failed/u);
+});
