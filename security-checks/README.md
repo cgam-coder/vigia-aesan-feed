@@ -14,7 +14,7 @@ The checks enforce the deliberately small contracts needed by SEC-PUBLIC-F0:
 - privileged events require an explicit code change and review; none is
   currently excepted.
 - the hardened CI and SEO actions use full commit SHAs.
-- the five remaining operational @v4 references are exact, counted debt
+- the four remaining operational @v4 references are exact, counted debt
   exceptions with a rationale and removal gate. The exceptions do not declare
   those references safe and do not authorize new floating uses.
 - the extraordinary GH-FIXES closure cannot regain a push/schedule trigger,
@@ -26,6 +26,9 @@ The checks enforce the deliberately small contracts needed by SEC-PUBLIC-F0:
 - both ordinary RASFF lanes pin checkout, disable persisted checkout credentials
   and inject the production synchronization secret only into the authenticated
   lane step; cron, concurrency and controller behavior remain unchanged.
+- the Safety Gate/OECD carrier pins its only checkout, keeps checkout credentials
+  non-persistent and injects the production synchronization secret only into the
+  eight authenticated steps that require it; schedules and source logic are unchanged.
 - obvious environment/context dumps and broad or credential-like artifact
   paths fail.
 
