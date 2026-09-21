@@ -25,7 +25,7 @@ async function execute(responses, { advancePerRequest = 0, recentLastSuccessAt =
   let latestRecentAt = recentLastSuccessAt === "auto" ? new Date(now).toISOString() : recentLastSuccessAt;
   const result = runInNewContext(`(async () => {\n${script}\n})()`, {
     process: { env },
-    Date: { now: () => now },
+    Date: { now: () => now, parse: (value) => Date.parse(value) },
     AbortSignal: { timeout: (ms) => ({ timeout: ms }) },
     console: { log: (line) => logs.push(line) },
     setTimeout: (resolve, ms) => { sleeps.push(ms); now += ms; resolve(); },
