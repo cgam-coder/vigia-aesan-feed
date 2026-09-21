@@ -21,7 +21,7 @@ test("current public workflow contract has no unreviewed security regression", (
   ]);
   assert.equal(
     FLOATING_ACTION_EXCEPTIONS.reduce((sum, item) => sum + item.maxOccurrences, 0),
-    5,
+    4,
   );
   assert.ok(FLOATING_ACTION_EXCEPTIONS.every((item) => item.rationale && item.removalGate));
 });
@@ -106,6 +106,29 @@ test("RASFF carrier cannot expand token scope back to a job", () => {
   assertViolation(mutated, "RASFF_SECRET_SCOPE");
 });
 
+
+test("Safety Gate/OECD carrier keeps pinned checkout and step-scoped secrets", () => {
+  const source = repositoryWorkflows.get("safety-gate-sync.yml");
+  assert.equal((source.match(/actions\/checkout@[0-9a-f]{40}/gu) ?? []).length, 1);
+  assert.equal((source.match(/persist-credentials:\s*false/gu) ?? []).length, 1);
+  assert.equal((source.match(/VIGIA_SYNC_TOKEN:\s*\$\{\{\s*secrets\.VIGIA_SYNC_TOKEN\s*\}\}/gu) ?? []).length, 8);
+  for (const line of source.split(/\r?\n/u).filter((line) => /VIGIA_SYNC_TOKEN:\s*\$\{\{/u.test(line))) {
+    assert.match(line, /^          VIGIA_SYNC_TOKEN:/u);
+  }
+});
+
+test("Safety Gate/OECD carrier cannot expand token scope back to a job", () => {
+  const mutated = cloneWorkflows();
+  mutated.set(
+    "safety-gate-sync.yml",
+    mutated.get("safety-gate-sync.yml").replace(
+      "    steps:\n",
+      "    env:\n      VIGIA_SYNC_TOKEN: $" + "{{ secrets.VIGIA_SYNC_TOKEN }}\n    steps:\n",
+    ),
+  );
+  assertViolation(mutated, "SAFETY_OECD_SECRET_SCOPE");
+});
+
 test("a production secret added to public SEO fails", () => {
   const mutated = cloneWorkflows();
   mutated.set(
@@ -155,8 +178,8 @@ test("a new floating action in a hardened workflow fails", () => {
 test("expanding a historical floating exception fails", () => {
   const mutated = cloneWorkflows();
   mutated.set(
-    "safety-gate-sync.yml",
-    mutated.get("safety-gate-sync.yml") +
+    "update-feed.yml",
+    mutated.get("update-feed.yml") +
       "\n      - uses: actions/checkout@v4\n",
   );
   assertViolation(mutated, "FLOATING_EXCEPTION_EXPANDED");
