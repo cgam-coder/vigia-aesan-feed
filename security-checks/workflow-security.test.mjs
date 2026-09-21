@@ -155,8 +155,8 @@ test("a new floating action in a hardened workflow fails", () => {
 test("expanding a historical floating exception fails", () => {
   const mutated = cloneWorkflows();
   mutated.set(
-    "rasff-control.yml",
-    mutated.get("rasff-control.yml") +
+    "safety-gate-sync.yml",
+    mutated.get("safety-gate-sync.yml") +
       "\n      - uses: actions/checkout@v4\n",
   );
   assertViolation(mutated, "FLOATING_EXCEPTION_EXPANDED");
