@@ -4,13 +4,13 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-09-17T08:52:06.148Z",
+  "generatedAt": "2026-09-21T09:12:34.359Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
     "totalAlerts": 127,
     "earliestPublishedAt": "2025-01-01T23:00:00.000Z",
     "latestPublishedAt": "2026-09-10T22:00:00.000Z",
-    "lastFullSyncAt": "2026-09-17T08:52:06.148Z",
+    "lastFullSyncAt": "2026-09-21T09:12:34.359Z",
     "pagesScanned": 9,
     "legacyIndexesScanned": 0
   },
@@ -9066,12 +9066,18 @@
     {
       "id": "aesan:ES2026/177",
       "reference": "ES2026/177",
-      "sourceRecordId": "6f627cfa-d3cb-46b0-af03-6eaefb2d5742",
+      "sourceRecordId": "6355ea1f-ddff-414b-a0b2-4b324609e90e",
       "sourceRecordIdType": "idAlert",
       "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "7d523d2125f61dd518f1ddbfe2cb7327ed35a74b702b611f7ece279833bbe267",
+      "sourceRecordHash": "fdacb74754b19aae0091e9666b59d748e52831d1b475c02eddb2cb48ffd8fc62",
       "previousReferences": [],
-      "referenceHistory": [],
+      "referenceHistory": [
+        {
+          "reference": "ES2026/177",
+          "title": "Ampliación de la alerta por presencia de Listeria monocytogenes en salmón ahumado procedente de España (Ref ES2026/177)",
+          "contentHash": "f9cdfb3cca98596e040f54e1a950e48e61dee15e6b1d9dbcf4ee9dea35bc4999"
+        }
+      ],
       "source": "AESAN",
       "type": "Alimentaria",
       "priority": "Alta",
@@ -9085,15 +9091,14 @@
       "providerKey": "",
       "providerRole": "",
       "providerEvidence": "",
-      "notifyingText": "Como ampliación de la información transmitida el pasado 31 de marzo de 2026 y el 1 de abril de 2026, la comunidad autónoma de Andalucía ha informado a la Agencia Española de Seguridad Alimentaria y Nutrición, a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de la retirada, por precaución, de un nuevo lote de la marca Carrefour.",
+      "notifyingText": "Como ampliación de la información transmitida el pasado 31 de marzo de 2026, la comunidad autónoma de Andalucía ha informado a la Agencia Española de Seguridad Alimentaria y Nutrición, a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de que el lote afectado se ha comercializado con otras marcas y presentaciones.",
       "hazard": "Listeria monocytogenes",
       "origin": "España",
       "scope": "Según la información disponible, los productos se han distribuido en casi todo el territorio nacional.",
       "action": "Se recomienda a las personas que tengan en su domicilio los productos incluidos en esta alerta se abstengan de consumirlos.",
       "lots": [
         "361214",
-        "con fecha de caducidad: 09/04/2026",
-        "lote 361614 (con fecha de caducidad 09/04/2026)"
+        "con fecha de caducidad: 09/04/2026"
       ],
       "imageUrl": "https://www.aesan.gob.es/dam/jcr:b4e50ecf-6e86-452d-9bc4-ac171cc91378/Salmon_mar_2026_1.jpg",
       "officialTitle": "Ampliación de la alerta por presencia de Listeria monocytogenes en salmón ahumado procedente de España (Ref ES2026/177)",
@@ -9220,7 +9225,7 @@
         },
         {
           "label": "Número de lote",
-          "value": "361214, con fecha de caducidad: 09/04/2026; lote 361614 (con fecha de caducidad 09/04/2026)",
+          "value": "361214, con fecha de caducidad: 09/04/2026",
           "sourceField": "article.productData[2].field[3]",
           "order": 15,
           "section": "product_data",
@@ -9245,63 +9250,57 @@
       ],
       "materialParagraphs": [
         {
-          "value": "Como ampliación de la información transmitida el pasado 31 de marzo de 2026 y el 1 de abril de 2026, la comunidad autónoma de Andalucía ha informado a la Agencia Española de Seguridad Alimentaria y Nutrición, a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de la retirada, por precaución, de un nuevo lote de la marca Carrefour.",
+          "value": "Como ampliación de la información transmitida el pasado 31 de marzo de 2026, la comunidad autónoma de Andalucía ha informado a la Agencia Española de Seguridad Alimentaria y Nutrición, a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de que el lote afectado se ha comercializado con otras marcas y presentaciones.",
           "sourceField": "article.body.p[0]",
           "order": 0,
           "section": "publication"
         },
         {
-          "value": "Los datos actualizados de los productos implicados son:",
+          "value": "Según la información disponible, los productos se han distribuido en casi todo el territorio nacional.",
           "sourceField": "article.body.p[1]",
           "order": 1,
           "section": "publication"
         },
         {
-          "value": "Según la información disponible, los productos se han distribuido en casi todo el territorio nacional.",
+          "value": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
           "sourceField": "article.body.p[2]",
           "order": 2,
           "section": "publication"
         },
         {
-          "value": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+          "value": "Se recomienda a las personas que tengan en su domicilio productos afectados por esta alerta, se abstengan de consumirlos.",
           "sourceField": "article.body.p[3]",
           "order": 3,
           "section": "publication"
         },
         {
-          "value": "Se recomienda a las personas que tengan en su domicilio productos afectados por esta alerta, se abstengan de consumirlos.",
+          "value": "En el caso de haber consumido alguno de los productos de los lotes afectados y presentar sintomatología compatible con la listeriosis (vómitos, diarrea o fiebre), se recomienda acudir a un centro de salud.",
           "sourceField": "article.body.p[4]",
           "order": 4,
           "section": "publication"
         },
         {
-          "value": "En el caso de haber consumido alguno de los productos de los lotes afectados y presentar sintomatología compatible con la listeriosis (vómitos, diarrea o fiebre), se recomienda acudir a un centro de salud.",
+          "value": "En el caso de estar embarazada, se recomienda consultar las recomendaciones de consumo durante el embarazo realizadas por la AESAN relativas a prácticas de higiene alimentaria importantes para las mujeres gestantes, así como una relación de los alimentos que se deben evitar durante el embarazo por estar asociados a determinados peligros biológicos (entre los que destaca Listeria monocytogenes ).",
           "sourceField": "article.body.p[5]",
           "order": 5,
           "section": "publication"
         },
         {
-          "value": "En el caso de estar embarazada, se recomienda consultar las recomendaciones de consumo durante el embarazo realizadas por la AESAN relativas a prácticas de higiene alimentaria importantes para las mujeres gestantes, así como una relación de los alimentos que se deben evitar durante el embarazo por estar asociados a determinados peligros biológicos (entre los que destaca Listeria monocytogenes ).",
+          "value": "Se recuerda la importancia de extremar las medidas de higiene para evitar la contaminación cruzada con otros productos.",
           "sourceField": "article.body.p[6]",
           "order": 6,
           "section": "publication"
         },
         {
-          "value": "Se recuerda la importancia de extremar las medidas de higiene para evitar la contaminación cruzada con otros productos.",
+          "value": "Puede ampliar la información sobre la listeriosis en el siguiente enlace .",
           "sourceField": "article.body.p[7]",
           "order": 7,
           "section": "publication"
         },
         {
-          "value": "Puede ampliar la información sobre la listeriosis en el siguiente enlace .",
+          "value": "Puede ampliar información sobre enfermedades de transmisión alimentaria en el portal de la AESAN.",
           "sourceField": "article.body.p[8]",
           "order": 8,
-          "section": "publication"
-        },
-        {
-          "value": "Puede ampliar información sobre enfermedades de transmisión alimentaria en el portal de la AESAN.",
-          "sourceField": "article.body.p[9]",
-          "order": 9,
           "section": "publication"
         }
       ],
@@ -9352,23 +9351,23 @@
       "officialDates": [
         {
           "label": null,
-          "value": "02/04/2026",
+          "value": "01/04/2026",
           "sourceField": "pageInfo.date",
           "order": 0
         },
         {
           "label": "Fecha y hora",
-          "value": "02/04/2026 14:30",
+          "value": "01/04/2026 10:30",
           "sourceField": "article.date[1]",
           "order": 1
         }
       ],
-      "url": "https://www.aesan.gob.es/alertas/2026_26_amp",
-      "publishedAt": "2026-04-01T22:00:00.000Z",
+      "url": "https://www.aesan.gob.es/alertas/2026_26",
+      "publishedAt": "2026-03-31T22:00:00.000Z",
       "detectedAt": "2026-08-14T11:24:15.349Z",
-      "updatedAt": "2026-04-01T22:00:00.000Z",
-      "contentHash": "f9cdfb3cca98596e040f54e1a950e48e61dee15e6b1d9dbcf4ee9dea35bc4999",
-      "versionCount": 52,
+      "updatedAt": "2026-09-21T09:12:34.359Z",
+      "contentHash": "fdacb74754b19aae0091e9666b59d748e52831d1b475c02eddb2cb48ffd8fc62",
+      "versionCount": 53,
       "isUpdate": true
     },
     {
