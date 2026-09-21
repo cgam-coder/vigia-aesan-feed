@@ -22,8 +22,6 @@ const PRIVILEGED_EVENTS = new Set([
 export const FLOATING_ACTION_EXCEPTIONS = Object.freeze([
   debt("safety-gate-sync.yml", "actions/checkout", "v4", 1,
     "Operational OECD helper checkout; pin only with its carrier coordinated."),
-  debt("rasff-control.yml", "actions/checkout", "v4", 2,
-    "Both RASFF lanes are operational and require coordinated pinning."),
   debt("update-full-feed.yml", "actions/checkout", "v4", 1,
     "AESAN publisher credentials and push path must be validated together."),
   debt("update-full-feed.yml", "actions/setup-node", "v4", 1,
@@ -38,7 +36,7 @@ export const KNOWN_DEBT = Object.freeze([
   {
     id: "PUB-DEBT-01",
     scope: "operational-action-pins",
-    statement: "Seven operational action references remain on reviewed @v4 exceptions.",
+    statement: "Five operational action references remain on reviewed @v4 exceptions.",
     removalGate: "Coordinate each carrier, preserve behavior and observe a legitimate run.",
   },
   {
@@ -95,6 +93,7 @@ export function analyzeWorkflows(workflows) {
     checkArtifacts(file, source, violations);
     checkExtraordinaryClosure(file, source, violations);
     checkRetiredClosureVerifier(file, source, violations);
+    checkRasffCarrierBoundary(file, source, violations);
 
     for (const actionUse of findActionUses(source)) {
       if (actionUse.local || actionUse.pinned) continue;
@@ -221,6 +220,29 @@ function checkRetiredClosureVerifier(file, source, violations) {
       !/persist-credentials:\s*false/u.test(source)) {
     violations.push(problem(file, "RETIRED_VERIFIER_ACTION_BOUNDARY",
       "Retired verifier actions must stay pinned and checkout credentials must not persist."));
+  }
+}
+
+
+function checkRasffCarrierBoundary(file, source, violations) {
+  if (file !== "rasff-control.yml") return;
+  const checkoutUses = source.match(/actions\/checkout@[0-9a-f]{40}/gu) ?? [];
+  if (checkoutUses.length !== 2) {
+    violations.push(problem(file, "RASFF_ACTION_PIN",
+      "Both RASFF lanes must use the reviewed full checkout SHA."));
+  }
+  const persistFalse = source.match(/persist-credentials:\s*false/gu) ?? [];
+  if (persistFalse.length !== 2) {
+    violations.push(problem(file, "RASFF_CHECKOUT_CREDENTIALS",
+      "Both RASFF checkouts must keep credentials non-persistent."));
+  }
+  const secretLines = source.split(/\r?\n/u)
+    .map((line, index) => ({ line, index:index + 1 }))
+    .filter(({ line }) => /VIGIA_SYNC_TOKEN:\s*\$\{\{\s*secrets\.VIGIA_SYNC_TOKEN\s*\}\}/u.test(line));
+  if (secretLines.length !== 2 || secretLines.some(({ line }) => !/^\s{10}VIGIA_SYNC_TOKEN:/u.test(line))) {
+    violations.push(problem(file, "RASFF_SECRET_SCOPE",
+      "RASFF production token must exist exactly once per authenticated lane step, never at job scope.",
+      secretLines[0]?.index ?? null));
   }
 }
 
