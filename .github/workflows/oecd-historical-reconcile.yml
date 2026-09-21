@@ -18,23 +18,68 @@ jobs:
       VIGIA_OECD_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/oecd/sync
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
-      - name: Continue the persisted UTC historical sweep
+      - name: Continue the persisted UTC historical sweep while yielding to recent
         shell: bash
         run: |
           set -euo pipefail
           test -n "$VIGIA_SYNC_TOKEN"
           node <<'NODE'
-          const url=process.env.VIGIA_OECD_SYNC_URL+"?mode=historical-reconcile&batchSize=2";
+          const historicalUrl=process.env.VIGIA_OECD_SYNC_URL+"?mode=historical-reconcile&batchSize=2";
+          const recentUrl=process.env.VIGIA_OECD_SYNC_URL+"?mode=recent";
+          const observeUrl=process.env.VIGIA_OECD_SYNC_URL+"?observe=1";
           const headers={Authorization:"Bearer "+process.env.VIGIA_SYNC_TOKEN};
-          const deadline=Date.now()+185*60_000, MAX_BATCHES=2_000;
-          let previous=null, executed=0, skipped=0, retries=0, upstreamFailures=0, budgetExhausted=false;
+          const deadline=Date.now()+185*60_000, MAX_BATCHES=2_000, RECENT_YIELD_MS=45*60_000;
+          let previous=null, executed=0, skipped=0, retries=0, upstreamFailures=0, budgetExhausted=false, recentYields=0;
           const sleep=(ms)=>new Promise(resolve=>setTimeout(resolve,ms));
+
+          async function readJson(url, options, timeoutMs) {
+            const response=await fetch(url,{...options,redirect:"follow",signal:AbortSignal.timeout(timeoutMs)});
+            const raw=await response.text(); let body;
+            try { body=JSON.parse(raw); } catch { throw new Error("OECD control returned non-JSON HTTP "+response.status); }
+            return {response,body,raw};
+          }
+
+          async function observe() {
+            const {response,body}=await readJson(observeUrl,{headers},60_000);
+            if(response.status!==200) throw new Error("OECD observe failed HTTP "+response.status);
+            return body;
+          }
+
+          async function yieldToRecentIfDue() {
+            const initial=await observe();
+            const last=initial?.recent?.lastSuccessAt;
+            const ageMs=last ? Date.now()-Date.parse(last) : Number.POSITIVE_INFINITY;
+            if(Number.isFinite(ageMs)&&ageMs<RECENT_YIELD_MS) return;
+            for(let attempt=1;attempt<=4;attempt++) {
+              const {response,body,raw}=await readJson(recentUrl,{method:"POST",headers},840_000);
+              const state=body?.state;
+              if(response.status===200&&state?.source==="OECD"&&state.mode==="recent"&&
+                  ["partial","completed"].includes(state.status)&&state.lastError===null&&
+                  state.leaseOwnerId===null&&state.leaseMode===null&&state.leaseExpiresAt===null) {
+                recentYields++;
+                console.log("OECD_HISTORICAL_YIELDED_TO_RECENT "+JSON.stringify({attempt,status:state.status,
+                  lastSuccessAt:state.lastSuccessAt,recordsObserved:state.recordsObserved,
+                  newCount:state.newCount,updatedCount:state.updatedCount}));
+                return;
+              }
+              if(response.status===202&&state?.status==="skipped"&&state?.lastSkipReason==="already-running") {
+                const persisted=await observe();
+                const persistedLast=persisted?.recent?.lastSuccessAt;
+                const persistedAge=persistedLast ? Date.now()-Date.parse(persistedLast) : Number.POSITIVE_INFINITY;
+                console.log("OECD_HISTORICAL_RECENT_WAIT "+JSON.stringify({attempt,leaseMode:state.leaseMode,
+                  leaseExpiresAt:state.leaseExpiresAt,lastSuccessAt:persistedLast??null}));
+                if(Number.isFinite(persistedAge)&&persistedAge<RECENT_YIELD_MS) return;
+                if(attempt<4) { await sleep(15_000); continue; }
+              }
+              throw new Error("OECD historical recent-yield failed HTTP "+response.status+": "+raw.slice(0,1000));
+            }
+            throw new Error("OECD historical could not yield to recent within the bounded window");
+          }
+
           async function call() {
             for(let attempt=1;attempt<=5;attempt++) {
               try {
-                const response=await fetch(url,{method:"POST",headers,redirect:"follow",signal:AbortSignal.timeout(1_200_000)});
-                const raw=await response.text(); let body;
-                try { body=JSON.parse(raw); } catch { throw new Error("OECD reconcile returned non-JSON HTTP "+response.status); }
+                const {response,body,raw}=await readJson(historicalUrl,{method:"POST",headers},1_200_000);
                 if(response.status===200||response.status===202) return {response,body};
                 const persistedUpstreamFailure=response.status===503&&body?.state?.source==="OECD"&&body.state.mode==="historical-reconcile"&&/^OECD respondió con estado (?:429|5\d\d)$/u.test(body.state.lastError||"");
                 if(persistedUpstreamFailure&&attempt===5) return {response,body,recoverableUpstreamFailure:true};
@@ -46,8 +91,10 @@ jobs:
               await sleep(attempt*5_000);
             }
           }
+
           while(executed<MAX_BATCHES) {
             if(Date.now()>=deadline) { budgetExhausted=true; break; }
+            await yieldToRecentIfDue();
             const {response,body,recoverableUpstreamFailure}=await call(), state=body?.state;
             if(recoverableUpstreamFailure) {
               upstreamFailures++; console.log("OECD_HISTORICAL_RECONCILE_UPSTREAM_COOLDOWN "+JSON.stringify({state,upstreamFailures}));
@@ -61,5 +108,5 @@ jobs:
             if(state.status==="completed") break;
           }
           if(previous?.status!=="completed"&&!budgetExhausted) throw new Error("OECD historical reconcile did not complete: "+JSON.stringify({executed,skipped,state:previous}));
-          console.log("OECD_HISTORICAL_RECONCILE_STAGE_COMPLETE "+JSON.stringify({executed,skipped,retries,upstreamFailures,budgetExhausted,state:previous}));
+          console.log("OECD_HISTORICAL_RECONCILE_STAGE_COMPLETE "+JSON.stringify({executed,skipped,retries,upstreamFailures,recentYields,budgetExhausted,state:previous}));
           NODE
