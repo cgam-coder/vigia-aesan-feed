@@ -28,12 +28,14 @@ jobs:
     concurrency:
       group: vigia-rasff-recent
       cancel-in-progress: false
-    env:
-      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
-      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Synchronize recent RASFF notifications with bounded lease recovery
+        env:
+          VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           set -euo pipefail
           test -n "$VIGIA_SYNC_TOKEN"
@@ -46,12 +48,14 @@ jobs:
     concurrency:
       group: vigia-rasff-reconcile
       cancel-in-progress: false
-    env:
-      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
-      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Continue reconcile while yielding deterministically to recent
+        env:
+          VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           set -euo pipefail
           test -n "$VIGIA_SYNC_TOKEN"
