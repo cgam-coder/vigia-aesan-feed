@@ -14,9 +14,12 @@ The checks enforce the deliberately small contracts needed by SEC-PUBLIC-F0:
 - privileged events require an explicit code change and review; none is
   currently excepted.
 - the hardened CI and SEO actions use full commit SHAs.
-- the ten remaining operational @v4 references are exact, counted debt
+- the nine remaining operational @v4 references are exact, counted debt
   exceptions with a rationale and removal gate. The exceptions do not declare
   those references safe and do not authorize new floating uses.
+- the extraordinary GH-FIXES closure cannot regain a push/schedule trigger,
+  requires an explicit manual confirmation phrase, scopes the production
+  synchronization secret to its authenticated step and pins its artifact action.
 - obvious environment/context dumps and broad or credential-like artifact
   paths fail.
 
