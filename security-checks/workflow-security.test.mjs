@@ -21,7 +21,7 @@ test("current public workflow contract has no unreviewed security regression", (
   ]);
   assert.equal(
     FLOATING_ACTION_EXCEPTIONS.reduce((sum, item) => sum + item.maxOccurrences, 0),
-    7,
+    5,
   );
   assert.ok(FLOATING_ACTION_EXCEPTIONS.every((item) => item.rationale && item.removalGate));
 });
@@ -83,6 +83,29 @@ test("retired closure verifier cannot regain an automatic trigger", () => {
   assertViolation(mutated, "RETIRED_VERIFIER_AUTOMATIC_TRIGGER");
 });
 
+
+test("RASFF carrier keeps pinned non-persistent checkouts and step-scoped secrets", () => {
+  const source = repositoryWorkflows.get("rasff-control.yml");
+  assert.equal((source.match(/actions\/checkout@[0-9a-f]{40}/gu) ?? []).length, 2);
+  assert.equal((source.match(/persist-credentials:\s*false/gu) ?? []).length, 2);
+  assert.equal((source.match(/VIGIA_SYNC_TOKEN:\s*\$\{\{\s*secrets\.VIGIA_SYNC_TOKEN\s*\}\}/gu) ?? []).length, 2);
+  for (const line of source.split(/\r?\n/u).filter((line) => /VIGIA_SYNC_TOKEN:\s*\$\{\{/u.test(line))) {
+    assert.match(line, /^          VIGIA_SYNC_TOKEN:/u);
+  }
+});
+
+test("RASFF carrier cannot expand token scope back to a job", () => {
+  const mutated = cloneWorkflows();
+  mutated.set(
+    "rasff-control.yml",
+    mutated.get("rasff-control.yml").replace(
+      "    steps:\n      - uses:",
+      "    env:\n      VIGIA_SYNC_TOKEN: $" + "{{ secrets.VIGIA_SYNC_TOKEN }}\n    steps:\n      - uses:",
+    ),
+  );
+  assertViolation(mutated, "RASFF_SECRET_SCOPE");
+});
+
 test("a production secret added to public SEO fails", () => {
   const mutated = cloneWorkflows();
   mutated.set(
@@ -132,8 +155,8 @@ test("a new floating action in a hardened workflow fails", () => {
 test("expanding a historical floating exception fails", () => {
   const mutated = cloneWorkflows();
   mutated.set(
-    "rasff-control.yml",
-    mutated.get("rasff-control.yml") +
+    "safety-gate-sync.yml",
+    mutated.get("safety-gate-sync.yml") +
       "\n      - uses: actions/checkout@v4\n",
   );
   assertViolation(mutated, "FLOATING_EXCEPTION_EXPANDED");
