@@ -5,13 +5,12 @@ import { resolve } from "node:path";
 import {
   AESAN_LIST_URL,
   assembleFeed,
-  cardFallback,
-  consolidateListCards,
   parseDetail,
+  officialPagePath,
   parseListCards,
-  previousForCard,
   sourceIdentityForHtml,
 } from "./aesan.mjs";
+import { publicationCards, reconcilePublicationBatch } from "./aesan-publications.mjs";
 
 const OUTPUT_PATH = resolve(process.env.OUTPUT_PATH || "feed.json");
 const RECENT_PAGE_COUNT = Math.max(1, Math.min(20, Number(process.env.AESAN_PAGES || 4)));
@@ -153,10 +152,10 @@ const searchDiscovery = (html) => ({
 
 const landingCardsFor = (html) => parseListCards(html.replace(/\bseeMoreCardSlide\b/gu, "seeMoreCard seeMoreCardSlide"));
 
-async function hydrateIncompleteLandingCards(cards, now) {
+async function hydrateIncompleteLandingCards(cards, now, loadDetailHtml) {
   return mapLimit(cards, 3, async (card) => {
     if (card.reference) return card;
-    const html = await fetchHtml(card.url);
+    const html = await loadDetailHtml(card.url);
     const identity = sourceIdentityForHtml(html, card.url);
     const alert = parseDetail(html, card, null, now, identity);
     return {
@@ -171,6 +170,13 @@ async function hydrateIncompleteLandingCards(cards, now) {
 async function main() {
   const now = new Date().toISOString();
   const current = await readCurrentFeed();
+  const detailCache = new Map();
+  const loadDetailHtml = (url) => {
+    const key = officialPagePath(url);
+    if (!key) throw new Error("URL AESAN no válida para lectura de publicación");
+    if (!detailCache.has(key)) detailCache.set(key, fetchHtml(url));
+    return detailCache.get(key);
+  };
   const [listing, landingHtml] = await Promise.all([
     readListPages(),
     fetchHtml(AESAN_ALERTS_LANDING_URL),
@@ -183,7 +189,7 @@ async function main() {
   if (!landingCardsRaw.length) {
     throw new Error("AESAN respondió en la portada de alertas, pero no se identificaron fichas: posible drift de la superficie secundaria de descubrimiento");
   }
-  const landingCards = await hydrateIncompleteLandingCards(landingCardsRaw, now);
+  const landingCards = await hydrateIncompleteLandingCards(landingCardsRaw, now, loadDetailHtml);
 
   const primaryUrls = new Set(currentCards.map((card) => card.url));
   const landingOnlyCards = landingCards.filter((card) => !primaryUrls.has(card.url));
@@ -194,26 +200,23 @@ async function main() {
     })}`);
   }
 
-  const cardsByUrl = new Map([...currentCards, ...landingCards].map((card) => [card.url, card]));
-  const cards = consolidateListCards([...cardsByUrl.values()]);
+  const cards = publicationCards([...currentCards, ...landingCards]);
   if (!cards.length) throw new Error("AESAN respondió, pero no se identificaron fichas de alerta en ninguna superficie oficial de descubrimiento");
 
   let detailFailures = 0;
-  const alerts = await mapLimit(cards, 3, async (card) => {
+  const observations = await mapLimit(cards, 3, async (card) => {
     let html;
     try {
-      html = await fetchHtml(card.url);
+      html = await loadDetailHtml(card.url);
     } catch (error) {
       detailFailures += 1;
       console.warn(`Ficha no disponible ${card.url}: ${error instanceof Error ? error.message : "error desconocido"}`);
-      const previous = previousForCard(current.alerts ?? [], card);
-      return cardFallback(card, previous, now);
+      return { card, html:null };
     }
-    const identity = sourceIdentityForHtml(html, card.url);
-    const previous = previousForCard(current.alerts ?? [], card, identity);
-    return parseDetail(html, card, previous, now, identity);
+    return { card, html };
   });
 
+  const alerts = reconcilePublicationBatch(current.alerts ?? [], observations, now);
   const feed = assembleFeed(current, alerts, now, {
     fullSync:FULL_HISTORY,
     pagesScanned:listing.scanned,
