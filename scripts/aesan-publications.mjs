@@ -158,6 +158,89 @@ function validateObservedIdentities(records) {
   }
 }
 
+
+// Reviewed official co-publication, not a chronological tie-break. Both pages
+// state ES2026/085 and 20/02/2026 14:30 but describe different products/risks.
+// No page says it replaces the other. The existing reference-level record is a
+// presentation anchor only; both exact source snapshots remain in the ledger.
+// This is deliberately bounded: an unknown UUID/path/date or amendment still
+// needs evidence and cannot turn an arbitrary ORDER_UNPROVEN into success.
+const REVIEWED_PARALLEL_GROUPS = [{
+  reference:"ES2026/085",
+  day:"2026-02-20", minute:14 * 60 + 30,
+  anchorSourceRecordId:"044c1491-6df9-4ab4-a22c-1e11b0bf1761",
+  members:[
+    { sourceRecordId:"044c1491-6df9-4ab4-a22c-1e11b0bf1761", path:"/alertas/2026_10" },
+    { sourceRecordId:"683af0bb-f665-4239-a34e-2911bedf5499", path:"/alertas/2026_11" },
+  ],
+}];
+
+function selectReviewedParallelPublications(previous, candidates) {
+  const references = new Set(candidates.map(({ record }) => record.reference));
+  if (references.size !== 1) return null;
+  const group = REVIEWED_PARALLEL_GROUPS.find((item) => references.has(item.reference));
+  if (!group) return null;
+  const priorSelection = previous?.publicationSelection;
+  if (priorSelection && (priorSelection.status !== "parallel_publications" ||
+      priorSelection.basis !== "reviewed_shared_reference" || priorSelection.chronological !== false ||
+      priorSelection.anchorSourceRecordId !== group.anchorSourceRecordId ||
+      !Array.isArray(priorSelection.members) || priorSelection.members.length !== group.members.length ||
+      new Set(priorSelection.members.map((item) => item.sourceRecordId)).size !== group.members.length)) {
+    fail("AESAN_INVALID_PUBLICATION_SELECTION", group.reference);
+  }
+  const byPath = new Map(candidates.map((entry) => [officialPagePath(entry.record.url), entry]));
+  // Partial recent discovery must not erase an already verified sibling. Restore
+  // only the exact snapshot bound by the prior selection, never invented material.
+  if (priorSelection) {
+    for (const member of priorSelection.members) {
+      const expected = group.members.find((item) => item.sourceRecordId === member.sourceRecordId);
+      if (!expected || officialPagePath(member.url) !== expected.path) {
+        fail("AESAN_INVALID_PUBLICATION_SELECTION", group.reference);
+      }
+      const record = previous.publicationHistory?.find((item) =>
+        item.sourceRecordId === member.sourceRecordId && item.sourceRecordHash === member.sourceRecordHash &&
+        officialPagePath(item.url) === expected.path);
+      if (!record || !materialIsVerifiable(record)) fail("AESAN_INVALID_PUBLICATION_SELECTION", group.reference);
+      if (!byPath.has(expected.path)) byPath.set(expected.path, { record, verified:false });
+    }
+  }
+  const entries = [...byPath.values()];
+  if (entries.length === 1 && !priorSelection) return null;
+  if (entries.length !== group.members.length) fail("AESAN_PARALLEL_PUBLICATION_REVIEW_REQUIRED", group.reference);
+  for (const entry of entries) {
+    const record = entry.record;
+    const expected = group.members.find((item) => item.sourceRecordId === record.sourceRecordId);
+    const date = publicationDateEvidence(record);
+    if (!expected || record.sourceRecordIdType !== "idAlert" ||
+        officialPagePath(record.url) !== expected.path || record.reference !== group.reference ||
+        !materialIsVerifiable(record) || record.isUpdate === true ||
+        /ampliaci[oó]n|actualizaci[oó]n|correcci[oó]n/iu.test(record.officialTitle) ||
+        date.day !== group.day || date.minute !== group.minute) {
+      fail("AESAN_PARALLEL_PUBLICATION_REVIEW_REQUIRED", group.reference);
+    }
+  }
+  validateObservedIdentities(entries.map(({ record }) => record));
+  // Never repoint an established primary identity or change its current material
+  // merely to repair chronology. A legacy anchor mismatch remains an error.
+  if (previous && previous.sourceRecordId !== group.anchorSourceRecordId) {
+    fail("AESAN_PARALLEL_ANCHOR_CONFLICT", group.reference);
+  }
+  const selected = entries.find(({ record }) => record.sourceRecordId === group.anchorSourceRecordId);
+  return {
+    selected,
+    selection:{
+      status:"parallel_publications",
+      basis:"reviewed_shared_reference",
+      chronological:false,
+      anchorSourceRecordId:group.anchorSourceRecordId,
+      members:group.members.map(({ sourceRecordId }) => {
+        const { record } = entries.find((entry) => entry.record.sourceRecordId === sourceRecordId);
+        return { sourceRecordId, url:record.url, sourceRecordHash:record.sourceRecordHash };
+      }),
+    },
+  };
+}
+
 /**
  * Pure batch reconciliation used by update-feed. observations contains the details
  * actually fetched in this cycle: {card, html}, or {card, html:null} after a logged
@@ -205,19 +288,25 @@ export function reconcilePublicationBatch(previousAlerts, observations, now) {
       pages.set(officialPagePath(previous.url), { record:previous, verified:false });
     }
     const candidates = [...pages.values()];
-    const maxima = candidates.filter((candidate) => !candidates.some((other) =>
+    const parallel = selectReviewedParallelPublications(previous, candidates);
+    if (previous?.publicationSelection && !parallel) {
+      fail("AESAN_PARALLEL_PUBLICATION_REVIEW_REQUIRED", previous.reference);
+    }
+    const maxima = parallel ? [parallel.selected] : candidates.filter((candidate) => !candidates.some((other) =>
       other !== candidate && comparePublications(other.record, candidate.record) === 1));
     if (maxima.length !== 1) fail("AESAN_PUBLICATION_ORDER_UNPROVEN", previous?.reference ?? candidates[0]?.record.reference);
     const selected = maxima[0];
     // A unique maximum alone is insufficient when another candidate is incomparable.
-    if (candidates.some((other) => other !== selected && comparePublications(selected.record, other.record) !== 1)) {
+    // A reviewed parallel set does not assert a maximum or discard its other members.
+    if (!parallel && candidates.some((other) => other !== selected && comparePublications(selected.record, other.record) !== 1)) {
       fail("AESAN_PUBLICATION_ORDER_UNPROVEN", selected.record.reference);
     }
     const current = selected.verified
       ? parseDetail(selected.observation.html, selected.observation.card, previous, now, selected.identity)
       : selected.record;
     const history = mergePublicationHistory(previous, entries.filter((entry) => entry.verified).map((entry) => entry.record), current);
-    result.push(history ? { ...current, publicationHistory:history } : current);
+    const enriched = history ? { ...current, publicationHistory:history } : current;
+    result.push(parallel ? { ...enriched, publicationSelection:parallel.selection } : enriched);
   }
   return result;
 }

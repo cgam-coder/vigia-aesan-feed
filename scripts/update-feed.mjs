@@ -235,6 +235,9 @@ async function main() {
     cards:cards.length,
     alerts:feed.alerts.length,
     detailFailures,
+    parallelPublications:feed.alerts.filter((alert) => alert.publicationSelection?.status === "parallel_publications")
+      .map((alert) => ({ reference:alert.reference, chronological:false,
+        publications:alert.publicationSelection.members.map(({ url, sourceRecordId }) => ({ url, sourceRecordId })) })),
     generatedAt:feed.generatedAt,
     archive:feed.archive,
   }));
