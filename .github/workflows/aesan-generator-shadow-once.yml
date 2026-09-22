@@ -1,0 +1,49 @@
+name: AESAN generator source-read shadow once
+
+on:
+  push:
+    branches: [ops/aesan-generator-source-20260922]
+    paths: [.github/workflows/aesan-generator-shadow-once.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  source-read-shadow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 2c7637c8dff7874a63e41dc0a23d68bd82b5f037
+          path: qa-executor
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 000ae715703478fd6ac9cc5d25b5abd0b2700ac7
+          path: candidate
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - name: Fetch bounded official sample and run local-output shadow only
+        working-directory: candidate
+        env:
+          SHADOW_DIR: ${{ runner.temp }}/aesan-generator-shadow
+          QA_TARGET: 000ae715703478fd6ac9cc5d25b5abd0b2700ac7
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QA_TARGET"
+          test "$(git rev-parse 'HEAD^{tree}')" = beefce320565d7912a8e3141b073272754969c39
+          test -z "$(git status --porcelain)"
+          echo 'edb9f76dd9f1ab2a8823fcb5ea80dfa77a159a31ae3735f3a42edd5ab389b9e4  ../qa-executor/_qa/aesan-live-shadow.mjs' | sha256sum --check
+          node ../qa-executor/_qa/aesan-live-shadow.mjs
+          test -z "$(git status --porcelain)"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: aesan-generator-live-shadow-000ae715
+          path: ${{ runner.temp }}/aesan-generator-shadow/
+          if-no-files-found: warn
+          retention-days: 1
