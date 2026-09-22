@@ -607,7 +607,8 @@ export function assembleFeed(currentFeed, currentAlerts, now = new Date().toISOS
     else unique.set(identity.sourceRecordId, {
       ...selected,
       isUpdate:selected.isUpdate || alert.isUpdate,
-      versionCount:Math.max(selected.versionCount || 1, alert.versionCount || 1, 2),
+      versionCount:Math.max(selected.versionCount || 1, alert.versionCount || 1,
+        (selected.sourceRecordHash || selected.contentHash) !== (alert.sourceRecordHash || alert.contentHash) ? 2 : 1),
     });
   }
   const activeAlerts = [...unique.values()];
