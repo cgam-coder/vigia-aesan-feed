@@ -263,12 +263,13 @@ const routes=JSON.parse(readFileSync(process.env.QA_ROUTES,'utf8'));
 const get=(url, options, callback)=>{
  const request=new EventEmitter(); request.destroy=(error)=>{queueMicrotask(()=>request.emit('error',error));return request;};
  setImmediate(()=>{
-   if(url.protocol!=='https:'||url.hostname!=='www.aesan.gob.es'||!(url.pathname in routes)){
+   const key=(url.pathname+url.search in routes)?url.pathname+url.search:url.pathname;
+   if(url.protocol!=='https:'||url.hostname!=='www.aesan.gob.es'||!(key in routes)){
      request.emit('error',Object.assign(new Error('QA_UNEXPECTED_NETWORK_TARGET'),{code:'QA_DENIED'})); return;
    }
    appendFileSync(process.env.QA_REQUESTS,JSON.stringify({url:url.toString()})+'\\n');
    const response=new EventEmitter(); response.statusCode=200; response.headers={}; response.resume=()=>{};
-   callback(response); response.emit('data',Buffer.from(routes[url.pathname])); response.emit('end');
+   callback(response); response.emit('data',Buffer.from(routes[key])); response.emit('end');
  }); return request;
 };
 http.get=get; https.get=get; globalThis.fetch=()=>{throw new Error('QA_UNEXPECTED_FETCH');};
@@ -278,6 +279,43 @@ const listHtml = (records, lastPage = null, landing = false) => `<html><body>${r
   return `<a class="${landing ? "seeMoreCardSlide" : "seeMoreCard"}" href="${record.url}" title="${esc(record.title)}"><span class="seeMoreCard-heading__value">${day} Abril 2026</span></a>`;
 }).join("")}${lastPage ? `<a href="/alertas/buscador-alertas/${lastPage}?quantity=40">Última</a>` : ""}</body></html>`;
 
+const taxonomyTypes = {
+  general_population:["b5c27f12-7f21-4d2e-bc5c-d5186b4d6259", "Alertas alimentarias de interés para toda la población"],
+  allergy_intolerance_adverse:["8c7503b4-b714-4c08-9d8e-0039a2d03624", "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"],
+  food_supplements:["649ce619-367b-4ad2-96cd-27b905fb6020", "Alertas alimentarias para personas que consumen complementos alimenticios"],
+};
+const taxonomyReviewed = JSON.parse(await readFile(new URL("fixtures/aesan-taxonomy-f0-reviewed.json", import.meta.url))).publications;
+function addTaxonomyRoutes(routes, seed) {
+  const selectors = (code) => `<select id="filter-select" value="${taxonomyTypes[code][0]}">${Object.values(taxonomyTypes)
+    .map(([id, label]) => `<option value="${id}">${label}</option>`).join("")}</select>`;
+  const landingControls = Object.values(taxonomyTypes).map(([id, label]) =>
+    `<h2 data-section="${label}"></h2><a href="/alertas/buscador-alertas?type=${id}" title="Ver todas">Ver todas</a>`).join("");
+  routes["/alertas/alertas-alimentarias"] += landingControls;
+  routes["/alertas/buscador-alertas"] += selectors("general_population");
+  for (const [code, [id]] of Object.entries(taxonomyTypes)) {
+    const urls = taxonomyReviewed.filter((item) => item.code === code).map((item) => item.url);
+    const total = urls.length;
+    const pages = Math.ceil(total / 20);
+    for (let page = 1; page <= pages; page++) {
+      const start = (page - 1) * 20 + 1;
+      const end = Math.min(page * 20, total);
+      const cards = urls.slice(start - 1, end).map((url) => `<a class="seeMoreCard" href="${url}">card</a>`).join("");
+      const links = Array.from({ length:pages }, (_, index) => index + 1).map((number) =>
+        `<li class="pagination__item ${number === page ? "pagination__active" : ""}" aria-label="page ${number}"><a href="${number === page ? "#" : `/alertas/buscador-alertas/${number}?type=${id}`}">${number}</a></li>`).join("");
+      routes[`/alertas/buscador-alertas${page === 1 ? "" : `/${page}`}?type=${id}`] =
+        `<html>${selectors(code)}${cards}<div class="result__info">${start} - ${end} de ${total}</div><nav class="pagination">${links}</nav></html>`;
+    }
+  }
+  const known = new Map(taxonomyReviewed.map((item) => [item.url, item.sourceRecordId]));
+  for (const alert of seed.alerts ?? []) for (const item of [alert, ...(alert.publicationHistory ?? [])])
+    known.set(item.url, item.sourceRecordId);
+  for (const [url, id] of known) {
+    const pathname = new URL(url).pathname;
+    if (!(pathname in routes)) routes[pathname] = `<html><meta name="idAlert" content="${id}"></html>`;
+  }
+  return routes;
+}
+
 async function cliRun(seed, routes, full = false) {
   const dir = await mkdtemp(join(tmpdir(), "aesan-publication-qa-"));
   try {
@@ -286,7 +324,7 @@ async function cliRun(seed, routes, full = false) {
     const requests = join(dir, "requests.jsonl");
     const originalBytes = `${JSON.stringify(seed, null, 2)}\n`;
     await writeFile(output, originalBytes);
-    await writeFile(routePath, JSON.stringify(routes));
+    await writeFile(routePath, JSON.stringify(addTaxonomyRoutes(routes, seed)));
     await writeFile(requests, "");
     const processResult = spawnSync(process.execPath, [
       `--import=data:text/javascript,${encodeURIComponent(networkMock)}`,
@@ -345,7 +383,8 @@ test("real full CLI: scans the declared paginator and retains both publication s
   assert.equal(result.feed.alerts.length, 1);
   assert.equal(result.feed.alerts[0].url, later.url);
   assert.equal(result.feed.alerts[0].publicationHistory.length, 2);
-  assert.equal(result.called.length, 5); // two listing pages, landing, two unique details
+  assert.equal(result.called.filter((url) => new URL(url).pathname === "/alertas/2026_26").length, 1);
+  assert.equal(result.called.filter((url) => new URL(url).pathname === "/alertas/2026_26_amp").length, 1);
 });
 
 test("real CLI: ambiguous chronology fails before writing OUTPUT_PATH", async () => {
@@ -370,7 +409,7 @@ test("whole-archive differential: reconstructed responses preserve the baseline 
   });
   const actual = reconcilePublicationBatch(feed.alerts, observations, first);
   assert.equal(actual.length, expected.length);
-  const withoutLedger = ({ publicationHistory:_history, ...record }) => record;
+  const withoutLedger = ({ publicationHistory:_history, publicationSelection:_selection, ...record }) => record;
   assert.deepEqual(actual.map(withoutLedger), expected.map(withoutLedger));
 });
 

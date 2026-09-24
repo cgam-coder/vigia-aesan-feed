@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, rename, rm } from "node:fs/promises";
 import http from "node:http";
 import https from "node:https";
 import { resolve } from "node:path";
@@ -11,6 +11,7 @@ import {
   sourceIdentityForHtml,
 } from "./aesan.mjs";
 import { publicationCards, reconcilePublicationBatch } from "./aesan-publications.mjs";
+import { scanOfficialTaxonomy, enrichFeedTaxonomy, publicationMembers } from "./aesan-taxonomy.mjs";
 
 const OUTPUT_PATH = resolve(process.env.OUTPUT_PATH || "feed.json");
 const RECENT_PAGE_COUNT = Math.max(1, Math.min(20, Number(process.env.AESAN_PAGES || 4)));
@@ -170,6 +171,9 @@ async function hydrateIncompleteLandingCards(cards, now, loadDetailHtml) {
 async function main() {
   const now = new Date().toISOString();
   const current = await readCurrentFeed();
+  // A failed or incomplete scan must never become an empty membership set.
+  const taxonomy = await scanOfficialTaxonomy(fetchHtml);
+  const reviewed = JSON.parse(await readFile(new URL("../test/fixtures/aesan-taxonomy-f0-reviewed.json", import.meta.url), "utf8")).publications;
   const detailCache = new Map();
   const loadDetailHtml = (url) => {
     const key = officialPagePath(url);
@@ -217,12 +221,32 @@ async function main() {
   });
 
   const alerts = reconcilePublicationBatch(current.alerts ?? [], observations, now);
-  const feed = assembleFeed(current, alerts, now, {
+  const base = assembleFeed(current, alerts, now, {
     fullSync:FULL_HISTORY,
     pagesScanned:listing.scanned,
     legacyIndexesScanned:listing.legacyPages.length,
   });
-  await writeFile(OUTPUT_PATH, `${JSON.stringify(feed, null, 2)}\n`, "utf8");
+  const { feed:enriched, diagnostics } = enrichFeedTaxonomy(base, taxonomy, { reviewed });
+  // The search cards do not carry idAlert. Cross-check every preserved identity
+  // against the official publication page, including archived members.
+  const members = new Map(enriched.alerts.flatMap(publicationMembers).map((member) => [member.url, member]));
+  await mapLimit([...members.values()], 3, async (member) => {
+    const official = sourceIdentityForHtml(await loadDetailHtml(member.url), member.url);
+    if (official.sourceRecordId !== member.sourceRecordId || official.sourceRecordIdType !== member.sourceRecordIdType)
+      throw new Error(`AESAN_TAXONOMY_DRIFT URL↔UUID conflict ${member.url}`);
+  });
+  const signature = (feed) => JSON.stringify({ source:feed.source,
+    archive:{ ...feed.archive, lastFullSyncAt:null }, alerts:feed.alerts });
+  const feed = current.generatedAt && signature(current) === signature(enriched) ? current : enriched;
+  const temporary = `${OUTPUT_PATH}.taxonomy-${process.pid}.tmp`;
+  try {
+    await writeFile(temporary, `${JSON.stringify(feed, null, 2)}\n`, "utf8");
+    await rename(temporary, OUTPUT_PATH);
+  } finally {
+    await rm(temporary, { force:true });
+  }
+  console.log(`AESAN_TAXONOMY ${JSON.stringify({ metrics:taxonomy.metrics, diagnostics,
+    pages:taxonomy.provenance.length - 2, publications:members.size })}`);
   console.log(JSON.stringify({
     source:AESAN_LIST_URL,
     mode:FULL_HISTORY ? "full-history" : "recent",

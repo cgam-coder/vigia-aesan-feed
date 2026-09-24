@@ -1,0 +1,1006 @@
+{
+  "source": "https://github.com/cgam-coder/vigia-runtime/issues/88#issuecomment-5814229570",
+  "annexComments": [
+    5814188646,
+    5814190036
+  ],
+  "capturedDate": "2026-09-24",
+  "publications": [
+    {
+      "reference": "ES2025/002",
+      "url": "https://www.aesan.gob.es/alertas/2024_94",
+      "sourceRecordId": "a197a26e-2e13-4884-82ec-fde1d5c0981c",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/007",
+      "url": "https://www.aesan.gob.es/alertas/2025_01",
+      "sourceRecordId": "d064939e-65f6-4208-9ad2-e2319944c9e7",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/020",
+      "url": "https://www.aesan.gob.es/alertas/2025_02",
+      "sourceRecordId": "6928d8a9-8df8-4583-a833-5557ec901e45",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/036",
+      "url": "https://www.aesan.gob.es/alertas/2025_03",
+      "sourceRecordId": "3576ffb3-12ed-49e3-9ea6-dfffad2bcd09",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/050",
+      "url": "https://www.aesan.gob.es/alertas/2025_04",
+      "sourceRecordId": "dadd5a49-d916-4efa-beee-0375606948a8",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/055",
+      "url": "https://www.aesan.gob.es/alertas/2025_06",
+      "sourceRecordId": "690f969b-8acd-465a-bcf9-c827bb0709af",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/057",
+      "url": "https://www.aesan.gob.es/alertas/2025_07",
+      "sourceRecordId": "fc0b40af-350d-43ea-80ba-e7f4e0945c93",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/085",
+      "url": "https://www.aesan.gob.es/alertas/2025_08",
+      "sourceRecordId": "95fe7817-09fb-4e51-b0d2-14e06b6a376f",
+      "code": "food_supplements"
+    },
+    {
+      "reference": "ES2025/108",
+      "url": "https://www.aesan.gob.es/alertas/2025_09",
+      "sourceRecordId": "4a55c27a-9d7e-42f3-abbf-0be8e3b8f90d",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/121",
+      "url": "https://www.aesan.gob.es/alertas/2025_10",
+      "sourceRecordId": "b7f4fd9a-fa43-447f-aca8-76ac46f66125",
+      "code": "food_supplements"
+    },
+    {
+      "reference": "ES2025/133",
+      "url": "https://www.aesan.gob.es/alertas/2025_11",
+      "sourceRecordId": "f9578c29-6661-4a32-afa3-ac44fce385d8",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/139",
+      "url": "https://www.aesan.gob.es/alertas/2025_12",
+      "sourceRecordId": "c8b11ff2-7339-4363-8767-93d2754f8041",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/156",
+      "url": "https://www.aesan.gob.es/alertas/2025_14_Amp",
+      "sourceRecordId": "3f04b4f1-0a11-477b-aa4d-d0830dbbdd13",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/159",
+      "url": "https://www.aesan.gob.es/alertas/2025_14",
+      "sourceRecordId": "b4f8f7e2-efe4-416d-85dc-fed656a58e95",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/174",
+      "url": "https://www.aesan.gob.es/alertas/2025_15",
+      "sourceRecordId": "7c21439d-9f4f-47f7-886f-0a601e19aa3f",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/181",
+      "url": "https://www.aesan.gob.es/alertas/2025_16",
+      "sourceRecordId": "0071ce43-9c79-43d5-aeca-906b03eb440e",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/191",
+      "url": "https://www.aesan.gob.es/alertas/2025_17",
+      "sourceRecordId": "a634d637-1fce-4780-907b-bbfe05148164",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/198",
+      "url": "https://www.aesan.gob.es/alertas/2025_18",
+      "sourceRecordId": "a4fc95d3-a5ef-4a41-8249-55566faf9ee9",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/204",
+      "url": "https://www.aesan.gob.es/alertas/2025_19",
+      "sourceRecordId": "c84a4bf7-04f7-4ffc-9a71-15b42a3b3162",
+      "code": "food_supplements"
+    },
+    {
+      "reference": "ES2025/205",
+      "url": "https://www.aesan.gob.es/alertas/2025_20",
+      "sourceRecordId": "6ca7ed35-2f89-424f-8bf5-57ca9ecaea90",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/206",
+      "url": "https://www.aesan.gob.es/alertas/2025_21",
+      "sourceRecordId": "0c5be4ca-ea90-41cf-a309-607375bf5314",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/208",
+      "url": "https://www.aesan.gob.es/alertas/2025_22",
+      "sourceRecordId": "4035b5b7-457b-4697-8b07-fb79aa22c9f8",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/227",
+      "url": "https://www.aesan.gob.es/alertas/2025_23",
+      "sourceRecordId": "f24df06f-f4df-4205-9f47-bd1209dc192b",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/277",
+      "url": "https://www.aesan.gob.es/alertas/2025_24",
+      "sourceRecordId": "b82978ed-43fa-437a-b3c2-d318decc1f27",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/289",
+      "url": "https://www.aesan.gob.es/alertas/2025_25",
+      "sourceRecordId": "a15102cb-69db-4331-9aa3-e7447bf40bad",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/292",
+      "url": "https://www.aesan.gob.es/alertas/2025_26",
+      "sourceRecordId": "2dde6286-00e2-47af-a616-c8f87bb1c44c",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/312",
+      "url": "https://www.aesan.gob.es/alertas/2025_27",
+      "sourceRecordId": "8a95c76e-12f1-4974-8675-c79162753042",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/335",
+      "url": "https://www.aesan.gob.es/alertas/2025_28",
+      "sourceRecordId": "5d376caa-bdaf-4df5-84fd-9ca0a541a45e",
+      "code": "food_supplements"
+    },
+    {
+      "reference": "ES2025/340",
+      "url": "https://www.aesan.gob.es/alertas/2025_29",
+      "sourceRecordId": "6c39a2a8-a2c2-43a0-9524-0549a372038f",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/340",
+      "url": "https://www.aesan.gob.es/alertas/2025_29_Amp",
+      "sourceRecordId": "fd1913d4-d472-4166-ac8b-b12356c050a3",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/361",
+      "url": "https://www.aesan.gob.es/alertas/2025_30",
+      "sourceRecordId": "bb53d9a0-0f73-4f00-a9ac-a870a18b1e97",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/373",
+      "url": "https://www.aesan.gob.es/alertas/2025_31",
+      "sourceRecordId": "d84d719f-c483-43a5-bb45-4633f8105209",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/374",
+      "url": "https://www.aesan.gob.es/alertas/2025_32",
+      "sourceRecordId": "9ad0344d-f047-4d30-a431-06871338f75f",
+      "code": "food_supplements"
+    },
+    {
+      "reference": "ES2025/375",
+      "url": "https://www.aesan.gob.es/alertas/2025_33",
+      "sourceRecordId": "5ec5fcd5-a32d-46b1-86e2-af2901671a4e",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/385",
+      "url": "https://www.aesan.gob.es/alertas/2025_34",
+      "sourceRecordId": "7b79c1c6-cf18-46bd-b417-5124bb38bfb4",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/392",
+      "url": "https://www.aesan.gob.es/alertas/2025_35",
+      "sourceRecordId": "d8b184c4-f779-4211-bfc7-f2c9c12e8264",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/414",
+      "url": "https://www.aesan.gob.es/alertas/2025_38",
+      "sourceRecordId": "4fce1e17-bd73-4b5b-92a4-235ac532c56a",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/417",
+      "url": "https://www.aesan.gob.es/alertas/2025_36",
+      "sourceRecordId": "7e308a67-22d8-44bc-b1dd-78e299160128",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/417",
+      "url": "https://www.aesan.gob.es/alertas/2025_41",
+      "sourceRecordId": "2bef9ce5-f243-4267-a325-4473ef7b9d27",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/424",
+      "url": "https://www.aesan.gob.es/alertas/2025_37",
+      "sourceRecordId": "7847cabd-5e64-4df6-bd65-67abe42f8d3c",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/452",
+      "url": "https://www.aesan.gob.es/alertas/2025_39",
+      "sourceRecordId": "db6e7961-62b1-46db-8f76-d93bcd1a1687",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/455",
+      "url": "https://www.aesan.gob.es/alertas/2025_40",
+      "sourceRecordId": "a5c57600-e2b3-426d-9572-032dba013212",
+      "code": "food_supplements"
+    },
+    {
+      "reference": "ES2025/459",
+      "url": "https://www.aesan.gob.es/alertas/2025_42",
+      "sourceRecordId": "e64f7218-58ad-4c6e-be6d-a832d25b61dd",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/483",
+      "url": "https://www.aesan.gob.es/alertas/2025_43",
+      "sourceRecordId": "ad5e1cbc-1e1e-4c4e-bace-91983fb49935",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/483",
+      "url": "https://www.aesan.gob.es/alertas/2025_43_Amp",
+      "sourceRecordId": "c310e03d-ef30-4a77-8a41-aecd31d1cdb1",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/507",
+      "url": "https://www.aesan.gob.es/alertas/2025_44",
+      "sourceRecordId": "cdaf1f52-a2b7-433a-b2ee-6bc14325cbf4",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/571",
+      "url": "https://www.aesan.gob.es/alertas/2025_45",
+      "sourceRecordId": "d87b2a83-3bc8-4f03-ae3c-ad0a9e6a0164",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/607",
+      "url": "https://www.aesan.gob.es/alertas/2025_46",
+      "sourceRecordId": "f6a59722-a1f6-4f9d-9c31-dfd7ad317808",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/608",
+      "url": "https://www.aesan.gob.es/alertas/2025_47",
+      "sourceRecordId": "0a7d666c-4411-4f7c-8cd5-a5435c41dbd6",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/615",
+      "url": "https://www.aesan.gob.es/alertas/2025_48",
+      "sourceRecordId": "4baf62b5-71af-4db1-9e57-c32c903173e5",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/615",
+      "url": "https://www.aesan.gob.es/alertas/2025_48_amp",
+      "sourceRecordId": "379b40db-9d81-4dcd-b2d3-5c946b563556",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/616",
+      "url": "https://www.aesan.gob.es/alertas/2025_50",
+      "sourceRecordId": "4055a3c0-6dae-4be6-8893-0deaa977c495",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/618",
+      "url": "https://www.aesan.gob.es/alertas/2025_49",
+      "sourceRecordId": "6d76101e-c532-4f4b-a8f7-b406fee32132",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/622",
+      "url": "https://www.aesan.gob.es/alertas/2025_52",
+      "sourceRecordId": "2012dfcf-7d64-40e1-aaf8-34190c7d3b18",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/624",
+      "url": "https://www.aesan.gob.es/alertas/2025_51",
+      "sourceRecordId": "f9047ec7-50d6-4935-95ce-14b67a3b5e6b",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/627",
+      "url": "https://www.aesan.gob.es/alertas/2025_54",
+      "sourceRecordId": "8d9fe638-9404-416c-bc20-646ed6e311de",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/627",
+      "url": "https://www.aesan.gob.es/alertas/2025_54_amp",
+      "sourceRecordId": "6109b952-4a47-4985-9534-eec271c759da",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/627",
+      "url": "https://www.aesan.gob.es/alertas/2025_54_amp2",
+      "sourceRecordId": "eeacf948-fcbb-48d4-bfe9-615481b623b5",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/627",
+      "url": "https://www.aesan.gob.es/alertas/2025_54_amp3",
+      "sourceRecordId": "8c9f32a2-03ac-46c7-92ec-491f5b42af31",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/627",
+      "url": "https://www.aesan.gob.es/alertas/2025_54_amp4",
+      "sourceRecordId": "78a7e03c-607b-4be1-8848-1df127dbaa51",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/628",
+      "url": "https://www.aesan.gob.es/alertas/2025_53",
+      "sourceRecordId": "fc888fdb-9dff-4ed2-8c79-1ed534295ac9",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/628",
+      "url": "https://www.aesan.gob.es/alertas/2025_53_Amp",
+      "sourceRecordId": "33d48c42-54a4-44d0-9b85-85aaee10530f",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/648",
+      "url": "https://www.aesan.gob.es/alertas/2025_55",
+      "sourceRecordId": "b6e5d79b-ad76-45f8-ab17-10718f29863a",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/648",
+      "url": "https://www.aesan.gob.es/alertas/2025_55_Amp",
+      "sourceRecordId": "f86136bd-cae5-4c81-a0ee-762c0b8f14e9",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/650",
+      "url": "https://www.aesan.gob.es/alertas/2025_59",
+      "sourceRecordId": "25ab1081-86a9-4e91-a23f-c821d58ade19",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/658",
+      "url": "https://www.aesan.gob.es/alertas/2025_56",
+      "sourceRecordId": "d721085e-ecc0-4190-a643-2ac6643ddf1d",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/658",
+      "url": "https://www.aesan.gob.es/alertas/2025_56_Correc",
+      "sourceRecordId": "620f4006-4629-4196-9134-18c973a24b12",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/663",
+      "url": "https://www.aesan.gob.es/alertas/2025_57",
+      "sourceRecordId": "a486dbd9-b557-4d31-a210-774681dd2d19",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/664",
+      "url": "https://www.aesan.gob.es/alertas/2025_58",
+      "sourceRecordId": "feecdfed-ab25-420d-9ee5-474ec6018a80",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/664",
+      "url": "https://www.aesan.gob.es/alertas/2025_58_Amp",
+      "sourceRecordId": "ca47c9c8-66ec-456a-9c4b-aa7e89bda557",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/683",
+      "url": "https://www.aesan.gob.es/alertas/2025_60",
+      "sourceRecordId": "4de016cf-0e25-4ea8-a380-71d36b8858c8",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/683",
+      "url": "https://www.aesan.gob.es/alertas/2025_60_amp",
+      "sourceRecordId": "e33b5758-4468-4789-851e-eacbccdc440d",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/685",
+      "url": "https://www.aesan.gob.es/alertas/2025_61",
+      "sourceRecordId": "ee0900fa-faec-461a-ba72-29194b95d9af",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/692",
+      "url": "https://www.aesan.gob.es/alertas/2025_62",
+      "sourceRecordId": "c3c14bd4-17b9-464b-8078-a716108698fb",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/699",
+      "url": "https://www.aesan.gob.es/alertas/2025_63",
+      "sourceRecordId": "e43e2099-3b48-4271-b75a-9b24e58f135a",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/723",
+      "url": "https://www.aesan.gob.es/alertas/2025_64",
+      "sourceRecordId": "ee87c7d7-39d2-4ed2-8786-0ae553eb56d7",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/723",
+      "url": "https://www.aesan.gob.es/alertas/2025_64_amp",
+      "sourceRecordId": "fa0dd8f8-bc51-41b3-8b18-2b8db95fa106",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2025/727",
+      "url": "https://www.aesan.gob.es/alertas/2025_66",
+      "sourceRecordId": "d784ba1a-b400-4574-ba00-5b25bc7675da",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/728",
+      "url": "https://www.aesan.gob.es/alertas/2025_65",
+      "sourceRecordId": "5bdc6279-0083-4ebd-9a4f-1adffa940777",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/728",
+      "url": "https://www.aesan.gob.es/alertas/2025_65_amp",
+      "sourceRecordId": "21f71533-f098-41c1-989f-4ddedc63aef6",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2025/744",
+      "url": "https://www.aesan.gob.es/alertas/2025_67",
+      "sourceRecordId": "754686e0-4397-40b2-bebf-e6c5ccb55250",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/008",
+      "url": "https://www.aesan.gob.es/alertas/2026_01",
+      "sourceRecordId": "d18b1902-9384-4ec3-a072-998eeaa1922d",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/017",
+      "url": "https://www.aesan.gob.es/alertas/2026_02",
+      "sourceRecordId": "26fc6904-6fe5-4034-afee-e62257892d6d",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/027",
+      "url": "https://www.aesan.gob.es/alertas/2026_09",
+      "sourceRecordId": "2accf0ae-85fa-4ea6-b8d2-467fc454fe72",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/039",
+      "url": "https://www.aesan.gob.es/alertas/2026_03",
+      "sourceRecordId": "446b665e-deea-4a6b-9df5-898f75661d57",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/043",
+      "url": "https://www.aesan.gob.es/alertas/2026_04",
+      "sourceRecordId": "ebf9c88e-a2f3-488e-84c4-f91781e717b6",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/043",
+      "url": "https://www.aesan.gob.es/alertas/2026_04_amp",
+      "sourceRecordId": "fe181224-350a-4ea9-a30a-11e1ab7e2909",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/053",
+      "url": "https://www.aesan.gob.es/alertas/2026_05",
+      "sourceRecordId": "215284e0-5b28-4a1a-a485-fc267b01b236",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/067",
+      "url": "https://www.aesan.gob.es/alertas/2026_06",
+      "sourceRecordId": "dd21905d-ccf5-4bb9-a18a-888b5ea4208d",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/072",
+      "url": "https://www.aesan.gob.es/alertas/2026_07",
+      "sourceRecordId": "bd842981-af0f-431e-baca-55c31bf5b8aa",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/074",
+      "url": "https://www.aesan.gob.es/alertas/2026_08",
+      "sourceRecordId": "7000c300-e400-448e-98bf-6b3f29da94c2",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/085",
+      "url": "https://www.aesan.gob.es/alertas/2026_10",
+      "sourceRecordId": "044c1491-6df9-4ab4-a22c-1e11b0bf1761",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/085",
+      "url": "https://www.aesan.gob.es/alertas/2026_11",
+      "sourceRecordId": "683af0bb-f665-4239-a34e-2911bedf5499",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/087",
+      "url": "https://www.aesan.gob.es/alertas/2026_12",
+      "sourceRecordId": "c0f33220-9b7b-4b3c-a9d7-aec4539245e4",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/088",
+      "url": "https://www.aesan.gob.es/alertas/2026_088",
+      "sourceRecordId": "d6e39e8b-d3c6-479b-b575-d973f1a4ee42",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/089",
+      "url": "https://www.aesan.gob.es/alertas/2026_13",
+      "sourceRecordId": "e929f1e3-a624-440f-9fb7-3a1f573ce3a1",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/090",
+      "url": "https://www.aesan.gob.es/alertas/2026_14",
+      "sourceRecordId": "dbdb8035-ce5a-4038-82ce-7f71d4dce564",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/090",
+      "url": "https://www.aesan.gob.es/alertas/2026_14_amp",
+      "sourceRecordId": "17cca0ff-5b8e-4c96-9ae1-aae72a688f4f",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/090",
+      "url": "https://www.aesan.gob.es/alertas/2026_19",
+      "sourceRecordId": "db162721-16c3-4759-b8f1-896d8e40bb40",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/103",
+      "url": "https://www.aesan.gob.es/alertas/2026_16",
+      "sourceRecordId": "1eec9047-aa0c-4e76-8664-bf2cf239139d",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/104",
+      "url": "https://www.aesan.gob.es/alertas/2026_15",
+      "sourceRecordId": "fa92ab22-d469-4f3c-91b4-f3c84d761b2c",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/118",
+      "url": "https://www.aesan.gob.es/alertas/2026_22",
+      "sourceRecordId": "f94cf39a-56d8-4e1c-ae4a-8591d9d7d932",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/126",
+      "url": "https://www.aesan.gob.es/alertas/2026_17",
+      "sourceRecordId": "8903c600-42cc-404b-840b-90db1872843a",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/136",
+      "url": "https://www.aesan.gob.es/alertas/2026_18",
+      "sourceRecordId": "4f77a243-ab06-4d10-92de-e657d572b8de",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/147",
+      "url": "https://www.aesan.gob.es/alertas/2026_20",
+      "sourceRecordId": "97e12c4f-21de-4652-b57c-08b1b97d97a8",
+      "code": "food_supplements"
+    },
+    {
+      "reference": "ES2026/148",
+      "url": "https://www.aesan.gob.es/alertas/2026_21",
+      "sourceRecordId": "19900525-14b0-4b53-b6a7-44fe6e0116a8",
+      "code": "food_supplements"
+    },
+    {
+      "reference": "ES2026/160",
+      "url": "https://www.aesan.gob.es/alertas/2026_23",
+      "sourceRecordId": "90f47c06-5c85-4e6a-9ad0-dbb2b371a476",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/161",
+      "url": "https://www.aesan.gob.es/alertas/2026_24",
+      "sourceRecordId": "d110816b-12ff-413e-ae78-1adab0919e79",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/177",
+      "url": "https://www.aesan.gob.es/alertas/2026_25",
+      "sourceRecordId": "39a6bbdf-aeb4-46bd-8f0c-6d9c0c36dce1",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/177",
+      "url": "https://www.aesan.gob.es/alertas/2026_26",
+      "sourceRecordId": "6355ea1f-ddff-414b-a0b2-4b324609e90e",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/177",
+      "url": "https://www.aesan.gob.es/alertas/2026_26_amp",
+      "sourceRecordId": "6f627cfa-d3cb-46b0-af03-6eaefb2d5742",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/180",
+      "url": "https://www.aesan.gob.es/alertas/2026_27",
+      "sourceRecordId": "ba33b5e8-6f9b-4e75-95ef-71e3bd8e81d6",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/181",
+      "url": "https://www.aesan.gob.es/alertas/2026_28",
+      "sourceRecordId": "2545ac91-0e15-4845-9081-1d91a774fa62",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/198",
+      "url": "https://www.aesan.gob.es/alertas/2026_29",
+      "sourceRecordId": "1f76ccae-5e59-4f87-95fd-59c297b0e36a",
+      "code": "food_supplements"
+    },
+    {
+      "reference": "ES2026/206",
+      "url": "https://www.aesan.gob.es/alertas/2026_30",
+      "sourceRecordId": "652a1582-a5bd-4d84-8a7d-cbb75dcb9513",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/208",
+      "url": "https://www.aesan.gob.es/alertas/2026_31",
+      "sourceRecordId": "f6a50cd6-24ed-4d43-8ada-23b5bda6d9d0",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/212",
+      "url": "https://www.aesan.gob.es/alertas/2026_32",
+      "sourceRecordId": "e1df0a80-45d9-4441-97e6-41e40074de68",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/240",
+      "url": "https://www.aesan.gob.es/alertas/2026_33",
+      "sourceRecordId": "1911d820-fa7d-4d9b-8bba-3ec3c81be3d3",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/240",
+      "url": "https://www.aesan.gob.es/alertas/2026_33_ampliacion",
+      "sourceRecordId": "751b8df9-7c7a-47ed-8d09-701bb8600cd5",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/240",
+      "url": "https://www.aesan.gob.es/alertas/2026_33_ampliacion_2",
+      "sourceRecordId": "2dea65fe-62be-4977-a89e-01f20f9d8b62",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/240",
+      "url": "https://www.aesan.gob.es/alertas/2026_33_ampliacion_3",
+      "sourceRecordId": "5fd2bf26-f184-4b19-bdc2-74e08b045716",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/240",
+      "url": "https://www.aesan.gob.es/alertas/2026_33_ampliacion_4",
+      "sourceRecordId": "db8db5e4-c740-471a-888e-23b5ead4b2dc",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/240",
+      "url": "https://www.aesan.gob.es/alertas/2026_33_ampliacion_5",
+      "sourceRecordId": "152fcad1-5303-474f-9455-d9c47ec581ea",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/240",
+      "url": "https://www.aesan.gob.es/alertas/2026_33_ampliacion_6",
+      "sourceRecordId": "2d19880e-23c7-4878-8709-b2e42f99d1a2",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/240",
+      "url": "https://www.aesan.gob.es/alertas/2026_33_ampliacion_7",
+      "sourceRecordId": "9f091cca-5364-4355-9de8-62c1a93724e0",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/240",
+      "url": "https://www.aesan.gob.es/alertas/2026_35",
+      "sourceRecordId": "6aa2fcfc-5c38-4a2f-943f-ef5e3ac921d0",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/252",
+      "url": "https://www.aesan.gob.es/alertas/2026_34",
+      "sourceRecordId": "40a30ad8-bf08-4905-9865-7abcd720bf1d",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/263",
+      "url": "https://www.aesan.gob.es/alertas/2026_36",
+      "sourceRecordId": "a0ed5fb2-a519-44d2-90ce-10de58017d81",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/266",
+      "url": "https://www.aesan.gob.es/alertas/2026_37",
+      "sourceRecordId": "84fcc8e3-35c5-463a-86ac-c0599fd90e26",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/271",
+      "url": "https://www.aesan.gob.es/alertas/2026_38",
+      "sourceRecordId": "90306977-47f3-4435-86ee-ee1a461b500f",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/271",
+      "url": "https://www.aesan.gob.es/alertas/2026_38_Ampliacion",
+      "sourceRecordId": "21b4a526-f54e-417c-9465-92e0f8375397",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/271",
+      "url": "https://www.aesan.gob.es/alertas/2026_38_Ampliacion_2",
+      "sourceRecordId": "e47500b0-9964-4ec0-93e2-67d6924d850b",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/271",
+      "url": "https://www.aesan.gob.es/alertas/2026_38_Ampliacion_3",
+      "sourceRecordId": "4afc87c3-b685-4088-ac26-297aeb3af85a",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/292",
+      "url": "https://www.aesan.gob.es/alertas/2026_40",
+      "sourceRecordId": "95d5db3b-4564-46c7-bf89-0f60ac3ffa37",
+      "code": "food_supplements"
+    },
+    {
+      "reference": "ES2026/293",
+      "url": "https://www.aesan.gob.es/alertas/2026_39",
+      "sourceRecordId": "91e1b890-ed48-4531-baf7-7d6b995e7070",
+      "code": "food_supplements"
+    },
+    {
+      "reference": "ES2026/300",
+      "url": "https://www.aesan.gob.es/alertas/2026_44",
+      "sourceRecordId": "3256c29c-a2a0-4645-9878-b8eb0ed89f73",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/312",
+      "url": "https://www.aesan.gob.es/alertas/2026_41",
+      "sourceRecordId": "83a0ac55-57b7-4101-8bcd-751280df9dda",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/322",
+      "url": "https://www.aesan.gob.es/alertas/2026_42",
+      "sourceRecordId": "ad1aab7c-4dbc-4fdc-afa0-1f0b6d5bfa56",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/323",
+      "url": "https://www.aesan.gob.es/alertas/2026_43",
+      "sourceRecordId": "026714e6-6526-48c0-889b-aeeebefb2eae",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/327",
+      "url": "https://www.aesan.gob.es/alertas/2026_45",
+      "sourceRecordId": "1eda1111-cb79-47c3-b745-2892e4b2ac38",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/327",
+      "url": "https://www.aesan.gob.es/alertas/2026_46_Ampliacion",
+      "sourceRecordId": "027ab6cc-357d-4a23-8d4b-4694b85ae8b7",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/327",
+      "url": "https://www.aesan.gob.es/alertas/2026_Ampliacion_45",
+      "sourceRecordId": "77169d63-23c9-416a-a029-5b834cd64b4e",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/327",
+      "url": "https://www.aesan.gob.es/alertas/2026_Ampliacion_45_2",
+      "sourceRecordId": "8d418cf5-2b05-4461-91f6-b113334ba7d2",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/332",
+      "url": "https://www.aesan.gob.es/alertas/2026_46",
+      "sourceRecordId": "a7107791-6257-4536-974d-cfba7d9bf485",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/349",
+      "url": "https://www.aesan.gob.es/alertas/2026_47",
+      "sourceRecordId": "7b9a6a44-f8e2-4c5c-90c3-978b1068df35",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/350",
+      "url": "https://www.aesan.gob.es/alertas/2026_48",
+      "sourceRecordId": "6731932a-8512-4c8d-a055-4c25a19f8769",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/358",
+      "url": "https://www.aesan.gob.es/alertas/2026_49",
+      "sourceRecordId": "f1c2820b-472b-4afe-b7b0-87a6cd85eeb6",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/358",
+      "url": "https://www.aesan.gob.es/alertas/2026_49_Ampliacion_1",
+      "sourceRecordId": "847d530f-f861-4e60-a7fc-51f5d9d45f22",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/369",
+      "url": "https://www.aesan.gob.es/alertas/2026_51",
+      "sourceRecordId": "ff1387af-9abd-4172-b81c-4e2f2c157789",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/370",
+      "url": "https://www.aesan.gob.es/alertas/2026_50",
+      "sourceRecordId": "0e9bfbd0-5f25-43ec-b0ae-514bc6959029",
+      "code": "food_supplements"
+    },
+    {
+      "reference": "ES2026/382",
+      "url": "https://www.aesan.gob.es/alertas/2026_52",
+      "sourceRecordId": "48dbf3dd-ff5e-4c78-8db9-c8faa724fac9",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/382",
+      "url": "https://www.aesan.gob.es/alertas/2026_52_Ampliacion_1",
+      "sourceRecordId": "23120d22-6a40-4231-8d70-ff5a7f0660be",
+      "code": null
+    },
+    {
+      "reference": "ES2026/406",
+      "url": "https://www.aesan.gob.es/alertas/2026_53",
+      "sourceRecordId": "1610b5be-8723-4930-8c7d-863e0179ffc9",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/431",
+      "url": "https://www.aesan.gob.es/alertas/2026_54",
+      "sourceRecordId": "77610767-b7fd-40e1-ad61-91b7e6c4a6c8",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/469",
+      "url": "https://www.aesan.gob.es/alertas/2026_55",
+      "sourceRecordId": "bfda8d94-9b31-45ff-ac69-57b3d64b5126",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/469",
+      "url": "https://www.aesan.gob.es/alertas/2026_55_ampliacion_1",
+      "sourceRecordId": "48d36ff3-a623-42d9-a111-dcaaa99bc107",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/473",
+      "url": "https://www.aesan.gob.es/alertas/2026_56",
+      "sourceRecordId": "a6958f51-c125-49ad-b470-917844b47f10",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/477",
+      "url": "https://www.aesan.gob.es/alertas/2026_57",
+      "sourceRecordId": "98368761-4c68-4b51-8844-55245edfbade",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/478",
+      "url": "https://www.aesan.gob.es/alertas/2026_63",
+      "sourceRecordId": "bba745c0-3f3b-4322-a67e-d566d4ace8a0",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/481",
+      "url": "https://www.aesan.gob.es/alertas/2026_59",
+      "sourceRecordId": "1b9b43d2-1832-4eb5-9514-3b9110900651",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/482",
+      "url": "https://www.aesan.gob.es/alertas/2026_61",
+      "sourceRecordId": "564bba35-cece-4299-9883-ef5f5a3656d4",
+      "code": "general_population"
+    },
+    {
+      "reference": "ES2026/485",
+      "url": "https://www.aesan.gob.es/alertas/2026_62",
+      "sourceRecordId": "979d3e75-36ce-450f-9c91-addb394e765d",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/517",
+      "url": "https://www.aesan.gob.es/alertas/2026_65",
+      "sourceRecordId": "4e2180c9-e75b-4583-af9e-1ecfdda918df",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/517",
+      "url": "https://www.aesan.gob.es/alertas/2026_65_rev",
+      "sourceRecordId": "f15fbfe8-aa09-4203-b932-6700decbe1d8",
+      "code": "allergy_intolerance_adverse"
+    },
+    {
+      "reference": "ES2026/535",
+      "url": "https://www.aesan.gob.es/alertas/2026_66",
+      "sourceRecordId": "026831a7-0144-4b59-a6f2-757725e1640b",
+      "code": "food_supplements"
+    },
+    {
+      "reference": "ES2026/543",
+      "url": "https://www.aesan.gob.es/alertas/2026_67",
+      "sourceRecordId": "60ab5444-518c-4084-b2aa-e00541270e58",
+      "code": "food_supplements"
+    }
+  ]
+}
