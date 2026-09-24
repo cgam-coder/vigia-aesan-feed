@@ -1118,7 +1118,40 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "4e2180c9-e75b-4583-af9e-1ecfdda918df",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_65",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "f15fbfe8-aa09-4203-b932-6700decbe1d8",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_65_rev",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/243",
@@ -1289,7 +1322,28 @@
       "updatedAt": "2026-09-10T12:47:56.602Z",
       "contentHash": "0aa2b1f372e1833ae6d96e4af0ffaf8194348494eb588eb3a66b8a33270a295b",
       "versionCount": 2,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "food_supplements",
+        "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+        "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios",
+        "publications": [
+          {
+            "sourceRecordId": "60ab5444-518c-4084-b2aa-e00541270e58",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_67",
+            "matches": [
+              {
+                "code": "food_supplements",
+                "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+                "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/535",
@@ -1410,7 +1464,28 @@
       "updatedAt": "2026-09-02T14:39:08.106Z",
       "contentHash": "1f90f4ee6e230b04dc2ea84a01574dfce5a829f99984dcc5109cc35b2a383e00",
       "versionCount": 2,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "food_supplements",
+        "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+        "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios",
+        "publications": [
+          {
+            "sourceRecordId": "026831a7-0144-4b59-a6f2-757725e1640b",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_66",
+            "matches": [
+              {
+                "code": "food_supplements",
+                "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+                "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/478",
@@ -1604,7 +1679,28 @@
       "updatedAt": "2026-09-15T15:39:08.037Z",
       "contentHash": "031fdb2f55b2a744cf6b01d637bdeaae914b67eeb64cd84ebba1cc3f8b980a78",
       "versionCount": 2,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "bba745c0-3f3b-4322-a67e-d566d4ace8a0",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_63",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/485",
@@ -1791,7 +1887,28 @@
       "updatedAt": "2026-08-17T11:04:14.320Z",
       "contentHash": "e3da4764a1054d817a55669fd1c4772471898f0990749f13759033d6aea1318c",
       "versionCount": 2,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "979d3e75-36ce-450f-9c91-addb394e765d",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_62",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/482",
@@ -2064,7 +2181,28 @@
       "updatedAt": "2026-08-17T11:04:14.320Z",
       "contentHash": "64a0ac874592a87c31dee923aed51edb4c41a758ff81623391ddeae0240bfa37",
       "versionCount": 2,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "564bba35-cece-4299-9883-ef5f5a3656d4",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_61",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/481",
@@ -2249,7 +2387,28 @@
       "updatedAt": "2026-08-04T22:00:00.000Z",
       "contentHash": "c52617852b79ccb254662fa46f9c95c06ef234c554f558e60821ffad2279ebd8",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "1b9b43d2-1832-4eb5-9514-3b9110900651",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_59",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/477",
@@ -2423,7 +2582,28 @@
       "updatedAt": "2026-08-03T22:00:00.000Z",
       "contentHash": "b8ff325eb16ffac38f8c7d5fa8e3c67f147c6e26accfc34e78d7e5b48c1f6a5a",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "98368761-4c68-4b51-8844-55245edfbade",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_57",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/469",
@@ -2883,7 +3063,40 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "bfda8d94-9b31-45ff-ac69-57b3d64b5126",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_55",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "48d36ff3-a623-42d9-a111-dcaaa99bc107",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_55_ampliacion_1",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/473",
@@ -3066,7 +3279,28 @@
       "updatedAt": "2026-07-30T22:00:00.000Z",
       "contentHash": "b0201a2f58ee81debb0f0286c336b779be6d68c0e113cd3390340cf8cf6289ea",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "a6958f51-c125-49ad-b470-917844b47f10",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_56",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/431",
@@ -3255,7 +3489,28 @@
       "updatedAt": "2026-07-09T22:00:00.000Z",
       "contentHash": "19008b60cf730cde28ae131c726cc5f695586d2fe00f6c5e47e19c70ed630061",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "77610767-b7fd-40e1-ad61-91b7e6c4a6c8",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_54",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/406",
@@ -3433,7 +3688,28 @@
       "updatedAt": "2026-07-02T22:00:00.000Z",
       "contentHash": "0a796f4141ae56cdf0aa1924890d7ffdc6980163253360a882edea6dde75f293",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "1610b5be-8723-4930-8c7d-863e0179ffc9",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_53",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/240",
@@ -12741,7 +13017,124 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "1911d820-fa7d-4d9b-8bba-3ec3c81be3d3",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_33",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "751b8df9-7c7a-47ed-8d09-701bb8600cd5",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_33_ampliacion",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "2dea65fe-62be-4977-a89e-01f20f9d8b62",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_33_ampliacion_2",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "5fd2bf26-f184-4b19-bdc2-74e08b045716",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_33_ampliacion_3",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "db8db5e4-c740-471a-888e-23b5ead4b2dc",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_33_ampliacion_4",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "152fcad1-5303-474f-9455-d9c47ec581ea",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_33_ampliacion_5",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "2d19880e-23c7-4878-8709-b2e42f99d1a2",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_33_ampliacion_6",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "9f091cca-5364-4355-9de8-62c1a93724e0",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_33_ampliacion_7",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "6aa2fcfc-5c38-4a2f-943f-ef5e3ac921d0",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_35",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/358",
@@ -13247,7 +13640,40 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "f1c2820b-472b-4afe-b7b0-87a6cd85eeb6",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_49",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "847d530f-f861-4e60-a7fc-51f5d9d45f22",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_49_Ampliacion_1",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/382",
@@ -13875,7 +14301,34 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "unknown",
+        "code": null,
+        "sourceTypeId": null,
+        "officialLabel": null,
+        "publications": [
+          {
+            "sourceRecordId": "48dbf3dd-ff5e-4c78-8db9-c8faa724fac9",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_52",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "23120d22-6a40-4231-8d70-ff5a7f0660be",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_52_Ampliacion_1",
+            "matches": []
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/369",
@@ -14046,7 +14499,28 @@
       "updatedAt": "2026-06-22T22:00:00.000Z",
       "contentHash": "8182c2307a756222897a1229c2d0c82ffd36fcacd75bd59fd24a823ac2c590e8",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "ff1387af-9abd-4172-b81c-4e2f2c157789",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_51",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/370",
@@ -14259,7 +14733,28 @@
       "updatedAt": "2026-06-18T22:00:00.000Z",
       "contentHash": "2b60bcbd1156fd3fd7f8125374cc7aaae931fea39f3bccbfc7df606a72444bfc",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "food_supplements",
+        "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+        "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios",
+        "publications": [
+          {
+            "sourceRecordId": "0e9bfbd0-5f25-43ec-b0ae-514bc6959029",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_50",
+            "matches": [
+              {
+                "code": "food_supplements",
+                "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+                "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/349",
@@ -14396,7 +14891,28 @@
       "updatedAt": "2026-06-14T22:00:00.000Z",
       "contentHash": "c39ed54bdd264209debcf94d549689022b06649424f7bbb886db0da938d98113",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "7b9a6a44-f8e2-4c5c-90c3-978b1068df35",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_47",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/350",
@@ -14588,7 +15104,28 @@
       "updatedAt": "2026-06-14T22:00:00.000Z",
       "contentHash": "c13e238d6b6f0f7d041fd178c8a1f7e1e94d95e3a24c29c9d4e15135a67bdbe2",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "6731932a-8512-4c8d-a055-4c25a19f8769",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_48",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/327",
@@ -15467,7 +16004,64 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "1eda1111-cb79-47c3-b745-2892e4b2ac38",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_45",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "027ab6cc-357d-4a23-8d4b-4694b85ae8b7",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_46_Ampliacion",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "77169d63-23c9-416a-a029-5b834cd64b4e",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_Ampliacion_45",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "8d418cf5-2b05-4461-91f6-b113334ba7d2",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_Ampliacion_45_2",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/332",
@@ -15653,7 +16247,28 @@
       "updatedAt": "2026-06-04T22:00:00.000Z",
       "contentHash": "f7e731dbdadbcdb963c04b5e691f16e4ef6f17beca075efb3ebfb717c045b7d7",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "a7107791-6257-4536-974d-cfba7d9bf485",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_46",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/300",
@@ -15945,7 +16560,28 @@
       "updatedAt": "2026-06-01T22:00:00.000Z",
       "contentHash": "8d12dbe6ebf87c39b77337a9e08d44eb3d906503b9285bab128f0dc43e734971",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "3256c29c-a2a0-4645-9878-b8eb0ed89f73",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_44",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/323",
@@ -16162,7 +16798,28 @@
       "updatedAt": "2026-05-29T22:00:00.000Z",
       "contentHash": "974549b5a162403f1c49cf37f9f6d3d5ec45e8596574b991c84253740c6f4cb8",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "026714e6-6526-48c0-889b-aeeebefb2eae",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_43",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/312",
@@ -16356,7 +17013,28 @@
       "updatedAt": "2026-05-28T22:00:00.000Z",
       "contentHash": "85fb1eef8f0403761a87dbf00e1873f181d4fc51b030d96477b3e25aede99703",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "83a0ac55-57b7-4101-8bcd-751280df9dda",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_41",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/322",
@@ -16709,7 +17387,28 @@
       "updatedAt": "2026-05-28T22:00:00.000Z",
       "contentHash": "004d2bcad1e407362e7d024da3f2906c1c6d878de0ff717e1bd440429204cbf2",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "ad1aab7c-4dbc-4fdc-afa0-1f0b6d5bfa56",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_42",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/292",
@@ -16870,7 +17569,28 @@
       "updatedAt": "2026-05-20T22:00:00.000Z",
       "contentHash": "149194144f07bdf4807746197212f2396001822d8c23be84ead65847f4c9bfa7",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "food_supplements",
+        "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+        "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios",
+        "publications": [
+          {
+            "sourceRecordId": "95d5db3b-4564-46c7-bf89-0f60ac3ffa37",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_40",
+            "matches": [
+              {
+                "code": "food_supplements",
+                "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+                "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/293",
@@ -17031,7 +17751,28 @@
       "updatedAt": "2026-05-20T22:00:00.000Z",
       "contentHash": "fd5f2b46353061f7bbbc3ef77a6f34e605d99cdd0ad260abc97f12587179cc1d",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "food_supplements",
+        "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+        "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios",
+        "publications": [
+          {
+            "sourceRecordId": "91e1b890-ed48-4531-baf7-7d6b995e7070",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_39",
+            "matches": [
+              {
+                "code": "food_supplements",
+                "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+                "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/271",
@@ -19188,7 +19929,64 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "90306977-47f3-4435-86ee-ee1a461b500f",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_38",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "21b4a526-f54e-417c-9465-92e0f8375397",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_38_Ampliacion",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "e47500b0-9964-4ec0-93e2-67d6924d850b",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_38_Ampliacion_2",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "4afc87c3-b685-4088-ac26-297aeb3af85a",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_38_Ampliacion_3",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/266",
@@ -19366,7 +20164,28 @@
       "updatedAt": "2026-05-10T22:00:00.000Z",
       "contentHash": "d940e1fa25acab955a0b5be79fb070fb0ae13ead8ea3f8f2885dea8118bd7747",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "84fcc8e3-35c5-463a-86ac-c0599fd90e26",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_37",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/263",
@@ -19556,7 +20375,28 @@
       "updatedAt": "2026-05-06T22:00:00.000Z",
       "contentHash": "5bc3e319405b05b0cda735b3280845d7ec4429ae6f80e513f1070924cc3f3612",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "a0ed5fb2-a519-44d2-90ce-10de58017d81",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_36",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/252",
@@ -19721,7 +20561,28 @@
       "updatedAt": "2026-04-29T22:00:00.000Z",
       "contentHash": "28cb54398b73e70e97ebc995f9a14bcbe2b04d6f54c2293fa1017881b1f75977",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "40a30ad8-bf08-4905-9865-7abcd720bf1d",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_34",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/212",
@@ -19908,7 +20769,28 @@
       "updatedAt": "2026-04-15T22:00:00.000Z",
       "contentHash": "623a10d305c250f3d7ed582d968e64461617f86899288f3a604bc0bd388babb0",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "e1df0a80-45d9-4441-97e6-41e40074de68",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_32",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/208",
@@ -20112,7 +20994,28 @@
       "updatedAt": "2026-04-14T22:00:00.000Z",
       "contentHash": "996a0d45ff02cf815b16fbb88d4b1a89463effb0ea2796eb1f36e1ea4b37a176",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "f6a50cd6-24ed-4d43-8ada-23b5bda6d9d0",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_31",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/206",
@@ -20306,7 +21209,28 @@
       "updatedAt": "2026-04-13T22:00:00.000Z",
       "contentHash": "59dde657ca0a5437ebd06a87f0f1fb71c5969d80a15f9e5cabf90cb2c49a3745",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "652a1582-a5bd-4d84-8a7d-cbb75dcb9513",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_30",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/181",
@@ -20600,7 +21524,28 @@
       "updatedAt": "2026-04-09T22:00:00.000Z",
       "contentHash": "ecfcfbe22846df3f073d375c6fc01849ad78422633d1e32e082b72b31d013ea5",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "2545ac91-0e15-4845-9081-1d91a774fa62",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_28",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/198",
@@ -20739,7 +21684,28 @@
       "updatedAt": "2026-09-15T15:39:08.037Z",
       "contentHash": "ea675b053055cb20a847adeeba3b0214a6bdcdd5b0f7845678698d5d7a7e8d53",
       "versionCount": 2,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "food_supplements",
+        "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+        "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios",
+        "publications": [
+          {
+            "sourceRecordId": "1f76ccae-5e59-4f87-95fd-59c297b0e36a",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_29",
+            "matches": [
+              {
+                "code": "food_supplements",
+                "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+                "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/177",
@@ -21760,7 +22726,52 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "39a6bbdf-aeb4-46bd-8f0c-6d9c0c36dce1",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_25",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "6355ea1f-ddff-414b-a0b2-4b324609e90e",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_26",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "6f627cfa-d3cb-46b0-af03-6eaefb2d5742",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_26_amp",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/180",
@@ -21963,7 +22974,28 @@
       "updatedAt": "2026-03-31T22:00:00.000Z",
       "contentHash": "35b0acd2e70b16a6728d9c89296422a2ded1ec48f9d76280be42d481efe20379",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "ba33b5e8-6f9b-4e75-95ef-71e3bd8e81d6",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_27",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/160",
@@ -22161,7 +23193,28 @@
       "updatedAt": "2026-03-25T23:00:00.000Z",
       "contentHash": "eeb04252949a68f24e778cfc907e14961857ba89b4a13b597985f8bb574342d5",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "90f47c06-5c85-4e6a-9ad0-dbb2b371a476",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_23",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/161",
@@ -22334,7 +23387,28 @@
       "updatedAt": "2026-03-25T23:00:00.000Z",
       "contentHash": "6531ba8d474cba50606bfb7dcb93219346a87a2b12fde4e7201dcfbad3695834",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "d110816b-12ff-413e-ae78-1adab0919e79",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_24",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/118",
@@ -22499,7 +23573,28 @@
       "updatedAt": "2026-03-23T23:00:00.000Z",
       "contentHash": "7765939e031d796962920d67f794f8cd9f7159d06ab652796b8f08b95779290e",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "f94cf39a-56d8-4e1c-ae4a-8591d9d7d932",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_22",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/147",
@@ -22620,7 +23715,28 @@
       "updatedAt": "2026-03-22T23:00:00.000Z",
       "contentHash": "c3956494ca7d17a2cbd89a2024851105bd5f02344fc45ee2bc9ba1a3d290c54e",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "food_supplements",
+        "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+        "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios",
+        "publications": [
+          {
+            "sourceRecordId": "97e12c4f-21de-4652-b57c-08b1b97d97a8",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_20",
+            "matches": [
+              {
+                "code": "food_supplements",
+                "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+                "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/148",
@@ -22747,7 +23863,28 @@
       "updatedAt": "2026-03-22T23:00:00.000Z",
       "contentHash": "d8fabc05fa1a73af05b83cb482d59ff1db302c3c94848856de4e51b1eef25478",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "food_supplements",
+        "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+        "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios",
+        "publications": [
+          {
+            "sourceRecordId": "19900525-14b0-4b53-b6a7-44fe6e0116a8",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_21",
+            "matches": [
+              {
+                "code": "food_supplements",
+                "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+                "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/088",
@@ -23158,7 +24295,28 @@
       "updatedAt": "2026-03-17T23:00:00.000Z",
       "contentHash": "8c0334ad27dfeb2b1ad87646e36b56c541622c3d32729169823e009f29d513d5",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "d6e39e8b-d3c6-479b-b575-d973f1a4ee42",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_088",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/090",
@@ -23820,7 +24978,52 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "dbdb8035-ce5a-4038-82ce-7f71d4dce564",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_14",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "17cca0ff-5b8e-4c96-9ae1-aae72a688f4f",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_14_amp",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "db162721-16c3-4759-b8f1-896d8e40bb40",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_19",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/136",
@@ -23985,7 +25188,28 @@
       "updatedAt": "2026-03-16T23:00:00.000Z",
       "contentHash": "65b8ca398dd100a24f40e52cb9f7c7baa1bebfb20063af94f889308aef0cbbf4",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "4f77a243-ab06-4d10-92de-e657d572b8de",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_18",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/126",
@@ -24169,7 +25393,28 @@
       "updatedAt": "2026-03-13T23:00:00.000Z",
       "contentHash": "3cc887fc52094d1e4d180745f91f001a85a29590b6f7b69d07b255a6a3517afe",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "8903c600-42cc-404b-840b-90db1872843a",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_17",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/103",
@@ -24365,7 +25610,28 @@
       "updatedAt": "2026-09-17T08:52:06.148Z",
       "contentHash": "e8dee49bf292074bce539622d3eb7b45775932e28507298f2af940ac97fffe41",
       "versionCount": 2,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "1eec9047-aa0c-4e76-8664-bf2cf239139d",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_16",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/104",
@@ -24561,7 +25827,28 @@
       "updatedAt": "2026-09-17T08:52:06.148Z",
       "contentHash": "021a026d6f12d42e158c896514623d2b1fe1629ab3253a82482594679d58a6e6",
       "versionCount": 2,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "fa92ab22-d469-4f3c-91b4-f3c84d761b2c",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_15",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/089",
@@ -24810,7 +26097,28 @@
       "updatedAt": "2026-02-22T23:00:00.000Z",
       "contentHash": "53905dd8734f9e1294bad19565a10ef0adfbfb32df8881725ec4fd4ef02bacc9",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "e929f1e3-a624-440f-9fb7-3a1f573ce3a1",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_13",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/087",
@@ -24961,7 +26269,28 @@
       "updatedAt": "2026-02-21T23:00:00.000Z",
       "contentHash": "9c0a73505db015d9b4e848a27457dfde3fcb93b5f3ab40eb0635f83a5c71eee8",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "c0f33220-9b7b-4b3c-a9d7-aec4539245e4",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_12",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/085",
@@ -25675,6 +27004,39 @@
             "sourceRecordHash": "fa8565f7a20d559d377d8eea9102dfda1260cdec1a9bc57290a9d5738ebaab6f"
           }
         ]
+      },
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "044c1491-6df9-4ab4-a22c-1e11b0bf1761",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_10",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "683af0bb-f665-4239-a34e-2911bedf5499",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_11",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
       }
     },
     {
@@ -25867,7 +27229,28 @@
       "updatedAt": "2026-09-17T08:52:06.148Z",
       "contentHash": "76ff57a765991c6e34bfb4823e5f90a0d285d9c118d344be3a60cb40863d1a7a",
       "versionCount": 2,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "2accf0ae-85fa-4ea6-b8d2-467fc454fe72",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_09",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/074",
@@ -26057,7 +27440,28 @@
       "updatedAt": "2026-02-12T23:00:00.000Z",
       "contentHash": "3bbda6a796a1765e28ea096ce2d3d3f95359ee0a9c6960428fd51d8c42aa0776",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "7000c300-e400-448e-98bf-6b3f29da94c2",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_08",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/072",
@@ -26244,7 +27648,28 @@
       "updatedAt": "2026-02-11T23:00:00.000Z",
       "contentHash": "33d52bbee2e1da9a34e9d8ef3360c32d0e99386d40f4483abe468dfa8ce62156",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "bd842981-af0f-431e-baca-55c31bf5b8aa",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_07",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/067",
@@ -26389,7 +27814,28 @@
       "updatedAt": "2026-02-10T23:00:00.000Z",
       "contentHash": "8a28667bc3e0bcbb5dbe61ee16674289d06f8923c45ec1e00609d76dc93ef307",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "dd21905d-ccf5-4bb9-a18a-888b5ea4208d",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_06",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/043",
@@ -27952,7 +29398,40 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "ebf9c88e-a2f3-488e-84c4-f91781e717b6",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_04",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "fe181224-350a-4ea9-a30a-11e1ab7e2909",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_04_amp",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/053",
@@ -28173,7 +29652,28 @@
       "updatedAt": "2026-02-03T23:00:00.000Z",
       "contentHash": "ed882f2445808436a2fe61dce1cd817d3bb586cb6426082a33015d1455273446",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "215284e0-5b28-4a1a-a485-fc267b01b236",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_05",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/039",
@@ -28463,7 +29963,28 @@
       "updatedAt": "2026-01-21T23:00:00.000Z",
       "contentHash": "f2e69aaa103e24c410cd468b3d333ba8b8238795e7c8856515e4ffc43613beca",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "446b665e-deea-4a6b-9df5-898f75661d57",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_03",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/017",
@@ -28783,7 +30304,28 @@
       "updatedAt": "2026-01-09T23:00:00.000Z",
       "contentHash": "357c066971d90c5270b7b9e558b4f05714fe347d64dc47f387d4e247afba755a",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "26fc6904-6fe5-4034-afee-e62257892d6d",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_02",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/723",
@@ -29044,7 +30586,40 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "ee87c7d7-39d2-4ed2-8786-0ae553eb56d7",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_64",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "fa0dd8f8-bc51-41b3-8b18-2b8db95fa106",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_64_amp",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2026/008",
@@ -29216,7 +30791,28 @@
       "updatedAt": "2026-01-04T23:00:00.000Z",
       "contentHash": "4b0e412c46a0995830120d803e9c3a0ae7ac5df2ba78a9d75e7bcd3e54998b88",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "d18b1902-9384-4ec3-a072-998eeaa1922d",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_01",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/744",
@@ -29424,7 +31020,28 @@
       "updatedAt": "2025-12-22T23:00:00.000Z",
       "contentHash": "9cfae1ec5ffdfe9765b9728e673770620e9a515bbb1437bc0ddfb8cc1e03f25e",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "754686e0-4397-40b2-bebf-e6c5ccb55250",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_67",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/727",
@@ -29675,7 +31292,28 @@
       "updatedAt": "2025-12-18T23:00:00.000Z",
       "contentHash": "7a3c7322929d318cd14885ed0e88dab510c8d09d9a45b4bd471dafd7ce831a78",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "d784ba1a-b400-4574-ba00-5b25bc7675da",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_66",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/728",
@@ -30372,7 +32010,40 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "5bdc6279-0083-4ebd-9a4f-1adffa940777",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_65",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "21f71533-f098-41c1-989f-4ddedc63aef6",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_65_amp",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/683",
@@ -30770,7 +32441,40 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "4de016cf-0e25-4ea8-a380-71d36b8858c8",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_60",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "e33b5758-4468-4789-851e-eacbccdc440d",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_60_amp",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/699",
@@ -30984,7 +32688,28 @@
       "updatedAt": "2025-12-02T23:00:00.000Z",
       "contentHash": "02ee860867486097dff07d1c0c1d8158b9841c5e87ab9bd7223008c864e192a0",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "e43e2099-3b48-4271-b75a-9b24e58f135a",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_63",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/685",
@@ -31186,7 +32911,28 @@
       "updatedAt": "2025-11-27T23:00:00.000Z",
       "contentHash": "e3a6583f3c28ef212f85765a28d98a7e8ed43765ea6336ba631791d2aee44186",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "ee0900fa-faec-461a-ba72-29194b95d9af",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_61",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/692",
@@ -31347,7 +33093,28 @@
       "updatedAt": "2025-11-27T23:00:00.000Z",
       "contentHash": "0cae519c69653fa7f1c349c71dd637ea979c57de7e5cb27beb89d52dda296dc3",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "c3c14bd4-17b9-464b-8078-a716108698fb",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_62",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/650",
@@ -31508,7 +33275,28 @@
       "updatedAt": "2025-11-25T23:00:00.000Z",
       "contentHash": "21f04fb9271b3c6af106441b13eccd49d4fb4620c94c4d15516ffa48ac9eca7d",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "25ab1081-86a9-4e91-a23f-c821d58ade19",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_59",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/627",
@@ -33974,7 +35762,76 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "8d9fe638-9404-416c-bc20-646ed6e311de",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_54",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "6109b952-4a47-4985-9534-eec271c759da",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_54_amp",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "eeacf948-fcbb-48d4-bfe9-615481b623b5",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_54_amp2",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "8c9f32a2-03ac-46c7-92ec-491f5b42af31",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_54_amp3",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "78a7e03c-607b-4be1-8848-1df127dbaa51",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_54_amp4",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/664",
@@ -34578,7 +36435,40 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "feecdfed-ab25-420d-9ee5-474ec6018a80",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_58",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "ca47c9c8-66ec-456a-9c4b-aa7e89bda557",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_58_Amp",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/628",
@@ -35720,7 +37610,40 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "fc888fdb-9dff-4ed2-8c79-1ed534295ac9",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_53",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "33d48c42-54a4-44d0-9b85-85aaee10530f",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_53_Amp",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/648",
@@ -37018,7 +38941,40 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "b6e5d79b-ad76-45f8-ab17-10718f29863a",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_55",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "f86136bd-cae5-4c81-a0ee-762c0b8f14e9",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_55_Amp",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/658",
@@ -38531,7 +40487,40 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "d721085e-ecc0-4190-a643-2ac6643ddf1d",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_56",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "620f4006-4629-4196-9134-18c973a24b12",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_56_Correc",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/663",
@@ -38749,7 +40738,28 @@
       "updatedAt": "2026-09-17T08:52:06.148Z",
       "contentHash": "3131b1ebb07ef107052d81f0fbd0aca1c3c36438e99736fe605fbb93f76c6d8f",
       "versionCount": 2,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "a486dbd9-b557-4d31-a210-774681dd2d19",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_57",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/615",
@@ -39300,7 +41310,40 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "4baf62b5-71af-4db1-9e57-c32c903173e5",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_48",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "379b40db-9d81-4dcd-b2d3-5c946b563556",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_48_amp",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/622",
@@ -39461,7 +41504,28 @@
       "updatedAt": "2025-10-26T23:00:00.000Z",
       "contentHash": "73531f9e0648234fd0e58a7a1bf786d646b11fe717f3c1c60f1501f451c051e7",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "2012dfcf-7d64-40e1-aaf8-34190c7d3b18",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_52",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/616",
@@ -39708,7 +41772,28 @@
       "updatedAt": "2025-10-23T22:00:00.000Z",
       "contentHash": "45b04eca00783670b55abddc57fd6ed1a93ab979b080c3c07bf596351613e46b",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "4055a3c0-6dae-4be6-8893-0deaa977c495",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_50",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/624",
@@ -39929,7 +42014,28 @@
       "updatedAt": "2025-10-23T22:00:00.000Z",
       "contentHash": "990511b1c61e585cf0aa9ad68e5f84f034f6ec6b62814066f6acb39c7920ea62",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "f9047ec7-50d6-4935-95ce-14b67a3b5e6b",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_51",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/618",
@@ -40115,7 +42221,28 @@
       "updatedAt": "2025-10-22T22:00:00.000Z",
       "contentHash": "a7796ba170e108437b9817d8c321f86830e1a4f072e6da0cd4a1f0b0a9a07682",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "6d76101e-c532-4f4b-a8f7-b406fee32132",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_49",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/608",
@@ -40279,7 +42406,28 @@
       "updatedAt": "2025-10-17T22:00:00.000Z",
       "contentHash": "a1317a59e9f0d175c38bb24292bfd03086243ee2df1f14a01bc96cb6ab234d71",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "0a7d666c-4411-4f7c-8cd5-a5435c41dbd6",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_47",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/607",
@@ -40475,7 +42623,28 @@
       "updatedAt": "2025-10-16T22:00:00.000Z",
       "contentHash": "041dc2cc4295b9637eebd9eded3eac8898527ed3c659b0c493f7eaaf48acb79e",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "f6a59722-a1f6-4f9d-9c31-dfd7ad317808",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_46",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/571",
@@ -40622,7 +42791,28 @@
       "updatedAt": "2025-10-02T22:00:00.000Z",
       "contentHash": "e9e6e53ef0cb7e7da6abe1f41c2683d698fa8dd3efbb018cf6894e766d6393d2",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "d87b2a83-3bc8-4f03-ae3c-ad0a9e6a0164",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_45",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/507",
@@ -40796,7 +42986,28 @@
       "updatedAt": "2025-08-24T22:00:00.000Z",
       "contentHash": "3c4ee516380465b44c59cf5f72e2dd54422ed59100292fb1c6ca4b1b0335380e",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "cdaf1f52-a2b7-433a-b2ee-6bc14325cbf4",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_44",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/483",
@@ -41515,7 +43726,40 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "ad5e1cbc-1e1e-4c4e-bace-91983fb49935",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_43",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "c310e03d-ef30-4a77-8a41-aecd31d1cdb1",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_43_Amp",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/459",
@@ -41707,7 +43951,28 @@
       "updatedAt": "2026-09-17T08:52:06.148Z",
       "contentHash": "c5a45bbd018e86867e28612b173a8fa53cb2f0b64f49be63f63b8654463ab127",
       "versionCount": 2,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "e64f7218-58ad-4c6e-be6d-a832d25b61dd",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_42",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/417",
@@ -42548,7 +44813,40 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "7e308a67-22d8-44bc-b1dd-78e299160128",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_36",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "2bef9ce5-f243-4267-a325-4473ef7b9d27",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_41",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/414",
@@ -42749,7 +45047,28 @@
       "updatedAt": "2025-07-31T22:00:00.000Z",
       "contentHash": "092a56ab41dc5813bd893f82ea8d58cb2ab891ec44976d98c7fa86accc347653",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "4fce1e17-bd73-4b5b-92a4-235ac532c56a",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_38",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/452",
@@ -43121,7 +45440,28 @@
       "updatedAt": "2026-09-17T08:52:06.148Z",
       "contentHash": "041f221378e99bb5016f3c0591d6a9313ab9b2a03a55dc8c41e84f6f2943248c",
       "versionCount": 2,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "db6e7961-62b1-46db-8f76-d93bcd1a1687",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_39",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/455",
@@ -43301,7 +45641,28 @@
       "updatedAt": "2025-07-31T22:00:00.000Z",
       "contentHash": "e9c377513782a12284a6e1fc393423b5b1c2d279cc5ebc2fdf937eeb122274c8",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "food_supplements",
+        "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+        "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios",
+        "publications": [
+          {
+            "sourceRecordId": "a5c57600-e2b3-426d-9572-032dba013212",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_40",
+            "matches": [
+              {
+                "code": "food_supplements",
+                "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+                "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/424",
@@ -43564,7 +45925,28 @@
       "updatedAt": "2025-07-17T22:00:00.000Z",
       "contentHash": "1ad2338a5bd18c29688d1b4924a10dad86f8c2aad6220bd445b97e5e6cf388a9",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "7847cabd-5e64-4df6-bd65-67abe42f8d3c",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_37",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/392",
@@ -43878,7 +46260,28 @@
       "updatedAt": "2025-07-08T22:00:00.000Z",
       "contentHash": "ca863c3f2a3c9d0324c1bed9f315534df258e23dd83d0d2388ecf1153e6bfb3f",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "d8b184c4-f779-4211-bfc7-f2c9c12e8264",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_35",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/385",
@@ -44063,7 +46466,28 @@
       "updatedAt": "2025-07-07T22:00:00.000Z",
       "contentHash": "9386b9e74da5032a227812e984105e36fc0aeb94023256d9ca88e0a32882dee6",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "7b79c1c6-cf18-46bd-b417-5124bb38bfb4",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_34",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/375",
@@ -44287,7 +46711,28 @@
       "updatedAt": "2025-07-03T22:00:00.000Z",
       "contentHash": "569861b577c8f6fac733f100b7f3cae1df03df6805eaf7301245c5618dfaeaae",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "5ec5fcd5-a32d-46b1-86e2-af2901671a4e",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_33",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/373",
@@ -44484,7 +46929,28 @@
       "updatedAt": "2026-09-17T08:52:06.148Z",
       "contentHash": "eb1a9ec215945df75687cfe6906176df10c5d229fe39336274f2b97e5a3b88ec",
       "versionCount": 2,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "d84d719f-c483-43a5-bb45-4633f8105209",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_31",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/374",
@@ -44663,7 +47129,28 @@
       "updatedAt": "2025-07-02T22:00:00.000Z",
       "contentHash": "3c09da1da82731c39f92de6a2aae608f17f0fa82d03d0c41fdff40a0df7e7910",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "food_supplements",
+        "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+        "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios",
+        "publications": [
+          {
+            "sourceRecordId": "9ad0344d-f047-4d30-a431-06871338f75f",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_32",
+            "matches": [
+              {
+                "code": "food_supplements",
+                "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+                "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/361",
@@ -45114,7 +47601,28 @@
       "updatedAt": "2025-06-26T22:00:00.000Z",
       "contentHash": "3cae4119f6087e8b778ed9ff57f084389e5a96b31d5ab41cbf13389d2ab84acb",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "bb53d9a0-0f73-4f00-a9ac-a870a18b1e97",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_30",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/340",
@@ -45854,7 +48362,40 @@
             }
           ]
         }
-      ]
+      ],
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "6c39a2a8-a2c2-43a0-9524-0549a372038f",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_29",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "fd1913d4-d472-4166-ac8b-b12356c050a3",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_29_Amp",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/335",
@@ -45980,7 +48521,28 @@
       "updatedAt": "2025-06-17T22:00:00.000Z",
       "contentHash": "fb41d7c7f1972b594a6dba4d4d669d46d4d8314f63becc9c6db9da634a609190",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "food_supplements",
+        "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+        "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios",
+        "publications": [
+          {
+            "sourceRecordId": "5d376caa-bdaf-4df5-84fd-9ca0a541a45e",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_28",
+            "matches": [
+              {
+                "code": "food_supplements",
+                "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+                "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/312",
@@ -46139,7 +48701,28 @@
       "updatedAt": "2025-06-05T22:00:00.000Z",
       "contentHash": "086f61868b54c929c24f3aa64961ac2e98562b29ae825d57eb7f56b28587bebf",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "8a95c76e-12f1-4974-8675-c79162753042",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_27",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/292",
@@ -46272,7 +48855,28 @@
       "updatedAt": "2025-05-29T22:00:00.000Z",
       "contentHash": "7f8ae3a22285f396fbba6badbfca2ccded67b88935d2e4c4a225eafac3b00c88",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "2dde6286-00e2-47af-a616-c8f87bb1c44c",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_26",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/289",
@@ -46461,7 +49065,28 @@
       "updatedAt": "2025-05-28T22:00:00.000Z",
       "contentHash": "43595802970f477d978b31786c2c76adbec02ad4a5b906e574655da3cd33e6c9",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "a15102cb-69db-4331-9aa3-e7447bf40bad",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_25",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/277",
@@ -46662,7 +49287,28 @@
       "updatedAt": "2025-05-22T22:00:00.000Z",
       "contentHash": "dfae8bca84ef6ac9b4c1bc5f59161cda87c117834b104bd3d7d3e1ba717c08e0",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "b82978ed-43fa-437a-b3c2-d318decc1f27",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_24",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/227",
@@ -46797,7 +49443,28 @@
       "updatedAt": "2025-04-27T22:00:00.000Z",
       "contentHash": "43cd29ff4d8eeca2d9ffcf0e903dacb1380b0d3fa0ca02f6796d767fc7fa5189",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "f24df06f-f4df-4205-9f47-bd1209dc192b",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_23",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/208",
@@ -47004,7 +49671,28 @@
       "updatedAt": "2025-04-21T22:00:00.000Z",
       "contentHash": "7229a9faf599353b36b82a4f27ff310286dc43adfbd9a807b9f3424d26d904ea",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "4035b5b7-457b-4697-8b07-fb79aa22c9f8",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_22",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/204",
@@ -47184,7 +49872,28 @@
       "updatedAt": "2025-04-15T22:00:00.000Z",
       "contentHash": "4571f27ea17421b77265e766b4174e088062c3afe69760a2a8ffc64d446193a3",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "food_supplements",
+        "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+        "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios",
+        "publications": [
+          {
+            "sourceRecordId": "c84a4bf7-04f7-4ffc-9a71-15b42a3b3162",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_19",
+            "matches": [
+              {
+                "code": "food_supplements",
+                "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+                "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/205",
@@ -47369,7 +50078,28 @@
       "updatedAt": "2026-09-17T08:52:06.148Z",
       "contentHash": "24760b2e13a428b73c62e34237cb3ebddee300d9d2a6328734e8314d8b0438a3",
       "versionCount": 2,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "6ca7ed35-2f89-424f-8bf5-57ca9ecaea90",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_20",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/206",
@@ -48035,7 +50765,28 @@
       "updatedAt": "2026-09-17T08:52:06.148Z",
       "contentHash": "e96996f00b5da28180cf4f3e395fae2251a65a9ff357808f2be25757e37c0a21",
       "versionCount": 2,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "0c5be4ca-ea90-41cf-a309-607375bf5314",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_21",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/198",
@@ -48239,7 +50990,28 @@
       "updatedAt": "2026-09-17T08:52:06.148Z",
       "contentHash": "38846594703f7e77db0af1a6c285f119f75d522911fd1150a5f800b30027f673",
       "versionCount": 2,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "a4fc95d3-a5ef-4a41-8249-55566faf9ee9",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_18",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/191",
@@ -48463,7 +51235,28 @@
       "updatedAt": "2025-04-07T22:00:00.000Z",
       "contentHash": "73ef9bcb4fde9b79f708bc53eb9b793f044f7eedd872c3a28aece3f69904db99",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "a634d637-1fce-4780-907b-bbfe05148164",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_17",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/181",
@@ -48610,7 +51403,28 @@
       "updatedAt": "2025-04-03T22:00:00.000Z",
       "contentHash": "b39f814bbd37adb6daddc24d4e7dc0e9d6a596304966e2ebbd6def0b7bbae925",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "0071ce43-9c79-43d5-aeca-906b03eb440e",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_16",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/174",
@@ -48769,7 +51583,28 @@
       "updatedAt": "2025-03-30T22:00:00.000Z",
       "contentHash": "f972acb3b6417f4b24e79f8b5dff5a10ba4a02dced272049ffb59dc15fb87413",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "7c21439d-9f4f-47f7-886f-0a601e19aa3f",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_15",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/156",
@@ -49287,7 +52122,28 @@
       "updatedAt": "2025-03-26T23:00:00.000Z",
       "contentHash": "80df009c6b2ae56e99600b0221d8c45c9e4de42727851a8e0662a3c20760ed72",
       "versionCount": 1,
-      "isUpdate": true
+      "isUpdate": true,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "3f04b4f1-0a11-477b-aa4d-d0830dbbdd13",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_14_Amp",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/159",
@@ -49427,7 +52283,28 @@
       "updatedAt": "2025-03-20T23:00:00.000Z",
       "contentHash": "a9a5f62b2c75e9f62da9746ae1a7e617272d60d70bc31cba518453de5b8fc3ea",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "b4f8f7e2-efe4-416d-85dc-fed656a58e95",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_14",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/139",
@@ -49882,7 +52759,28 @@
       "updatedAt": "2025-03-13T23:00:00.000Z",
       "contentHash": "c74c1ae7c7dea0f33e54b40725a55a7827bf16b68b5de88b63428a87fc371dff",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "c8b11ff2-7339-4363-8767-93d2754f8041",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_12",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/133",
@@ -50067,7 +52965,28 @@
       "updatedAt": "2025-03-11T23:00:00.000Z",
       "contentHash": "3369319007f9cb6f465d3b03f2f2a3065abd698e00d4d4e1965abf9dbcbafde1",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "f9578c29-6661-4a32-afa3-ac44fce385d8",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_11",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/121",
@@ -50193,7 +53112,28 @@
       "updatedAt": "2025-03-03T23:00:00.000Z",
       "contentHash": "f3a56f2766da048ea3f85c920e7eb6fde547b6a9c4ea1e68f6242a6a6e83fc4a",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "food_supplements",
+        "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+        "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios",
+        "publications": [
+          {
+            "sourceRecordId": "b7f4fd9a-fa43-447f-aca8-76ac46f66125",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_10",
+            "matches": [
+              {
+                "code": "food_supplements",
+                "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+                "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/108",
@@ -50456,7 +53396,28 @@
       "updatedAt": "2026-09-17T08:52:06.148Z",
       "contentHash": "fcc85b21c1050cfb2ca49c237a99f4940f7602797a46b88c2848d9dafba5aaac",
       "versionCount": 2,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "4a55c27a-9d7e-42f3-abbf-0be8e3b8f90d",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_09",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/085",
@@ -50588,7 +53549,28 @@
       "updatedAt": "2025-02-12T23:00:00.000Z",
       "contentHash": "929c6371c2d2763d07600796e6073066d7170e0c1a02fb360951fa5e5b421ea6",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "food_supplements",
+        "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+        "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios",
+        "publications": [
+          {
+            "sourceRecordId": "95fe7817-09fb-4e51-b0d2-14e06b6a376f",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_08",
+            "matches": [
+              {
+                "code": "food_supplements",
+                "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+                "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/057",
@@ -50792,7 +53774,28 @@
       "updatedAt": "2025-02-06T23:00:00.000Z",
       "contentHash": "34d299232e76b7baa391ffe619420950b129fbfcfca373c89b8b5d3a11aa256c",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "fc0b40af-350d-43ea-80ba-e7f4e0945c93",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_07",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/055",
@@ -50968,7 +53971,28 @@
       "updatedAt": "2025-02-05T23:00:00.000Z",
       "contentHash": "bf4440e2b4bc4d3ca6e707a7d9f23a8b33122784a1ae80ee44667a3e2354410a",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "690f969b-8acd-465a-bcf9-c827bb0709af",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_06",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/050",
@@ -51169,7 +54193,28 @@
       "updatedAt": "2025-01-27T23:00:00.000Z",
       "contentHash": "6ad818d9aee22ec4bf3e6ca6565a540533b28801dc1d0f00ef1cb3f3ae37c891",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "dadd5a49-d916-4efa-beee-0375606948a8",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_04",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/036",
@@ -51354,7 +54399,28 @@
       "updatedAt": "2025-01-20T23:00:00.000Z",
       "contentHash": "ad502975ca31ceca6547c604e695b905a93d46b597595cc606dfddf199b56d17",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "3576ffb3-12ed-49e3-9ea6-dfffad2bcd09",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_03",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/020",
@@ -51545,7 +54611,28 @@
       "updatedAt": "2025-01-09T23:00:00.000Z",
       "contentHash": "0fb07d38823c50f024ddee3c47f779bced94fc264b51eed0e98d685535293467",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "6928d8a9-8df8-4583-a833-5557ec901e45",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_02",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/007",
@@ -51737,7 +54824,28 @@
       "updatedAt": "2025-01-08T23:00:00.000Z",
       "contentHash": "89ec4287e7d5065ba28922e28fca28333ec40383a13532fd27d2bce9fdb978be",
       "versionCount": 1,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "d064939e-65f6-4208-9ad2-e2319944c9e7",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_01",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "aesan:ES2025/002",
@@ -51910,7 +55018,28 @@
       "updatedAt": "2026-09-17T08:52:06.148Z",
       "contentHash": "86651e7d2d443881c5f721fa1217bdfb78e563af433632827f9c0d5365e424fd",
       "versionCount": 2,
-      "isUpdate": false
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "a197a26e-2e13-4884-82ec-fde1d5c0981c",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2024_94",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }
