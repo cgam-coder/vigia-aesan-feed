@@ -1,0 +1,35 @@
+name: Cloudflare token-only staging probe
+
+on:
+  push:
+    branches:
+      - work/cloudflare-chat-operability-proof
+    paths:
+      - "ops/cloudflare-token-only-probe.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Verify token-only access to exact staging resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          npx --yes wrangler@4.135.0 d1 info nagamealert-staging-db --json > "$RUNNER_TEMP/d1.json"
+          npx --yes wrangler@4.135.0 deployments status --name vigia-runtime --json > "$RUNNER_TEMP/worker.json"
+          node --input-type=module - "$RUNNER_TEMP/d1.json" "$RUNNER_TEMP/worker.json" <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const [d1Path,workerPath]=process.argv.slice(2);
+          const d1=JSON.parse(await readFile(d1Path,"utf8"));
+          const worker=JSON.parse(await readFile(workerPath,"utf8"));
+          const dbName=d1.name ?? d1.database_name ?? null;
+          if(dbName && dbName!=="nagamealert-staging-db") throw new Error("Unexpected D1");
+          console.log("CLOUDFLARE_TOKEN_ONLY_PROBE PASS d1=visible worker=visible");
+          NODE
