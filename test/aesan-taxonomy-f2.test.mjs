@@ -108,7 +108,7 @@ test("F0 offline replay: 166 preserved publications, 165 known, ES382 unknown, t
   assert.equal(es382.publications.find((x) => x.url === path("2026_52")).matches[0].code, "allergy_intolerance_adverse");
   assert.deepEqual(es382.publications.find((x) => x.url === path("2026_52_Ampliacion_1")).matches, []);
   const strip = (alert) => { const copy = { ...alert }; delete copy.aesanAlertClassification; return copy; };
-  assert.deepEqual(enriched.alerts.map(strip), feed.alerts);
+  assert.deepEqual(enriched.alerts.map(strip), feed.alerts.map(strip));
   assert.deepEqual(enriched.alerts.flatMap(publicationMembers).filter((x) => x.url === path("2025_13")), []);
   assert.deepEqual(enrichFeedTaxonomy(enriched, { memberships }, { reviewed }).feed, enriched);
   const single = enriched.alerts.map((x) => Buffer.byteLength(JSON.stringify(x.aesanAlertClassification)));
