@@ -28,7 +28,7 @@ jobs:
             mx:await safe(()=>dns.resolveMx(name)),
             txt:await safe(()=>dns.resolveTxt(name)),
             caa:await safe(()=>dns.resolveCaa(name)),
-            ds:await safe(()=>dns.resolve(name, "DS")),
+            ds:"checked-separately-with-dig",
             dmarc:await safe(()=>dns.resolveTxt("_dmarc."+name)),
           });
           console.log("DNS_COLLATERAL_BASELINE "+JSON.stringify({
@@ -37,3 +37,5 @@ jobs:
             es:await domain("nagamealert.es")
           }));
           NODE
+          echo "DNSSEC_DS_COM=$(dig +short DS nagamealert.com | tr '\n' ';')"
+          echo "DNSSEC_DS_ES=$(dig +short DS nagamealert.es | tr '\n' ';')"
