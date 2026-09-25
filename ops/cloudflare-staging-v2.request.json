@@ -1,4 +1,4 @@
 {
-  "operation": "worker-bootstrap-secrets",
-  "nonce": "cf-stage-secrets-20260925-2234"
+  "operation": "worker-secret-list",
+  "nonce": "cf-stage-secret-list-20260925-2235"
 }
