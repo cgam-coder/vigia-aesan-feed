@@ -1,0 +1,120 @@
+name: Cloudflare staging control
+
+on:
+  push:
+    branches:
+      - work/cloudflare-chat-operability-proof
+    paths:
+      - "ops/cloudflare-staging-control.request.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-staging-control
+  cancel-in-progress: false
+
+jobs:
+  control:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CF_WORKER: nagamealert-staging
+      CF_D1: nagamealert-staging
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Validate request and execute bounded staging operation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          request="ops/cloudflare-staging-control.request.json"
+          node --input-type=module - "$request" <<'NODE' > "$RUNNER_TEMP/request.env"
+          import { readFile } from "node:fs/promises";
+          const path=process.argv[2];
+          const body=JSON.parse(await readFile(path,"utf8"));
+          const allowed=new Set([
+            "probe",
+            "d1-list",
+            "d1-info",
+            "worker-status",
+            "worker-versions",
+            "d1-create-staging",
+            "d1-canary-write",
+            "d1-canary-read",
+            "worker-rollback"
+          ]);
+          if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("request must be object");
+          const keys=Object.keys(body).sort();
+          const allowedKeys=new Set(["nonce","operation","versionId"]);
+          if(keys.some(k=>!allowedKeys.has(k))) throw new Error("unexpected request key");
+          if(typeof body.nonce!=="string" || !/^[A-Za-z0-9._:-]{8,120}$/.test(body.nonce)) throw new Error("invalid nonce");
+          if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
+          if(body.operation==="worker-rollback"){
+            if(typeof body.versionId!=="string" || !/^[0-9a-f-]{20,80}$/i.test(body.versionId)) throw new Error("invalid versionId");
+          } else if("versionId" in body) throw new Error("versionId only allowed for rollback");
+          console.log("OPERATION="+body.operation);
+          console.log("NONCE="+body.nonce);
+          if(body.versionId) console.log("VERSION_ID="+body.versionId);
+          NODE
+          # request values are restricted above to shell-safe character sets.
+          source "$RUNNER_TEMP/request.env"
+
+          wrangler() { npx --yes wrangler@4.135.0 "$@"; }
+
+          case "$OPERATION" in
+            probe)
+              wrangler whoami
+              ;;
+            d1-list)
+              wrangler d1 list --json
+              ;;
+            d1-info)
+              wrangler d1 info "$CF_D1" --json
+              ;;
+            worker-status)
+              wrangler deployments status --name "$CF_WORKER" --json
+              ;;
+            worker-versions)
+              wrangler versions list --name "$CF_WORKER" --json
+              ;;
+            d1-create-staging)
+              # Idempotent guard: only create the exact staging DB if absent.
+              existing="$(wrangler d1 list --json)"
+              EXISTING_JSON="$existing" node --input-type=module <<'NODE'
+              const rows=JSON.parse(process.env.EXISTING_JSON||"[]");
+              if(rows.some(row=>row.name==="nagamealert-staging")) process.exit(42);
+              NODE
+              status=$?
+              if [ "$status" -eq 42 ]; then
+                echo "D1_STAGING_ALREADY_EXISTS"
+              elif [ "$status" -ne 0 ]; then
+                exit "$status"
+              else
+                wrangler d1 create "$CF_D1" --location weur
+              fi
+              ;;
+            d1-canary-write)
+              # Harmless staging-only proof table. Never accepted against another DB name.
+              test "$CF_D1" = "nagamealert-staging"
+              sql="CREATE TABLE IF NOT EXISTS cf_chat_control_probe (nonce TEXT PRIMARY KEY, created_at TEXT NOT NULL); INSERT OR REPLACE INTO cf_chat_control_probe (nonce, created_at) VALUES ('$NONCE', datetime('now'));"
+              wrangler d1 execute "$CF_D1" --remote --command "$sql" --yes --json
+              ;;
+            d1-canary-read)
+              test "$CF_D1" = "nagamealert-staging"
+              wrangler d1 execute "$CF_D1" --remote --command "SELECT nonce, created_at FROM cf_chat_control_probe ORDER BY created_at DESC LIMIT 5" --json
+              ;;
+            worker-rollback)
+              test "$CF_WORKER" = "nagamealert-staging"
+              wrangler rollback "$VERSION_ID" --name "$CF_WORKER" --message "NagameAlert chat-approved staging rollback $NONCE"
+              ;;
+          esac
+          echo "CLOUDFLARE_STAGING_CONTROL operation=$OPERATION nonce=$NONCE status=PASS"
