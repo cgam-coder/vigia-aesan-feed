@@ -1,0 +1,3 @@
+requested_from=chatgpt
+scope=aggregate-logical-storage-readonly
+writes=0
