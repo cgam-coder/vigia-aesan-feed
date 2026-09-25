@@ -1,0 +1,117 @@
+name: Cloudflare migration read-only inventory
+
+on:
+  push:
+    branches:
+      - work/cloudflare-chat-operability-proof
+    paths:
+      - "ops/cloudflare-migration-readonly-inventory.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE: https://nagamealert.com
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+    steps:
+      - name: Strict read-only production inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+          tmp="$RUNNER_TEMP/cf-migration-inventory"
+          mkdir -p "$tmp"
+
+          get_auth() {
+            local name="$1"
+            local url="$2"
+            local file="$tmp/$name.json"
+            local code
+            code="$(curl -q --silent --show-error --location --request GET               --header "Authorization: Bearer $VIGIA_SYNC_TOKEN"               --max-time 120 --output "$file" --write-out '%{http_code}' "$url")"
+            if [ "$code" != "200" ]; then
+              echo "$name HTTP=$code"
+              cat "$file"
+              exit 1
+            fi
+          }
+
+          get_auth aesan-observe "$BASE/api/aesan/sync?observe=1"
+          get_auth rapna-observe "$BASE/api/rapna/sync?observe=1"
+          get_auth rasff-observe "$BASE/api/rasff/sync?observe=1"
+          get_auth safety-observe "$BASE/api/safety-gate/sync?observe=1"
+          get_auth oecd-observe "$BASE/api/oecd/sync?observe=1"
+          get_auth freshness-observe "$BASE/api/freshness?observe=1"
+
+          get_auth rapna-audit "$BASE/api/rapna/sync?audit=1"
+          get_auth rasff-audit "$BASE/api/rasff/sync?audit=1"
+          get_auth safety-audit "$BASE/api/safety-gate/sync?audit=1"
+          get_auth oecd-audit "$BASE/api/oecd/sync?audit=1"
+
+          headers="$tmp/p4.headers"
+          body="$tmp/p4.json"
+          p4_code="$(curl -q --silent --show-error --location --request GET             --header "X-Nagame-P4-Audit: 1"             --max-time 120 --dump-header "$headers" --output "$body" --write-out '%{http_code}'             "$BASE/api/terminal/alerts?source=AESAN&period=all&pageSize=1")"
+          test "$p4_code" = "200"
+
+          node --input-type=module - "$tmp" <<'NODE'
+          import { readFile } from "node:fs/promises";
+          import { join } from "node:path";
+          const root = process.argv[2];
+          const read = async (name) => JSON.parse(await readFile(join(root, name + ".json"), "utf8"));
+          const states = {};
+          for (const source of ["aesan","rapna","rasff","safety","oecd"]) {
+            const body = await read(source + "-observe");
+            states[source] = {
+              recent:body.recent ?? null,
+              historicalReconcile:body.historicalReconcile ?? null,
+              currentParity:body.currentParity ?? null,
+              reconcile:body.reconcile ?? null,
+              backfill:body.backfill ?? null,
+              revisionCertification:body.revisionCertification ?? null,
+              lease:body.lease ?? null,
+            };
+          }
+          const freshness = await read("freshness-observe");
+          const audits = {};
+          for (const source of ["rapna","rasff","safety","oecd"]) {
+            const body = await read(source + "-audit");
+            const a = body.audit ?? body;
+            audits[source] = {
+              source:a.source ?? null,
+              totalAlerts:a.totalAlerts ?? a.alertCount ?? a.total ?? null,
+              duplicateReferences:a.duplicateReferences ?? a.duplicateReferenceGroups ?? null,
+              invalidIdentities:a.invalidIdentities ?? null,
+              emptyCanonicalRows:a.emptyCanonicalRows ?? null,
+              invalidOfficialUrls:a.invalidOfficialUrls ?? null,
+              versionCountMismatches:a.versionCountMismatches ?? null,
+              sourceIdentityMismatches:a.sourceIdentityMismatches ?? null,
+            };
+          }
+          const rawHeaders = await readFile(join(root, "p4.headers"), "utf8");
+          const headerMap = new Map();
+          for (const line of rawHeaders.split(/\r?\n/)) {
+            const at = line.indexOf(":");
+            if (at > 0) headerMap.set(line.slice(0, at).trim().toLowerCase(), line.slice(at + 1).trim());
+          }
+          const h = (name) => headerMap.get(name.toLowerCase()) ?? null;
+          const result = {
+            control:"CHAT_GITHUB_READONLY_PRODUCTION_PROBE",
+            writes:0,
+            states,
+            freshness: freshness.states ?? null,
+            audits,
+            p4:{
+              audit:h("x-nagame-p4-audit"),
+              ledger:h("x-nagame-p4-ledger"),
+              projection:h("x-nagame-p4-projection"),
+              index:h("x-nagame-p4-index"),
+              parity:h("x-nagame-p4-parity"),
+              nonAesan:h("x-nagame-p4-nonaesan"),
+              counts:h("x-nagame-p4-counts"),
+            },
+          };
+          console.log("MIGRATION_READONLY_INVENTORY " + JSON.stringify(result));
+          NODE
