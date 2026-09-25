@@ -52,6 +52,19 @@ test("three exact official controls, labels, UUIDs, all pages and extreme duplic
   assert.equal(parseFilteredPage(page("general_population", 3, data.general_population), "general_population", 3).raw, 1);
 });
 
+test("single-page filtered response may omit pagination but multi-page cannot", () => {
+  const one = [path("2026_67")];
+  const withoutPagination = page("food_supplements", 1, one).replace(/<nav class="pagination">[\s\S]*?<\/nav>/u, "");
+  const parsed = parseFilteredPage(withoutPagination, "food_supplements", 1);
+  assert.equal(parsed.total, 1);
+  assert.equal(parsed.lastPage, 1);
+  assert.deepEqual(parsed.urls, one);
+
+  const many = Array.from({ length:21 }, (_, i) => path(`2025_${i + 1}`));
+  const broken = page("general_population", 1, many).replace(/<nav class="pagination">[\s\S]*?<\/nav>/u, "");
+  assert.throws(() => parseFilteredPage(broken, "general_population", 1), /missing pagination general_population page 1/u);
+});
+
 test("drift: fourth category, UUID, label, missing control and landing/search disagreement", () => {
   const base = landing();
   const searchHtml = search();
