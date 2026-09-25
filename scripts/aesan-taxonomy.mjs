@@ -89,19 +89,22 @@ export function parseFilteredPage(html, code, page) {
   const range = plain(result?.[1] ?? "").match(/^(\d+)\s*-\s*(\d+)\s+de\s+(\d+)$/u);
   if (!range) fail(`missing result range ${code} page ${page}`);
   const [start, end, total] = range.slice(1).map(Number);
-  const pagination = html.match(/<nav\b[^>]*\bclass\s*=\s*["'][^"']*\bpagination\b[^"']*["'][^>]*>[\s\S]*?<\/nav>/iu)?.[0];
-  if (!pagination) fail(`missing pagination ${code} page ${page}`);
-  const active = pagination.match(/<li\b[^>]*\bclass\s*=\s*["'][^"']*\bpagination__active\b[^"']*["'][^>]*\baria-label\s*=\s*["']page\s+(\d+)["']/iu)?.[1];
-  if (Number(active) !== page) fail(`wrong active page ${code} page ${page}`);
-  const linkedPages = [...pagination.matchAll(/<a\b([^>]*)>/giu)].flatMap((match) => {
-    const href = attr(match[1], "href");
-    if (!href || href === "#") return [];
-    const url = new URL(href, AESAN_LIST_URL);
-    if (url.hostname !== "www.aesan.gob.es" || url.searchParams.get("type") !== type.sourceTypeId ||
-        !/^\/alertas\/buscador-alertas(?:\/\d+)?$/u.test(url.pathname)) fail(`pagination link changed ${code} page ${page}`);
-    return [url.pathname === "/alertas/buscador-alertas" ? 1 : Number(url.pathname.split("/").at(-1))];
-  });
   const lastPage = Math.ceil(total / 20);
+  const pagination = html.match(/<nav\b[^>]*\bclass\s*=\s*["'][^"']*\bpagination\b[^"']*["'][^>]*>[\s\S]*?<\/nav>/iu)?.[0];
+  if (!pagination && (lastPage !== 1 || page !== 1)) fail(`missing pagination ${code} page ${page}`);
+  let linkedPages = [];
+  if (pagination) {
+    const active = pagination.match(/<li\b[^>]*\bclass\s*=\s*["'][^"']*\bpagination__active\b[^"']*["'][^>]*\baria-label\s*=\s*["']page\s+(\d+)["']/iu)?.[1];
+    if (Number(active) !== page) fail(`wrong active page ${code} page ${page}`);
+    linkedPages = [...pagination.matchAll(/<a\b([^>]*)>/giu)].flatMap((match) => {
+      const href = attr(match[1], "href");
+      if (!href || href === "#") return [];
+      const url = new URL(href, AESAN_LIST_URL);
+      if (url.hostname !== "www.aesan.gob.es" || url.searchParams.get("type") !== type.sourceTypeId ||
+          !/^\/alertas\/buscador-alertas(?:\/\d+)?$/u.test(url.pathname)) fail(`pagination link changed ${code} page ${page}`);
+      return [url.pathname === "/alertas/buscador-alertas" ? 1 : Number(url.pathname.split("/").at(-1))];
+    });
+  }
   const cards = [...html.matchAll(/<a\b([^>]*\bclass\s*=\s*["'][^"']*\bseeMoreCard\b[^"']*["'][^>]*)>[\s\S]*?<\/a>/giu)];
   const urls = cards.map((match) => officialPublicationUrl(attr(match[1], "href")));
   if (urls.some((url) => !url) || start !== (page - 1) * 20 + 1 ||
