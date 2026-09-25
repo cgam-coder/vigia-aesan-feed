@@ -1,0 +1,3 @@
+requested_from=chatgpt
+scope=production-readonly-inventory
+mutations=forbidden
