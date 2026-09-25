@@ -50,7 +50,13 @@ jobs:
           }));
           NODE
           }
-          run_case default7d "period=7d&pageSize=50"
-          run_case default30d "period=30d&pageSize=50"
-          run_case aesan7d "source=AESAN&period=7d&pageSize=50"
-          run_case aesanAll "source=AESAN&period=all&pageSize=50"
+          run_case default7d_p1 "period=7d&pageSize=1"
+          run_case default7d_p50 "period=7d&pageSize=50"
+          run_case default30d_p1 "period=30d&pageSize=1"
+          run_case aesan7d_p1 "source=AESAN&period=7d&pageSize=1"
+          run_case aesan7d_p50 "source=AESAN&period=7d&pageSize=50"
+          run_case rapna7d_p1 "source=RAPNA&period=7d&pageSize=1"
+          run_case rasff7d_p1 "source=RASFF&period=7d&pageSize=1"
+          run_case safety7d_p1 "source=SAFETY%20GATE&period=7d&pageSize=1"
+          run_case oecd7d_p1 "source=OECD&period=7d&pageSize=1"
+          run_case aesanAll_p1 "source=AESAN&period=all&pageSize=1"
