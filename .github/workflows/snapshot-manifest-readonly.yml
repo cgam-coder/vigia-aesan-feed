@@ -1,0 +1,45 @@
+name: Snapshot manifest read-only inventory
+
+on:
+  push:
+    branches:
+      - work/cloudflare-chat-operability-proof
+    paths:
+      - "ops/snapshot-manifest-readonly.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  snapshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      BASE: https://nagamealert.com
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+    steps:
+      - name: Read active snapshot manifests only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+          tmp="$RUNNER_TEMP/snapshots"
+          mkdir -p "$tmp"
+          for source in rapna safety-gate oecd; do
+            code="$(curl -q --silent --show-error --location --request GET               --header "Authorization: Bearer $VIGIA_SYNC_TOKEN"               --max-time 120 --output "$tmp/$source.json" --write-out '%{http_code}'               "$BASE/api/$source/sync?observe=1")"
+            test "$code" = "200"
+          done
+          node --input-type=module - "$tmp" <<'NODE'
+          import { readFile } from "node:fs/promises";
+          import { join } from "node:path";
+          const root=process.argv[2];
+          const out={writes:0};
+          for(const source of ["rapna","safety-gate","oecd"]){
+            const body=JSON.parse(await readFile(join(root,source+".json"),"utf8"));
+            out[source]={
+              snapshot:body.snapshot??null,
+              currentSnapshot:body.currentSnapshot??null
+            };
+          }
+          console.log("SNAPSHOT_MANIFEST_INVENTORY "+JSON.stringify(out));
+          NODE
