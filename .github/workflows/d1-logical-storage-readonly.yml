@@ -1,0 +1,62 @@
+name: D1 logical storage read-only proof
+
+on:
+  push:
+    branches:
+      - work/cloudflare-chat-operability-proof
+    paths:
+      - "ops/d1-logical-storage-readonly.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  storage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      BASE: https://nagamealert.com
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+    steps:
+      - name: Read aggregate D1 logical storage only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+          tmp="$RUNNER_TEMP/d1-storage"
+          mkdir -p "$tmp"
+          for source in rapna oecd; do
+            code="$(curl -q --silent --show-error --location --request GET               --header "Authorization: Bearer $VIGIA_SYNC_TOKEN"               --max-time 180 --output "$tmp/$source.json" --write-out '%{http_code}'               "$BASE/api/$source/sync?audit=1")"
+            test "$code" = "200"
+          done
+          node --input-type=module - "$tmp" <<'NODE'
+          import { readFile } from "node:fs/promises";
+          import { join } from "node:path";
+          const root=process.argv[2];
+          const rapna=JSON.parse(await readFile(join(root,"rapna.json"),"utf8")).audit;
+          const oecd=JSON.parse(await readFile(join(root,"oecd.json"),"utf8")).audit;
+          const rs=rapna?.logicalStorage ?? null;
+          const os=oecd?.logicalStorage ?? null;
+          if(!rs || !os) throw new Error("Missing logicalStorage");
+          if(rs.allCanonicalJsonBytes !== os.allCanonicalJsonBytes ||
+             rs.allVersionSnapshotBytes !== os.allVersionSnapshotBytes) {
+            throw new Error("Global logical storage aggregates disagree");
+          }
+          const total = Number(rs.allCanonicalJsonBytes) + Number(rs.allVersionSnapshotBytes);
+          console.log("D1_LOGICAL_STORAGE "+JSON.stringify({
+            writes:0,
+            alerts:rapna.counts?.alerts ?? oecd.counts?.alerts ?? null,
+            aesanAlerts:oecd.counts?.aesanAlerts ?? null,
+            safetyGateAlerts:oecd.counts?.safetyGateAlerts ?? null,
+            rapnaAlerts:oecd.counts?.rapnaAlerts ?? null,
+            oecdAlerts:oecd.counts?.oecdAlerts ?? null,
+            allCanonicalJsonBytes:Number(rs.allCanonicalJsonBytes),
+            allVersionSnapshotBytes:Number(rs.allVersionSnapshotBytes),
+            minimumLogicalPayloadBytes:total,
+            minimumLogicalPayloadMiB:Math.round(total/1024/1024*100)/100,
+            rapnaCanonicalJsonBytes:Number(rs.rapnaCanonicalJsonBytes),
+            rapnaVersionSnapshotBytes:Number(rs.rapnaVersionSnapshotBytes),
+            oecdCanonicalJsonBytes:Number(os.oecdCanonicalJsonBytes),
+            oecdVersionSnapshotBytes:Number(os.oecdVersionSnapshotBytes)
+          }));
+          NODE
