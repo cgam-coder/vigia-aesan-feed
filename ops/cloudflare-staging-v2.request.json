@@ -1,4 +1,4 @@
 {
-  "operation": "worker-status",
-  "nonce": "cf-stage-worker-status-atomic-20260925-2250"
+  "operation": "staging-bootstrap-status",
+  "nonce": "cf-stage-atomic-preflight-20260925-2252"
 }
