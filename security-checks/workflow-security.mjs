@@ -20,8 +20,6 @@ const PRIVILEGED_EVENTS = new Set([
 
 // Reviewed historical exceptions: explicit debt, not a safety claim.
 export const FLOATING_ACTION_EXCEPTIONS = Object.freeze([
-  debt("safety-gate-sync.yml", "actions/checkout", "v4", 1,
-    "Operational OECD helper checkout; pin only with its carrier coordinated."),
   debt("update-full-feed.yml", "actions/checkout", "v4", 1,
     "AESAN publisher credentials and push path must be validated together."),
   debt("update-full-feed.yml", "actions/setup-node", "v4", 1,
@@ -36,7 +34,7 @@ export const KNOWN_DEBT = Object.freeze([
   {
     id: "PUB-DEBT-01",
     scope: "operational-action-pins",
-    statement: "Five operational action references remain on reviewed @v4 exceptions.",
+    statement: "Four operational action references remain on reviewed @v4 exceptions.",
     removalGate: "Coordinate each carrier, preserve behavior and observe a legitimate run.",
   },
   {
@@ -94,6 +92,7 @@ export function analyzeWorkflows(workflows) {
     checkExtraordinaryClosure(file, source, violations);
     checkRetiredClosureVerifier(file, source, violations);
     checkRasffCarrierBoundary(file, source, violations);
+    checkSafetyOecdCarrierBoundary(file, source, violations);
 
     for (const actionUse of findActionUses(source)) {
       if (actionUse.local || actionUse.pinned) continue;
@@ -242,6 +241,29 @@ function checkRasffCarrierBoundary(file, source, violations) {
   if (secretLines.length !== 2 || secretLines.some(({ line }) => !/^\s{10}VIGIA_SYNC_TOKEN:/u.test(line))) {
     violations.push(problem(file, "RASFF_SECRET_SCOPE",
       "RASFF production token must exist exactly once per authenticated lane step, never at job scope.",
+      secretLines[0]?.index ?? null));
+  }
+}
+
+
+function checkSafetyOecdCarrierBoundary(file, source, violations) {
+  if (file !== "safety-gate-sync.yml") return;
+  const checkoutUses = source.match(/actions\/checkout@[0-9a-f]{40}/gu) ?? [];
+  if (checkoutUses.length !== 1) {
+    violations.push(problem(file, "SAFETY_OECD_ACTION_PIN",
+      "The OECD helper checkout must use the reviewed full checkout SHA."));
+  }
+  const persistFalse = source.match(/persist-credentials:\s*false/gu) ?? [];
+  if (persistFalse.length !== 1) {
+    violations.push(problem(file, "SAFETY_OECD_CHECKOUT_CREDENTIALS",
+      "The OECD helper checkout must keep credentials non-persistent."));
+  }
+  const secretLines = source.split(/\r?\n/u)
+    .map((line, index) => ({ line, index:index + 1 }))
+    .filter(({ line }) => /VIGIA_SYNC_TOKEN:\s*\$\{\{\s*secrets\.VIGIA_SYNC_TOKEN\s*\}\}/u.test(line));
+  if (secretLines.length !== 8 || secretLines.some(({ line }) => !/^\s{10}VIGIA_SYNC_TOKEN:/u.test(line))) {
+    violations.push(problem(file, "SAFETY_OECD_SECRET_SCOPE",
+      "Safety Gate/OECD production token must exist only at the eight authenticated step scopes.",
       secretLines[0]?.index ?? null));
   }
 }
