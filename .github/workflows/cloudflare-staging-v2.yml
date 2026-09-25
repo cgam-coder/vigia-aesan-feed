@@ -93,7 +93,7 @@ jobs:
                 --output "$RUNNER_TEMP/bootstrap-status.json" --write-out '%{http_code}' \
                 "https://vigia-runtime.c-gamiz93.workers.dev/api/admin/staging-bootstrap")"
               test "$code" = "200"
-              node -e 'const fs=require("fs"); const b=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(b.staging!==true||b.target!=="0012") process.exit(1); console.log("STAGING_BOOTSTRAP_STATUS "+JSON.stringify({ledgerStatus:b.ledgerStatus,ledgerCount:Array.isArray(b.ledger)?b.ledger.length:null,tableCount:Array.isArray(b.tables)?b.tables.length:null}));' "$RUNNER_TEMP/bootstrap-status.json"
+              node -e 'const fs=require("fs"); const b=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(b.staging!==true||b.target!=="0012") process.exit(1); console.log("STAGING_BOOTSTRAP_STATUS "+JSON.stringify({ledgerStatus:b.ledgerStatus,ledgerCount:Array.isArray(b.ledger)?b.ledger.length:null,tables:Array.isArray(b.tables)?b.tables:null}));' "$RUNNER_TEMP/bootstrap-status.json"
               ;;
             staging-bootstrap-apply)
               test -n "$VIGIA_SYNC_TOKEN"
