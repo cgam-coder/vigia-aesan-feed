@@ -21,6 +21,7 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
       CF_WORKER: nagamealert-staging
       CF_D1: nagamealert-staging
     steps:
@@ -47,6 +48,8 @@ jobs:
             "d1-info",
             "worker-status",
             "worker-versions",
+            "worker-secret-list",
+            "worker-bootstrap-secrets",
             "d1-create-staging",
             "d1-canary-write",
             "d1-canary-read",
@@ -85,6 +88,17 @@ jobs:
               ;;
             worker-versions)
               wrangler versions list --name "$CF_WORKER" --json
+              ;;
+            worker-secret-list)
+              wrangler secret list --name "$CF_WORKER" --format json
+              ;;
+            worker-bootstrap-secrets)
+              test -n "$VIGIA_SYNC_TOKEN"
+              printf '%s' "$VIGIA_SYNC_TOKEN" | wrangler secret put VIGIA_SYNC_TOKEN --name "$CF_WORKER" >/dev/null
+              cursor_secret="$(openssl rand -hex 32)"
+              printf '%s' "$cursor_secret" | wrangler secret put VIGIA_QUERY_CURSOR_SECRET --name "$CF_WORKER" >/dev/null
+              unset cursor_secret
+              echo "STAGING_SECRETS_BOOTSTRAPPED names=VIGIA_SYNC_TOKEN,VIGIA_QUERY_CURSOR_SECRET"
               ;;
             d1-create-staging)
               # Idempotent guard: only create the exact staging DB if absent.
