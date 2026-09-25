@@ -90,7 +90,7 @@ test("drift: broken/changed pagination, failed page, duplicated cross-category U
   await assert.rejects(scanOfficialTaxonomy(conflicting.fetch), /multiple categories/u);
 });
 
-test("F0 offline replay: 166 preserved publications, 165 known, ES382 unknown, three external gaps", () => {
+test("F0 offline replay: preserved taxonomy, ES382 unknown and current feed publications integrated", () => {
   assert.equal(reviewed.length, 166);
   const counts = Object.fromEntries(codes.map((code) => [code, reviewed.filter((x) => x.code === code).length]));
   assert.deepEqual(counts, { general_population:80, allergy_intolerance_adverse:71, food_supplements:14 });
@@ -98,8 +98,8 @@ test("F0 offline replay: 166 preserved publications, 165 known, ES382 unknown, t
   const gaps = ["2025_13", "2025_13_Amp", "2025_05"].map(path);
   for (const url of gaps) memberships.set(url, [ALERT_TYPES.general_population]);
   const { feed:enriched, diagnostics } = enrichFeedTaxonomy(feed, { memberships }, { reviewed });
-  assert.equal(enriched.alerts.length, 127);
-  assert.deepEqual(diagnostics.gaps, gaps.sort());
+  assert.equal(enriched.alerts.length, 128);
+  assert.deepEqual(diagnostics.gaps, []);
   assert.deepEqual(diagnostics.unknown, [{ reference:"ES2026/382", urls:[path("2026_52_Ampliacion_1")] }]);
   assert.deepEqual(enriched.alerts.reduce((acc, alert) => {
     const taxonomy = alert.aesanAlertClassification;
@@ -149,7 +149,7 @@ test("F2 read-only 62-page capture replays exact current metrics and SHA-256 fix
   });
   assert.equal(scan.memberships.size, 168);
   const { diagnostics } = enrichFeedTaxonomy(feed, scan, { reviewed });
-  assert.deepEqual(diagnostics.gaps, [path("2025_05"), path("2025_13"), path("2025_13_Amp")]);
+  assert.deepEqual(diagnostics.gaps, []);
   assert.deepEqual(diagnostics.disappeared, []);
   assert.deepEqual(diagnostics.unknown, [{ reference:"ES2026/382", urls:[path("2026_52_Ampliacion_1")] }]);
 });
