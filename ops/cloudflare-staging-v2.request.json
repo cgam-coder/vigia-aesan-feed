@@ -1,4 +1,4 @@
 {
-  "operation": "d1-canary-read",
-  "nonce": "cf-stage-canary-20260925-2232"
+  "operation": "worker-bootstrap-secrets",
+  "nonce": "cf-stage-secrets-20260925-2234"
 }
