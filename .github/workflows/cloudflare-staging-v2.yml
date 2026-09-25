@@ -84,7 +84,8 @@ jobs:
               wrangler versions list --name "$CF_WORKER" --json >/dev/null
               ;;
             worker-status)
-              wrangler deployments status --name "$CF_WORKER" --json >/dev/null
+              status_json="$(wrangler deployments status --name "$CF_WORKER" --json)"
+              STATUS_JSON="$status_json" node -e 'const v=JSON.parse(process.env.STATUS_JSON||"{}"); console.log("WORKER_DEPLOYMENT_STATUS "+JSON.stringify(v));'
               ;;
             staging-bootstrap-status)
               test -n "$VIGIA_SYNC_TOKEN"
