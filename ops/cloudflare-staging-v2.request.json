@@ -1,4 +1,4 @@
 {
-  "operation": "staging-bootstrap-status",
-  "nonce": "cf-stage-atomic-preflight-20260925-2252"
+  "operation": "staging-bootstrap-apply",
+  "nonce": "cf-stage-atomic-apply-0012-20260925-2254"
 }
