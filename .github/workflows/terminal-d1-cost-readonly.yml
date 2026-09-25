@@ -1,0 +1,56 @@
+name: Terminal D1 cost read-only sample
+
+on:
+  push:
+    branches:
+      - work/cloudflare-chat-operability-proof
+    paths:
+      - "ops/terminal-d1-cost-readonly.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read D1 rows for normal terminal windows
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://nagamealert.com/api/terminal/alerts"
+          run_case() {
+            name="$1"; qs="$2"
+            headers="$RUNNER_TEMP/$name.headers"
+            body="$RUNNER_TEMP/$name.json"
+            code="$(curl -q --silent --show-error --location --request GET               --header "X-Nagame-Perf: 1" --max-time 120               --dump-header "$headers" --output "$body" --write-out '%{http_code}'               "$base?$qs")"
+            test "$code" = "200"
+            node --input-type=module - "$name" "$headers" "$body" <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const [name,headersPath,bodyPath]=process.argv.slice(2);
+          const raw=await readFile(headersPath,"utf8");
+          const headers=new Map();
+          for(const line of raw.split(/\r?\n/)){
+            const at=line.indexOf(":");
+            if(at>0) headers.set(line.slice(0,at).trim().toLowerCase(),line.slice(at+1).trim());
+          }
+          const body=JSON.parse(await readFile(bodyPath,"utf8"));
+          const rowsHeader=headers.get("x-nagame-d1-rows")??"";
+          const matches=[...rowsHeader.matchAll(/([a-z-]+)\.rows_read=(\d+)/g)];
+          const rows=Object.fromEntries(matches.map(m=>[m[1],Number(m[2])]));
+          const totalRows=Object.values(rows).reduce((a,b)=>a+b,0);
+          console.log("TERMINAL_COST_SAMPLE "+JSON.stringify({
+            name,
+            total:body.total??null,
+            items:Array.isArray(body.items)?body.items.length:null,
+            rows,
+            totalRowsRead:totalRows,
+            serverTiming:headers.get("server-timing")??null
+          }));
+          NODE
+          }
+          run_case default7d "period=7d&pageSize=50"
+          run_case default30d "period=30d&pageSize=50"
+          run_case aesan7d "source=AESAN&period=7d&pageSize=50"
+          run_case aesanAll "source=AESAN&period=all&pageSize=50"
