@@ -1,4 +1,4 @@
 {
-  "operation": "staging-bootstrap-status",
-  "nonce": "cf-stage-bootstrap-postcheck-20260925-2248"
+  "operation": "worker-status",
+  "nonce": "cf-stage-worker-status-atomic-20260925-2250"
 }
