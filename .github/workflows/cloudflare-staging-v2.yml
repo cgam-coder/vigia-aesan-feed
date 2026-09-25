@@ -93,7 +93,7 @@ jobs:
                 --output "$RUNNER_TEMP/bootstrap-status.json" --write-out '%{http_code}' \
                 "https://vigia-runtime.c-gamiz93.workers.dev/api/admin/staging-bootstrap")"
               test "$code" = "200"
-              node --input-type=module -e 'const fs=require("fs"); const b=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(b.staging!==true||b.target!=="0012") process.exit(1); console.log("STAGING_BOOTSTRAP_STATUS "+JSON.stringify({ledgerStatus:b.ledgerStatus,ledgerCount:Array.isArray(b.ledger)?b.ledger.length:null,tableCount:Array.isArray(b.tables)?b.tables.length:null}));' "$RUNNER_TEMP/bootstrap-status.json"
+              node -e 'const fs=require("fs"); const b=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(b.staging!==true||b.target!=="0012") process.exit(1); console.log("STAGING_BOOTSTRAP_STATUS "+JSON.stringify({ledgerStatus:b.ledgerStatus,ledgerCount:Array.isArray(b.ledger)?b.ledger.length:null,tableCount:Array.isArray(b.tables)?b.tables.length:null}));' "$RUNNER_TEMP/bootstrap-status.json"
               ;;
             staging-bootstrap-apply)
               test -n "$VIGIA_SYNC_TOKEN"
@@ -104,7 +104,7 @@ jobs:
                 "https://vigia-runtime.c-gamiz93.workers.dev/api/admin/staging-bootstrap")"
               cat "$RUNNER_TEMP/bootstrap-apply.json"
               test "$code" = "200"
-              node --input-type=module -e 'const fs=require("fs"); const b=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(!["ready","already-ready"].includes(b.status)||b.target!=="0012"||b.applied!==13) process.exit(1);' "$RUNNER_TEMP/bootstrap-apply.json"
+              node -e 'const fs=require("fs"); const b=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(!["ready","already-ready"].includes(b.status)||b.target!=="0012"||b.applied!==13) process.exit(1);' "$RUNNER_TEMP/bootstrap-apply.json"
               ;;
           esac
           echo "CLOUDFLARE_STAGING_V2 operation=$OPERATION nonce=$NONCE status=PASS"
