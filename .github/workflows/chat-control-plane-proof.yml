@@ -1,0 +1,22 @@
+name: Chat control-plane proof
+
+on:
+  push:
+    branches:
+      - work/cloudflare-chat-operability-proof
+    paths:
+      - "ops/control-plane-proof.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Prove chat -> GitHub -> Actions trigger path
+        run: |
+          echo "CHAT_CONTROL_PLANE_PROOF=PASS"
+          echo "ref=${GITHUB_REF}"
+          echo "sha=${GITHUB_SHA}"
