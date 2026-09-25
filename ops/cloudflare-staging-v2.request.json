@@ -1,4 +1,4 @@
 {
-  "operation": "staging-bootstrap-apply",
-  "nonce": "cf-stage-bootstrap-apply-0012-20260925-2246"
+  "operation": "staging-bootstrap-status",
+  "nonce": "cf-stage-bootstrap-postcheck-20260925-2248"
 }
