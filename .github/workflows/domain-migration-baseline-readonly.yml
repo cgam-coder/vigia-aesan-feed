@@ -1,0 +1,58 @@
+name: Domain migration baseline read-only
+
+on:
+  push:
+    branches:
+      - work/cloudflare-chat-operability-proof
+    paths:
+      - "ops/domain-migration-baseline-readonly.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Read DNS and HTTP migration baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import dns from "node:dns/promises";
+          const safe = async (fn) => { try { return await fn(); } catch (e) { return { error:e.code ?? e.message }; } };
+          const dnsState = {
+            com:{
+              ns:await safe(()=>dns.resolveNs("nagamealert.com")),
+              a:await safe(()=>dns.resolve4("nagamealert.com")),
+              wwwCname:await safe(()=>dns.resolveCname("www.nagamealert.com")),
+            },
+            es:{
+              ns:await safe(()=>dns.resolveNs("nagamealert.es")),
+              a:await safe(()=>dns.resolve4("nagamealert.es")),
+              wwwCname:await safe(()=>dns.resolveCname("www.nagamealert.es")),
+            },
+          };
+          const probe = async (url, redirect="manual") => {
+            const r=await fetch(url,{redirect,headers:{"user-agent":"NagameAlert-Migration-Baseline/1.0"},signal:AbortSignal.timeout(30000)});
+            const text=await r.text();
+            return {
+              url,status:r.status,location:r.headers.get("location"),finalUrl:r.url,
+              contentType:r.headers.get("content-type"),server:r.headers.get("server"),
+              hsts:r.headers.get("strict-transport-security"),xRobots:r.headers.get("x-robots-tag"),
+              bytes:new TextEncoder().encode(text).length,body:text.slice(0,500),
+            };
+          };
+          const http = {};
+          for(const [name,url] of Object.entries({
+            apex:"https://nagamealert.com/",
+            www:"https://www.nagamealert.com/es/",
+            es:"https://nagamealert.es/",
+            robots:"https://nagamealert.com/robots.txt",
+            sitemap:"https://nagamealert.com/sitemap.xml"
+          })){
+            http[name]=await safe(()=>probe(url));
+          }
+          console.log("DOMAIN_MIGRATION_BASELINE "+JSON.stringify({writes:0,dns:dnsState,http}));
+          NODE
