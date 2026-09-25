@@ -60,3 +60,6 @@ jobs:
           run_case safety7d_p1 "source=SAFETY%20GATE&period=7d&pageSize=1"
           run_case oecd7d_p1 "source=OECD&period=7d&pageSize=1"
           run_case aesanAll_p1 "source=AESAN&period=all&pageSize=1"
+          run_case countryEs7d_p1 "country=ES&period=7d&pageSize=1"
+          run_case food7d_p1 "domain=food&period=7d&pageSize=1"
+          run_case searchSulfitos_p1 "q=sulfitos&period=all&country=ALL&pageSize=1"
