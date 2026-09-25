@@ -4,17 +4,174 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-09-22T18:38:56.295Z",
+  "generatedAt": "2026-09-25T16:02:23.792Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
-    "totalAlerts": 127,
+    "totalAlerts": 128,
     "earliestPublishedAt": "2025-01-01T23:00:00.000Z",
-    "latestPublishedAt": "2026-09-10T22:00:00.000Z",
-    "lastFullSyncAt": "2026-09-22T18:38:56.295Z",
-    "pagesScanned": 60,
+    "latestPublishedAt": "2026-09-24T22:00:00.000Z",
+    "lastFullSyncAt": "2026-09-25T16:02:23.792Z",
+    "pagesScanned": 9,
     "legacyIndexesScanned": 0
   },
   "alerts": [
+    {
+      "id": "aesan:ES2026/575",
+      "reference": "ES2026/575",
+      "sourceRecordId": "f7f2802d-4268-47a8-8aa9-ca8ac9e79b9e",
+      "sourceRecordIdType": "idAlert",
+      "sourceRecordSchemaVersion": 2,
+      "sourceRecordHash": "c1a5e59b131fcd620d9053bf77e8f5a0bbf0802955f53ca44b4082d01c26a529",
+      "previousReferences": [],
+      "referenceHistory": [],
+      "source": "AESAN",
+      "type": "Alimentaria",
+      "priority": "Media",
+      "title": "Advertencia para personas con alergia al cacahuete: Presencia de cacahuete no declarado en uno de los campos del etiquetado en helado procedente de España (Ref. ES2026/575)",
+      "product": "uno de los campos del etiquetado en helado",
+      "brand": "",
+      "productClass": "Leche y productos lácteos",
+      "productKey": "uno de los campos del etiquetado en helado",
+      "brandKey": "",
+      "provider": "",
+      "providerKey": "",
+      "providerRole": "",
+      "providerEvidence": "",
+      "notifyingText": "La Agencia Española de Seguridad Alimentaria y Nutrición ha tenido conocimiento a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de una notificación de alerta trasladada por las autoridades sanitarias de la Comunidad de Madrid, relativa a la presencia de cacahuete no incluido en uno de los campos del etiquetado.",
+      "hazard": "Cacahuete no declarado",
+      "origin": "España",
+      "scope": "Colectivo alérgico o intolerante indicado por AESAN",
+      "action": "Como medida de precaución, se recomienda a aquellas PERSONAS CON ALERGIA AL CACAHUETE que pudieran tener el producto anteriormente mencionado en sus hogares se abstengan de consumirlo.",
+      "lots": [],
+      "imageUrl": "https://www.aesan.gob.es/dam/jcr:9212d71b-c161-4718-9d2b-e54df63b45f4/1.2026-09-25-14-42-08.png",
+      "officialTitle": "Advertencia para personas con alergia al cacahuete: Presencia de cacahuete no declarado en uno de los campos del etiquetado en helado procedente de España (Ref. ES2026/575)",
+      "publishedFields": [],
+      "materialParagraphs": [
+        {
+          "value": "La Agencia Española de Seguridad Alimentaria y Nutrición ha tenido conocimiento a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de una notificación de alerta trasladada por las autoridades sanitarias de la Comunidad de Madrid, relativa a la presencia de cacahuete no incluido en uno de los campos del etiquetado. La base del envase indica helado sabor plátano y brownie, pero el contenido es helado de cacahuete, que corresponde con la información de la tapa del envase.",
+          "sourceField": "article.body.p[0]",
+          "order": 0,
+          "section": "publication"
+        },
+        {
+          "value": "La información que aquí se incluye es resultante del autocontrol de la propia empresa, que ha comunicado la incidencia a las autoridades competentes, en cumplimiento de la legislación y a fin de no poner a disposición de la población alimentos no seguros.",
+          "sourceField": "article.body.p[1]",
+          "order": 1,
+          "section": "publication"
+        },
+        {
+          "value": "Los datos del producto implicado son:\n• Nombre del producto: Helado sabor plátano y brownie\n• Marca/comercial: Sensation\n• Aspecto del producto: Bote de plástico\n• Número de lote: L-6224\n• Fecha de consumo preferente: 12/08/2028\n• Peso de unidad: 300 g\n• Temperatura: Congelado",
+          "sourceField": "article.body.p[2]",
+          "order": 2,
+          "section": "publication"
+        },
+        {
+          "value": "Esta información ha sido trasladada a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+          "sourceField": "article.body.p[3]",
+          "order": 3,
+          "section": "publication"
+        },
+        {
+          "value": "Como medida de precaución, se recomienda a las personas con alergia al cacahuete que pudieran tener el producto anteriormente mencionado en sus hogares que se abstengan de consumirlo.\nEL CONSUMO DE ESTE PRODUCTO NO COMPORTA NINGÚN RIESGO PARA EL RESTO DE LA POBLACIÓN.",
+          "sourceField": "article.body.p[4]",
+          "order": 4,
+          "section": "publication"
+        },
+        {
+          "value": "Puede ampliar información de la AESAN sobre alergias, intolerancias y problemas derivados de la ingesta de gluten en los siguientes enlaces:",
+          "sourceField": "article.body.p[5]",
+          "order": 5,
+          "section": "publication"
+        }
+      ],
+      "resources": [
+        {
+          "kind": "image",
+          "url": "https://www.aesan.gob.es/dam/jcr:9212d71b-c161-4718-9d2b-e54df63b45f4/1.2026-09-25-14-42-08.png",
+          "label": null,
+          "sourceField": "article.image[0]",
+          "order": 0
+        },
+        {
+          "kind": "image",
+          "url": "https://www.aesan.gob.es/dam/jcr:a19ed015-4f59-478c-b72c-b27d93d12fa7/2.2026-09-25-14-42-08.png",
+          "label": null,
+          "sourceField": "article.image[1]",
+          "order": 1
+        },
+        {
+          "kind": "link",
+          "url": "https://www.aesan.gob.es/seguridad-alimentaria/informacion-alimentaria/etiquetado-sustancias",
+          "label": "Etiquetado de sustancias que causan alergias e intolerancias",
+          "sourceField": "article.link[2]",
+          "order": 2
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:c2bccf06-9aea-45e8-9725-546a60eee891/Cuadriptico_Alergias_Alimentarias_interactivo.pdf",
+          "label": "Información a los consumidores sobre alergias alimentarias",
+          "sourceField": "article.link[3]",
+          "order": 3
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:63990b52-7b41-4d8c-ba93-745d68b63471/intolerancia_lactosa.pdf",
+          "label": "Intolerancia a la lactosa",
+          "sourceField": "article.link[4]",
+          "order": 4
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:a9d14dd3-f957-4638-8448-c2b3e007ec0c/enfermedad_celiaca.pdf",
+          "label": "Enfermedad celiaca",
+          "sourceField": "article.link[5]",
+          "order": 5
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:738ee87d-9f8f-4f46-bf93-f6ba9766ee71/GUIA_ETIQUETADO_DE_ALIMENTOS_QUE_CONTIENEN_CEREALES_CON_GLUTEN.pdf",
+          "label": "Guía de etiquetado de alimentos que contienen cereales con gluten",
+          "sourceField": "article.link[6]",
+          "order": 6
+        }
+      ],
+      "officialDates": [
+        {
+          "label": null,
+          "value": "25/09/2026",
+          "sourceField": "pageInfo.date",
+          "order": 0
+        }
+      ],
+      "url": "https://www.aesan.gob.es/alertas/2026_68",
+      "publishedAt": "2026-09-24T22:00:00.000Z",
+      "detectedAt": "2026-09-25T16:02:23.792Z",
+      "updatedAt": "2026-09-24T22:00:00.000Z",
+      "contentHash": "c1a5e59b131fcd620d9053bf77e8f5a0bbf0802955f53ca44b4082d01c26a529",
+      "versionCount": 1,
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "f7f2802d-4268-47a8-8aa9-ca8ac9e79b9e",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_68",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
+    },
     {
       "id": "aesan:ES2026/517",
       "reference": "ES2026/517",
@@ -52123,6 +52280,999 @@
       "contentHash": "80df009c6b2ae56e99600b0221d8c45c9e4de42727851a8e0662a3c20760ed72",
       "versionCount": 1,
       "isUpdate": true,
+      "publicationHistory": [
+        {
+          "reference": "ES2025/156",
+          "sourceRecordId": "494b78e4-d9cd-4777-8fc6-9e9eab27ab11",
+          "sourceRecordIdType": "idAlert",
+          "url": "https://www.aesan.gob.es/alertas/2025_13",
+          "publishedAt": "2025-03-20T23:00:00.000Z",
+          "sourceRecordSchemaVersion": 2,
+          "sourceRecordHash": "f00a52a7fe69e7bbffba8b969d2b69777bc12b702d0b15ba99d7ac41c5ef86e7",
+          "officialTitle": "Alerta por presencia de Salmonella en torreznos procedentes de España. (Ref. ES2025/156)",
+          "publishedFields": [
+            {
+              "label": "Nombre del producto",
+              "value": "Chicharricos de cerdo (sabor barbacoa) 50 g",
+              "sourceField": "article.productData[0].field[0]",
+              "order": 0,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Frit Ravich",
+              "sourceField": "article.productData[0].field[1]",
+              "order": 1,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Aspecto del producto y tipo de envase",
+              "value": "bolsas de 50 g y 800 g",
+              "sourceField": "article.productData[0].field[2]",
+              "order": 2,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Números de lote",
+              "value": "3001 y 2301 para el envase de 50 g\n3101 para el envase de 800 g",
+              "sourceField": "article.productData[0].field[3]",
+              "order": 3,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Nombre del producto",
+              "value": "Torreznos (sabor barbacoa) 90 g",
+              "sourceField": "article.productData[2].field[0]",
+              "order": 4,
+              "section": "product_data",
+              "context": "list:2"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Sun Snacks",
+              "sourceField": "article.productData[2].field[1]",
+              "order": 5,
+              "section": "product_data",
+              "context": "list:2"
+            },
+            {
+              "label": "Aspecto del producto y tipo de envase",
+              "value": "bolsas de 90 g",
+              "sourceField": "article.productData[2].field[2]",
+              "order": 6,
+              "section": "product_data",
+              "context": "list:2"
+            },
+            {
+              "label": "Números de lote",
+              "value": "2901 y 2001",
+              "sourceField": "article.productData[2].field[3]",
+              "order": 7,
+              "section": "product_data",
+              "context": "list:2"
+            }
+          ],
+          "materialParagraphs": [
+            {
+              "value": "La Agencia Española de Seguridad Alimentaria y Nutrición (AESAN) ha tenido conocimiento a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de una notificación de alerta trasladada por las autoridades sanitarias de Castilla - La Mancha relativa a la presencia de Salmonella en torreznos de las marcas Frit Ravich y Sun Snacks.",
+              "sourceField": "article.body.p[0]",
+              "order": 0,
+              "section": "publication"
+            },
+            {
+              "value": "La información que aquí se incluye es resultante del autocontrol de la propia empresa, que ha comunicado la incidencia a las autoridades competentes, en cumplimiento de la legislación y a fin de no poner a disposición de la población alimentos no seguros.",
+              "sourceField": "article.body.p[1]",
+              "order": 1,
+              "section": "publication"
+            },
+            {
+              "value": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Andalucía, Cataluña, Castilla y León, Madrid y Comunidad Valenciana , si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
+              "sourceField": "article.body.p[2]",
+              "order": 2,
+              "section": "publication"
+            },
+            {
+              "value": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+              "sourceField": "article.body.p[3]",
+              "order": 3,
+              "section": "publication"
+            },
+            {
+              "value": "Se recomienda a las personas que tengan en su domicilio productos afectados por esta alerta, se abstengan de consumirlos.",
+              "sourceField": "article.body.p[4]",
+              "order": 4,
+              "section": "publication"
+            },
+            {
+              "value": "En el caso de haber consumido alguno de los productos de los lotes afectados y presentar alguna sintomatología compatible con la salmonelosis (principalmente diarrea y / o vómitos acompañados de fiebre y dolor de cabeza) se recomienda acudir a un centro de salud.",
+              "sourceField": "article.body.p[5]",
+              "order": 5,
+              "section": "publication"
+            },
+            {
+              "value": "Puede ampliar información de la AESAN sobre la salmonelosis en el siguiente enlace",
+              "sourceField": "article.body.p[6]",
+              "order": 6,
+              "section": "publication"
+            },
+            {
+              "value": "Puede ampliar información sobre enfermedades de transmisión alimentaria en el portal de la AESAN.",
+              "sourceField": "article.body.p[7]",
+              "order": 7,
+              "section": "publication"
+            }
+          ],
+          "resources": [
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:49e2add9-6fee-49be-829c-4de606db8b2b/torreznos1.jpg",
+              "label": null,
+              "sourceField": "article.image[0]",
+              "order": 0
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:34138e29-9578-46f0-bed8-b4d90c165ad7/torreznos2.jpg",
+              "label": null,
+              "sourceField": "article.image[1]",
+              "order": 1
+            },
+            {
+              "kind": "document",
+              "url": "https://www.aesan.gob.es/dam/jcr:37bbaa0f-285b-4a57-b8b3-d72830efc0a9/Salmonelosis.pdf",
+              "label": "enlace",
+              "sourceField": "article.link[2]",
+              "order": 2
+            },
+            {
+              "kind": "link",
+              "url": "https://www.aesan.gob.es/seguridad-alimentaria/riesgos-biologicos/enfermedades-transmision-alimentaria",
+              "label": "enfermedades de transmisión alimentaria",
+              "sourceField": "article.link[3]",
+              "order": 3
+            }
+          ],
+          "officialDates": [
+            {
+              "label": null,
+              "value": "21/03/2025",
+              "sourceField": "pageInfo.date",
+              "order": 0
+            },
+            {
+              "label": "Fecha y hora",
+              "value": "21/03/2025 12:00",
+              "sourceField": "article.date[1]",
+              "order": 1
+            }
+          ]
+        },
+        {
+          "reference": "ES2025/156",
+          "sourceRecordId": "e4add057-62db-4028-bc18-b619ce83bcf7",
+          "sourceRecordIdType": "idAlert",
+          "url": "https://www.aesan.gob.es/alertas/2025_13_Amp",
+          "publishedAt": "2025-03-24T23:00:00.000Z",
+          "sourceRecordSchemaVersion": 2,
+          "sourceRecordHash": "4b14524d420ff078fd44563977c30e2ee66746cc0ee09a72490bcad9eeb957b8",
+          "officialTitle": "Ampliación de información sobre la alerta por presencia de Salmonella en torreznos procedentes de España. (Ref. ES2025/156)",
+          "publishedFields": [
+            {
+              "label": "Nombre del producto",
+              "value": "Chicharricos de cerdo (sabor barbacoa) 50 g",
+              "sourceField": "article.productData[0].field[0]",
+              "order": 0,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Frit Ravich",
+              "sourceField": "article.productData[0].field[1]",
+              "order": 1,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Aspecto del producto y tipo de envase",
+              "value": "bolsas de 50 g y 800 g",
+              "sourceField": "article.productData[0].field[2]",
+              "order": 2,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Números de lote",
+              "value": "3001 y 2301 para el envase de 50 g\n3101 para el envase de 800 g",
+              "sourceField": "article.productData[0].field[3]",
+              "order": 3,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Nombre del producto",
+              "value": "Torreznos (sabor barbacoa) 90 g",
+              "sourceField": "article.productData[2].field[0]",
+              "order": 4,
+              "section": "product_data",
+              "context": "list:2"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Sun Snacks",
+              "sourceField": "article.productData[2].field[1]",
+              "order": 5,
+              "section": "product_data",
+              "context": "list:2"
+            },
+            {
+              "label": "Aspecto del producto y tipo de envase",
+              "value": "bolsas de 90 g",
+              "sourceField": "article.productData[2].field[2]",
+              "order": 6,
+              "section": "product_data",
+              "context": "list:2"
+            },
+            {
+              "label": "Números de lote",
+              "value": "2901 y 2001",
+              "sourceField": "article.productData[2].field[3]",
+              "order": 7,
+              "section": "product_data",
+              "context": "list:2"
+            },
+            {
+              "label": "Nombre del producto",
+              "value": "Chicharricos de cerdo (sabor barbacoa)100g",
+              "sourceField": "article.productData[3].field[0]",
+              "order": 8,
+              "section": "product_data",
+              "context": "list:3"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "SPAR",
+              "sourceField": "article.productData[3].field[1]",
+              "order": 9,
+              "section": "product_data",
+              "context": "list:3"
+            },
+            {
+              "label": "Aspecto del producto y tipo de envase",
+              "value": "bolsas de 100 g",
+              "sourceField": "article.productData[3].field[2]",
+              "order": 10,
+              "section": "product_data",
+              "context": "list:3"
+            },
+            {
+              "label": "Número de lote",
+              "value": "3101",
+              "sourceField": "article.productData[3].field[3]",
+              "order": 11,
+              "section": "product_data",
+              "context": "list:3"
+            },
+            {
+              "label": "Nombre del producto",
+              "value": "Torreznos (sabor barbacoa)100g",
+              "sourceField": "article.productData[4].field[0]",
+              "order": 12,
+              "section": "product_data",
+              "context": "list:4"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Alteza",
+              "sourceField": "article.productData[4].field[1]",
+              "order": 13,
+              "section": "product_data",
+              "context": "list:4"
+            },
+            {
+              "label": "Aspecto del producto y tipo de envase",
+              "value": "bolsas de 100 g",
+              "sourceField": "article.productData[4].field[2]",
+              "order": 14,
+              "section": "product_data",
+              "context": "list:4"
+            },
+            {
+              "label": "Número de lote",
+              "value": "3101",
+              "sourceField": "article.productData[4].field[3]",
+              "order": 15,
+              "section": "product_data",
+              "context": "list:4"
+            },
+            {
+              "label": "Nombre del producto",
+              "value": "Torreznos (sabor barbacoa)100g",
+              "sourceField": "article.productData[5].field[0]",
+              "order": 16,
+              "section": "product_data",
+              "context": "list:5"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Carrefour sensation",
+              "sourceField": "article.productData[5].field[1]",
+              "order": 17,
+              "section": "product_data",
+              "context": "list:5"
+            },
+            {
+              "label": "Aspecto del producto y tipo de envase",
+              "value": "bolsas de 100 g",
+              "sourceField": "article.productData[5].field[2]",
+              "order": 18,
+              "section": "product_data",
+              "context": "list:5"
+            },
+            {
+              "label": "Número de lote",
+              "value": "2901",
+              "sourceField": "article.productData[5].field[3]",
+              "order": 19,
+              "section": "product_data",
+              "context": "list:5"
+            },
+            {
+              "label": "Nombre del producto",
+              "value": "Chicharricos (sabor barbacoa)100g",
+              "sourceField": "article.productData[6].field[0]",
+              "order": 20,
+              "section": "product_data",
+              "context": "list:6"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Auchan",
+              "sourceField": "article.productData[6].field[1]",
+              "order": 21,
+              "section": "product_data",
+              "context": "list:6"
+            },
+            {
+              "label": "Aspecto del producto y tipo de envase",
+              "value": "bolsas de 100 g",
+              "sourceField": "article.productData[6].field[2]",
+              "order": 22,
+              "section": "product_data",
+              "context": "list:6"
+            },
+            {
+              "label": "Número de lote",
+              "value": "2901",
+              "sourceField": "article.productData[6].field[3]",
+              "order": 23,
+              "section": "product_data",
+              "context": "list:6"
+            }
+          ],
+          "materialParagraphs": [
+            {
+              "value": "Como ampliación de la información transmitida el pasado 21 de marzo, la comunidad autónoma de Castilla - La Mancha ha informado a la AESAN, a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de que la empresa amplía la retirada a nuevos productos de diferentes marcas, fabricados entre las fechas en las que se elaboraron los productos inicialmente comunicados.",
+              "sourceField": "article.body.p[0]",
+              "order": 0,
+              "section": "publication"
+            },
+            {
+              "value": "Con esta nueva información, los productos implicados en la alerta serían los siguientes:",
+              "sourceField": "article.body.p[1]",
+              "order": 1,
+              "section": "publication"
+            },
+            {
+              "value": "Los productos han sido distribuidos en las comunidades autónomas de Andalucía, Canarias, Cantabria, Castilla - La Mancha, Castilla y León, Cataluña, Comunidad Valenciana, Comunidad de Madrid, Islas Baleares, Murcia y País Vasco, si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
+              "sourceField": "article.body.p[2]",
+              "order": 2,
+              "section": "publication"
+            },
+            {
+              "value": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+              "sourceField": "article.body.p[3]",
+              "order": 3,
+              "section": "publication"
+            },
+            {
+              "value": "Se recomienda a las personas que tengan en su domicilio productos afectados por dicha alerta, se abstengan de consumirlos.",
+              "sourceField": "article.body.p[4]",
+              "order": 4,
+              "section": "publication"
+            },
+            {
+              "value": "En el caso de haber consumido alguno de los productos de los lotes afectados y presentar alguna sintomatología compatible con la salmonelosis (principalmente diarrea y / o vómitos acompañados de fiebre y dolor de cabeza) se recomienda acudir a un centro de salud.",
+              "sourceField": "article.body.p[5]",
+              "order": 5,
+              "section": "publication"
+            },
+            {
+              "value": "Puede ampliar información de la AESAN sobre la salmonelosis en el siguiente enlace",
+              "sourceField": "article.body.p[6]",
+              "order": 6,
+              "section": "publication"
+            },
+            {
+              "value": "Puede ampliar información sobre enfermedades de transmisión alimentaria en el portal de la AESAN.",
+              "sourceField": "article.body.p[7]",
+              "order": 7,
+              "section": "publication"
+            }
+          ],
+          "resources": [
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:fcd21f1a-32ec-4aba-b5ac-95766e4de8f6/torreznos_FRIT.png",
+              "label": null,
+              "sourceField": "article.image[0]",
+              "order": 0
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:dab382f9-e462-4317-9cf0-577699973465/terreznos_sun_sanck.png",
+              "label": null,
+              "sourceField": "article.image[1]",
+              "order": 1
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:0e49da60-6f78-4d21-b8e6-18d8b987c38c/torreznos_spar.png",
+              "label": null,
+              "sourceField": "article.image[2]",
+              "order": 2
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:811fa408-65e1-4620-b432-b230171b87d0/torreznos_generics.png",
+              "label": null,
+              "sourceField": "article.image[3]",
+              "order": 3
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:e5ee3378-8852-4592-b7fe-8d8fc82ea9b6/torreznos_carrefour.png",
+              "label": null,
+              "sourceField": "article.image[4]",
+              "order": 4
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:2ab35f85-7f52-4b18-a21e-e2311a623f71/torreznos_campo.png",
+              "label": null,
+              "sourceField": "article.image[5]",
+              "order": 5
+            },
+            {
+              "kind": "link",
+              "url": "https://www.aesan.gob.es/",
+              "label": "Torreznos (sabor barbacoa) 90 g",
+              "sourceField": "article.link[6]",
+              "order": 6
+            },
+            {
+              "kind": "document",
+              "url": "https://www.aesan.gob.es/dam/jcr:37bbaa0f-285b-4a57-b8b3-d72830efc0a9/Salmonelosis.pdf",
+              "label": "enlace",
+              "sourceField": "article.link[7]",
+              "order": 7
+            },
+            {
+              "kind": "link",
+              "url": "https://www.aesan.gob.es/seguridad-alimentaria/riesgos-biologicos/enfermedades-transmision-alimentaria",
+              "label": "enfermedades de transmisión alimentaria",
+              "sourceField": "article.link[8]",
+              "order": 8
+            }
+          ],
+          "officialDates": [
+            {
+              "label": null,
+              "value": "25/03/2025",
+              "sourceField": "pageInfo.date",
+              "order": 0
+            },
+            {
+              "label": "Fecha y hora",
+              "value": "25/03/2025 17:00",
+              "sourceField": "article.date[1]",
+              "order": 1
+            }
+          ]
+        },
+        {
+          "reference": "ES2025/156",
+          "sourceRecordId": "3f04b4f1-0a11-477b-aa4d-d0830dbbdd13",
+          "sourceRecordIdType": "idAlert",
+          "url": "https://www.aesan.gob.es/alertas/2025_14_Amp",
+          "publishedAt": "2025-03-26T23:00:00.000Z",
+          "sourceRecordSchemaVersion": 2,
+          "sourceRecordHash": "783edfaa95f4a719a38c375a69d1aad2222ada255fe4d33538ab81531d8fb9d0",
+          "officialTitle": "Ampliación de información sobre la alerta por presencia de Salmonella en torreznos procedentes de España. (Ref. ES2025/156)",
+          "publishedFields": [
+            {
+              "label": "Nombre del producto",
+              "value": "Chicharricos de cerdo (sabor barbacoa) 50 g",
+              "sourceField": "article.productData[0].field[0]",
+              "order": 0,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Frit Ravich",
+              "sourceField": "article.productData[0].field[1]",
+              "order": 1,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Aspecto del producto y tipo de envase",
+              "value": "bolsas de 50 g y 800 g",
+              "sourceField": "article.productData[0].field[2]",
+              "order": 2,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Números de lote",
+              "value": "1601 , 3001 y 2301 para el envase de 50 g\n3101 para el envase de 800 g",
+              "sourceField": "article.productData[0].field[3]",
+              "order": 3,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Nombre del producto",
+              "value": "Torreznos (sabor barbacoa) 90 g",
+              "sourceField": "article.productData[2].field[0]",
+              "order": 4,
+              "section": "product_data",
+              "context": "list:2"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Sun Snacks",
+              "sourceField": "article.productData[2].field[1]",
+              "order": 5,
+              "section": "product_data",
+              "context": "list:2"
+            },
+            {
+              "label": "Aspecto del producto y tipo de envase",
+              "value": "bolsas de 90 g",
+              "sourceField": "article.productData[2].field[2]",
+              "order": 6,
+              "section": "product_data",
+              "context": "list:2"
+            },
+            {
+              "label": "Números de lote",
+              "value": "0901, 2401 , 2901 y 2001",
+              "sourceField": "article.productData[2].field[3]",
+              "order": 7,
+              "section": "product_data",
+              "context": "list:2"
+            },
+            {
+              "label": "Nombre del producto",
+              "value": "Chicharricos de cerdo (sabor barbacoa)100g",
+              "sourceField": "article.productData[3].field[0]",
+              "order": 8,
+              "section": "product_data",
+              "context": "list:3"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "SPAR",
+              "sourceField": "article.productData[3].field[1]",
+              "order": 9,
+              "section": "product_data",
+              "context": "list:3"
+            },
+            {
+              "label": "Aspecto del producto y tipo de envase",
+              "value": "bolsas de 100 g",
+              "sourceField": "article.productData[3].field[2]",
+              "order": 10,
+              "section": "product_data",
+              "context": "list:3"
+            },
+            {
+              "label": "Número de lote",
+              "value": "2401 y 3101",
+              "sourceField": "article.productData[3].field[3]",
+              "order": 11,
+              "section": "product_data",
+              "context": "list:3"
+            },
+            {
+              "label": "Nombre del producto",
+              "value": "Torreznos (sabor barbacoa)100g",
+              "sourceField": "article.productData[4].field[0]",
+              "order": 12,
+              "section": "product_data",
+              "context": "list:4"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Alteza",
+              "sourceField": "article.productData[4].field[1]",
+              "order": 13,
+              "section": "product_data",
+              "context": "list:4"
+            },
+            {
+              "label": "Aspecto del producto y tipo de envase",
+              "value": "bolsas de 100 g",
+              "sourceField": "article.productData[4].field[2]",
+              "order": 14,
+              "section": "product_data",
+              "context": "list:4"
+            },
+            {
+              "label": "Número de lote",
+              "value": "2001 y 3101",
+              "sourceField": "article.productData[4].field[3]",
+              "order": 15,
+              "section": "product_data",
+              "context": "list:4"
+            },
+            {
+              "label": "Nombre del producto",
+              "value": "Torreznos (sabor barbacoa)100g",
+              "sourceField": "article.productData[5].field[0]",
+              "order": 16,
+              "section": "product_data",
+              "context": "list:5"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Carrefour sensation",
+              "sourceField": "article.productData[5].field[1]",
+              "order": 17,
+              "section": "product_data",
+              "context": "list:5"
+            },
+            {
+              "label": "Aspecto del producto y tipo de envase",
+              "value": "bolsas de 100 g",
+              "sourceField": "article.productData[5].field[2]",
+              "order": 18,
+              "section": "product_data",
+              "context": "list:5"
+            },
+            {
+              "label": "Número de lote",
+              "value": "1601, 2401, 2701 y 2901",
+              "sourceField": "article.productData[5].field[3]",
+              "order": 19,
+              "section": "product_data",
+              "context": "list:5"
+            },
+            {
+              "label": "Nombre del producto",
+              "value": "Chicharricos (sabor barbacoa)100g",
+              "sourceField": "article.productData[6].field[0]",
+              "order": 20,
+              "section": "product_data",
+              "context": "list:6"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Auchan",
+              "sourceField": "article.productData[6].field[1]",
+              "order": 21,
+              "section": "product_data",
+              "context": "list:6"
+            },
+            {
+              "label": "Aspecto del producto y tipo de envase",
+              "value": "bolsas de 100 g",
+              "sourceField": "article.productData[6].field[2]",
+              "order": 22,
+              "section": "product_data",
+              "context": "list:6"
+            },
+            {
+              "label": "Número de lote",
+              "value": "1501, 2401, 2701 y 2901",
+              "sourceField": "article.productData[6].field[3]",
+              "order": 23,
+              "section": "product_data",
+              "context": "list:6"
+            },
+            {
+              "label": "Nombre del producto",
+              "value": "Chicharricos de cerdo (sabor barbacoa) 100 g",
+              "sourceField": "article.productData[7].field[0]",
+              "order": 24,
+              "section": "product_data",
+              "context": "list:7"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Aperitivos Tapa",
+              "sourceField": "article.productData[7].field[1]",
+              "order": 25,
+              "section": "product_data",
+              "context": "list:7"
+            },
+            {
+              "label": "Aspecto del producto y tipo de envase",
+              "value": "100 g",
+              "sourceField": "article.productData[7].field[2]",
+              "order": 26,
+              "section": "product_data",
+              "context": "list:7"
+            },
+            {
+              "label": "Número de lote",
+              "value": "1501",
+              "sourceField": "article.productData[7].field[3]",
+              "order": 27,
+              "section": "product_data",
+              "context": "list:7"
+            },
+            {
+              "label": "Nombre del producto",
+              "value": "Chicharricos BBQ",
+              "sourceField": "article.productData[8].field[0]",
+              "order": 28,
+              "section": "product_data",
+              "context": "list:8"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Aperitivos Tapa",
+              "sourceField": "article.productData[8].field[1]",
+              "order": 29,
+              "section": "product_data",
+              "context": "list:8"
+            },
+            {
+              "label": "Aspecto del producto y tipo de envase",
+              "value": "Bolsa 50 g",
+              "sourceField": "article.productData[8].field[2]",
+              "order": 30,
+              "section": "product_data",
+              "context": "list:8"
+            },
+            {
+              "label": "Número de lote",
+              "value": "1601",
+              "sourceField": "article.productData[8].field[3]",
+              "order": 31,
+              "section": "product_data",
+              "context": "list:8"
+            },
+            {
+              "label": "Nombre del producto",
+              "value": "Chicharricos Pork chips",
+              "sourceField": "article.productData[9].field[0]",
+              "order": 32,
+              "section": "product_data",
+              "context": "list:9"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Aperitivos Tapa",
+              "sourceField": "article.productData[9].field[1]",
+              "order": 33,
+              "section": "product_data",
+              "context": "list:9"
+            },
+            {
+              "label": "Aspecto del producto y tipo de envase",
+              "value": "Bolsa 60 g",
+              "sourceField": "article.productData[9].field[2]",
+              "order": 34,
+              "section": "product_data",
+              "context": "list:9"
+            },
+            {
+              "label": "Número de lote",
+              "value": "2701",
+              "sourceField": "article.productData[9].field[3]",
+              "order": 35,
+              "section": "product_data",
+              "context": "list:9"
+            },
+            {
+              "label": "Nombre del producto",
+              "value": "Torreznos Barbacoa",
+              "sourceField": "article.productData[10].field[0]",
+              "order": 36,
+              "section": "product_data",
+              "context": "list:10"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Pomys",
+              "sourceField": "article.productData[10].field[1]",
+              "order": 37,
+              "section": "product_data",
+              "context": "list:10"
+            },
+            {
+              "label": "Aspecto del producto y tipo de envase",
+              "value": "Bolsa 50 g",
+              "sourceField": "article.productData[10].field[2]",
+              "order": 38,
+              "section": "product_data",
+              "context": "list:10"
+            },
+            {
+              "label": "Número de lote",
+              "value": "2401",
+              "sourceField": "article.productData[10].field[3]",
+              "order": 39,
+              "section": "product_data",
+              "context": "list:10"
+            }
+          ],
+          "materialParagraphs": [
+            {
+              "value": "Como ampliación de la información transmitida el pasado 25 de marzo, la comunidad autónoma de Castilla - La Mancha ha informado a la AESAN, a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de que la empresa amplía la retirada a nuevos lotes de todas las marcas, y a nuevas marcas.",
+              "sourceField": "article.body.p[0]",
+              "order": 0,
+              "section": "publication"
+            },
+            {
+              "value": "Con esta nueva información, los productos implicados en la alerta serían los siguientes:",
+              "sourceField": "article.body.p[1]",
+              "order": 1,
+              "section": "publication"
+            },
+            {
+              "value": "NUEVAS MARCAS",
+              "sourceField": "article.body.p[2]",
+              "order": 2,
+              "section": "publication"
+            },
+            {
+              "value": "Los productos han sido distribuidos en todo el territorio nacional.",
+              "sourceField": "article.body.p[3]",
+              "order": 3,
+              "section": "publication"
+            },
+            {
+              "value": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+              "sourceField": "article.body.p[4]",
+              "order": 4,
+              "section": "publication"
+            },
+            {
+              "value": "Se recomienda a las personas que tengan en su domicilio productos afectados por dicha alerta, se abstengan de consumirlos.",
+              "sourceField": "article.body.p[5]",
+              "order": 5,
+              "section": "publication"
+            },
+            {
+              "value": "En el caso de haber consumido alguno de los productos de los lotes afectados y presentar alguna sintomatología compatible con la salmonelosis (principalmente diarrea y / o vómitos acompañados de fiebre y dolor de cabeza) se recomienda acudir a un centro de salud.",
+              "sourceField": "article.body.p[6]",
+              "order": 6,
+              "section": "publication"
+            },
+            {
+              "value": "Puede ampliar información de la AESAN sobre la salmonelosis en el siguiente enlace .",
+              "sourceField": "article.body.p[7]",
+              "order": 7,
+              "section": "publication"
+            },
+            {
+              "value": "Puede ampliar información sobre enfermedades de transmisión alimentaria en el portal de la AESAN.",
+              "sourceField": "article.body.p[8]",
+              "order": 8,
+              "section": "publication"
+            }
+          ],
+          "resources": [
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:fcd21f1a-32ec-4aba-b5ac-95766e4de8f6/torreznos_FRIT.png",
+              "label": null,
+              "sourceField": "article.image[0]",
+              "order": 0
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:dab382f9-e462-4317-9cf0-577699973465/terreznos_sun_sanck.png",
+              "label": null,
+              "sourceField": "article.image[1]",
+              "order": 1
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:0e49da60-6f78-4d21-b8e6-18d8b987c38c/torreznos_spar.png",
+              "label": null,
+              "sourceField": "article.image[2]",
+              "order": 2
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:811fa408-65e1-4620-b432-b230171b87d0/torreznos_generics.png",
+              "label": null,
+              "sourceField": "article.image[3]",
+              "order": 3
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:e5ee3378-8852-4592-b7fe-8d8fc82ea9b6/torreznos_carrefour.png",
+              "label": null,
+              "sourceField": "article.image[4]",
+              "order": 4
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:2ab35f85-7f52-4b18-a21e-e2311a623f71/torreznos_campo.png",
+              "label": null,
+              "sourceField": "article.image[5]",
+              "order": 5
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:90bd52ba-0b97-4ebe-be8e-26e0a4d849e1/terreznos_tapa.png",
+              "label": null,
+              "sourceField": "article.image[6]",
+              "order": 6
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:d2da7f17-af9f-496a-bb42-55708d067ea3/terreznos_bbq.png",
+              "label": null,
+              "sourceField": "article.image[7]",
+              "order": 7
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:279d477e-9b82-44b5-baf2-3f05b58cbf83/terreznos_pork.png",
+              "label": null,
+              "sourceField": "article.image[8]",
+              "order": 8
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:7ce5360b-ab80-4b50-b6e8-cee30623542e/terreznos_pomys.png",
+              "label": null,
+              "sourceField": "article.image[9]",
+              "order": 9
+            },
+            {
+              "kind": "document",
+              "url": "https://www.aesan.gob.es/dam/jcr:37bbaa0f-285b-4a57-b8b3-d72830efc0a9/Salmonelosis.pdf",
+              "label": "enlace",
+              "sourceField": "article.link[10]",
+              "order": 10
+            },
+            {
+              "kind": "link",
+              "url": "https://www.aesan.gob.es/seguridad-alimentaria/riesgos-biologicos/enfermedades-transmision-alimentaria",
+              "label": "enfermedades de transmisión alimentaria",
+              "sourceField": "article.link[11]",
+              "order": 11
+            }
+          ],
+          "officialDates": [
+            {
+              "label": null,
+              "value": "27/03/2025",
+              "sourceField": "pageInfo.date",
+              "order": 0
+            },
+            {
+              "label": "Fecha y hora",
+              "value": "27/03/2025 12:30",
+              "sourceField": "article.date[1]",
+              "order": 1
+            }
+          ]
+        }
+      ],
       "aesanAlertClassification": {
         "schemaVersion": 1,
         "status": "known",
@@ -52130,6 +53280,30 @@
         "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
         "officialLabel": "Alertas alimentarias de interés para toda la población",
         "publications": [
+          {
+            "sourceRecordId": "494b78e4-d9cd-4777-8fc6-9e9eab27ab11",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_13",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
+          {
+            "sourceRecordId": "e4add057-62db-4028-bc18-b619ce83bcf7",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_13_Amp",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
           {
             "sourceRecordId": "3f04b4f1-0a11-477b-aa4d-d0830dbbdd13",
             "sourceRecordIdType": "idAlert",
@@ -53972,6 +55146,517 @@
       "contentHash": "bf4440e2b4bc4d3ca6e707a7d9f23a8b33122784a1ae80ee44667a3e2354410a",
       "versionCount": 1,
       "isUpdate": false,
+      "publicationHistory": [
+        {
+          "reference": "ES2025/055",
+          "sourceRecordId": "44e410c7-6f09-4c41-a730-dc4cafc42311",
+          "sourceRecordIdType": "idAlert",
+          "url": "https://www.aesan.gob.es/alertas/2025_05",
+          "publishedAt": "2025-01-30T23:00:00.000Z",
+          "sourceRecordSchemaVersion": 2,
+          "sourceRecordHash": "9c9a5f7356c5b6b74433ba340b4f4372ddada02959b31bb8ba446cb35551fac7",
+          "officialTitle": "Alerta por posible presencia de Escherichia coli productor de toxina Shiga (STEC) en quesos procedentes de Francia. (Ref. ES2025/055)",
+          "publishedFields": [
+            {
+              "label": "Nombre del producto",
+              "value": "Tabla Morbier, Comté 12M y St Vernier 300 g",
+              "sourceField": "article.productData[0].field[0]",
+              "order": 0,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Jean Perrin",
+              "sourceField": "article.productData[0].field[1]",
+              "order": 1,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Aspecto del producto",
+              "value": "envasado",
+              "sourceField": "article.productData[0].field[2]",
+              "order": 2,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Número de lotes y fecha de caducidad",
+              "value": "todos los lotes con fecha de caducidad inferior o igual al 26/03/25.",
+              "sourceField": "article.productData[0].field[3]",
+              "order": 3,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Peso de unidad",
+              "value": "300 g",
+              "sourceField": "article.productData[0].field[4]",
+              "order": 4,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Temperatura",
+              "value": "refrigerado",
+              "sourceField": "article.productData[0].field[5]",
+              "order": 5,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Nombre del producto",
+              "value": "Tabla Morbier, Comté 12m y y Édel Cléron 300 g",
+              "sourceField": "article.productData[1].field[0]",
+              "order": 6,
+              "section": "product_data",
+              "context": "list:1"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Jean Perrin",
+              "sourceField": "article.productData[1].field[1]",
+              "order": 7,
+              "section": "product_data",
+              "context": "list:1"
+            },
+            {
+              "label": "Aspecto del producto",
+              "value": "envasado",
+              "sourceField": "article.productData[1].field[2]",
+              "order": 8,
+              "section": "product_data",
+              "context": "list:1"
+            },
+            {
+              "label": "Número de lotes y fecha de caducidad",
+              "value": "todos los lotes con fecha de caducidad inferior o igual al 26/03/25.",
+              "sourceField": "article.productData[1].field[3]",
+              "order": 9,
+              "section": "product_data",
+              "context": "list:1"
+            },
+            {
+              "label": "Peso de unidad",
+              "value": "300 g",
+              "sourceField": "article.productData[1].field[4]",
+              "order": 10,
+              "section": "product_data",
+              "context": "list:1"
+            },
+            {
+              "label": "Temperatura",
+              "value": "refrigerado",
+              "sourceField": "article.productData[1].field[5]",
+              "order": 11,
+              "section": "product_data",
+              "context": "list:1"
+            },
+            {
+              "label": "Nombre del producto",
+              "value": "Raclette 3 Sabores Morb-LC-Most 540 g",
+              "sourceField": "article.productData[2].field[0]",
+              "order": 12,
+              "section": "product_data",
+              "context": "list:2"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Jean Perrin",
+              "sourceField": "article.productData[2].field[1]",
+              "order": 13,
+              "section": "product_data",
+              "context": "list:2"
+            },
+            {
+              "label": "Aspecto del producto",
+              "value": "envasado",
+              "sourceField": "article.productData[2].field[2]",
+              "order": 14,
+              "section": "product_data",
+              "context": "list:2"
+            },
+            {
+              "label": "Número de lotes y fecha de caducidad",
+              "value": "todos los lotes con fecha de caducidad inferior o igual al 26/03/25.",
+              "sourceField": "article.productData[2].field[3]",
+              "order": 15,
+              "section": "product_data",
+              "context": "list:2"
+            },
+            {
+              "label": "Peso de unidad",
+              "value": "540 g",
+              "sourceField": "article.productData[2].field[4]",
+              "order": 16,
+              "section": "product_data",
+              "context": "list:2"
+            },
+            {
+              "label": "Temperatura",
+              "value": "refrigerado",
+              "sourceField": "article.productData[2].field[5]",
+              "order": 17,
+              "section": "product_data",
+              "context": "list:2"
+            },
+            {
+              "label": "Nombre del producto",
+              "value": "Morbier 1/4 Rueda 1,8 Kg",
+              "sourceField": "article.productData[3].field[0]",
+              "order": 18,
+              "section": "product_data",
+              "context": "list:3"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Jean Perrin",
+              "sourceField": "article.productData[3].field[1]",
+              "order": 19,
+              "section": "product_data",
+              "context": "list:3"
+            },
+            {
+              "label": "Aspecto del producto",
+              "value": "cuña ¼ de queso",
+              "sourceField": "article.productData[3].field[2]",
+              "order": 20,
+              "section": "product_data",
+              "context": "list:3"
+            },
+            {
+              "label": "Número de lotes y fecha de caducidad",
+              "value": "todos los lotes con fecha de caducidad inferior o igual al 18/02/25.",
+              "sourceField": "article.productData[3].field[3]",
+              "order": 21,
+              "section": "product_data",
+              "context": "list:3"
+            },
+            {
+              "label": "Peso de unidad",
+              "value": "1,8 Kg",
+              "sourceField": "article.productData[3].field[4]",
+              "order": 22,
+              "section": "product_data",
+              "context": "list:3"
+            },
+            {
+              "label": "Temperatura",
+              "value": "refrigerado",
+              "sourceField": "article.productData[3].field[5]",
+              "order": 23,
+              "section": "product_data",
+              "context": "list:3"
+            },
+            {
+              "label": "Nombre del producto",
+              "value": "Morbier Rueda 6,5 Kg",
+              "sourceField": "article.productData[4].field[0]",
+              "order": 24,
+              "section": "product_data",
+              "context": "list:4"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Jean Perrin",
+              "sourceField": "article.productData[4].field[1]",
+              "order": 25,
+              "section": "product_data",
+              "context": "list:4"
+            },
+            {
+              "label": "Aspecto del producto",
+              "value": "Queso entero",
+              "sourceField": "article.productData[4].field[2]",
+              "order": 26,
+              "section": "product_data",
+              "context": "list:4"
+            },
+            {
+              "label": "Número de lotes y fecha de caducidad",
+              "value": "todos los lotes con fecha de caducidad inferior o igual al 14/03/25.",
+              "sourceField": "article.productData[4].field[3]",
+              "order": 27,
+              "section": "product_data",
+              "context": "list:4"
+            },
+            {
+              "label": "Peso de unidad",
+              "value": "6,5 Kg",
+              "sourceField": "article.productData[4].field[4]",
+              "order": 28,
+              "section": "product_data",
+              "context": "list:4"
+            },
+            {
+              "label": "Temperatura",
+              "value": "refrigerado",
+              "sourceField": "article.productData[4].field[5]",
+              "order": 29,
+              "section": "product_data",
+              "context": "list:4"
+            }
+          ],
+          "materialParagraphs": [
+            {
+              "value": "La Agencia Española de Seguridad Alimentaria y Nutrición ha tenido conocimiento, a través de la Red de Alerta Alimentaria Europea (RASFF), de una notificación de alerta trasladada por las autoridades sanitarias de Francia relativa a la posible presencia de Escherichia coli productor de toxina Shiga (STEC) en quesos DOP Morbier de la marca Jean Perrin.",
+              "sourceField": "article.body.p[0]",
+              "order": 0,
+              "section": "publication"
+            },
+            {
+              "value": "Según la información disponible, la distribución ha sido a todo el territorio nacional",
+              "sourceField": "article.body.p[1]",
+              "order": 1,
+              "section": "publication"
+            },
+            {
+              "value": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI) y al Centro de Coordinación de Alertas y Emergencias Sanitarias (CCAES), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización y se informe de la existencia de posibles casos.",
+              "sourceField": "article.body.p[2]",
+              "order": 2,
+              "section": "publication"
+            },
+            {
+              "value": "Se recomienda a las personas que tengan en su domicilio productos afectados por esta alerta, se abstengan de consumirlos.",
+              "sourceField": "article.body.p[3]",
+              "order": 3,
+              "section": "publication"
+            },
+            {
+              "value": "En el caso de haber consumido alguno de los productos de los lotes afectados y presentar alguna sintomatología compatible con la toxiinfección por E. coli productora de shiga toxinas (calambres abdominales fuertes, que pueden progresar a una diarrea acuosa y sanguinolenta) se recomienda acudir a un centro de salud.",
+              "sourceField": "article.body.p[4]",
+              "order": 4,
+              "section": "publication"
+            },
+            {
+              "value": "Puede ampliar la información de la AESAN sobre la toxiinfección por E. coli productora de toxinas Shiga (STEC) en el siguiente enlace .",
+              "sourceField": "article.body.p[5]",
+              "order": 5,
+              "section": "publication"
+            },
+            {
+              "value": "Puede ampliar información sobre enfermedades de transmisión alimentaria en el portal de la AESAN.",
+              "sourceField": "article.body.p[6]",
+              "order": 6,
+              "section": "publication"
+            }
+          ],
+          "resources": [
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:c3422b7f-75d9-48d6-9cad-033a9d50a44f/queso1_31012025.jpg",
+              "label": null,
+              "sourceField": "article.image[0]",
+              "order": 0
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:39d00511-8ee2-4449-b792-a5c36ee0c3ba/queso2_31012025.jpg",
+              "label": null,
+              "sourceField": "article.image[1]",
+              "order": 1
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:d613b6c9-963d-4a18-bf00-7da6540a29e7/queso3_31012025.jpg",
+              "label": null,
+              "sourceField": "article.image[2]",
+              "order": 2
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:4df04733-ad50-459a-922f-a44789f83389/queso4_31012025.jpg",
+              "label": null,
+              "sourceField": "article.image[3]",
+              "order": 3
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:ad5aaacc-fa12-433c-bea1-5071cef1f50e/queso5_31012025.jpg",
+              "label": null,
+              "sourceField": "article.image[4]",
+              "order": 4
+            },
+            {
+              "kind": "document",
+              "url": "https://www.aesan.gob.es/dam/jcr:2b64c4f0-02fa-4a8f-b66c-621ae6842108/Toxiinfecci%C3%B3n%20por%20Escherichia%20coli.pdf",
+              "label": "enlace",
+              "sourceField": "article.link[5]",
+              "order": 5
+            },
+            {
+              "kind": "link",
+              "url": "https://www.aesan.gob.es/seguridad-alimentaria/riesgos-biologicos/enfermedades-transmision-alimentaria",
+              "label": "enfermedades de transmisión alimentaria",
+              "sourceField": "article.link[6]",
+              "order": 6
+            }
+          ],
+          "officialDates": [
+            {
+              "label": null,
+              "value": "31/01/2025",
+              "sourceField": "pageInfo.date",
+              "order": 0
+            },
+            {
+              "label": "Fecha y hora",
+              "value": "31/01/2025 16:00",
+              "sourceField": "article.date[1]",
+              "order": 1
+            }
+          ]
+        },
+        {
+          "reference": "ES2025/055",
+          "sourceRecordId": "690f969b-8acd-465a-bcf9-c827bb0709af",
+          "sourceRecordIdType": "idAlert",
+          "url": "https://www.aesan.gob.es/alertas/2025_06",
+          "publishedAt": "2025-02-05T23:00:00.000Z",
+          "sourceRecordSchemaVersion": 2,
+          "sourceRecordHash": "6a09c220813b2ccbc91f7cdd2cdfde5c88dc25cc403bbb956476f0644920f429",
+          "officialTitle": "Alerta por posible presencia de Escherichia coli productor de toxina Shiga (STEC) en quesos procedentes de Francia. (Ref. ES2025/055)",
+          "publishedFields": [
+            {
+              "label": "Nombre del producto en etiqueta",
+              "value": "MORBIER DOP Queso madurado elaborado con leche cruda",
+              "sourceField": "article.productData[0].field[0]",
+              "order": 0,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Friesland Campina Iberia y Millan Vicente",
+              "sourceField": "article.productData[0].field[1]",
+              "order": 1,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Aspecto del producto",
+              "value": "Envasado en cuñas (175 g, 180 g, 189 g y 195 g)",
+              "sourceField": "article.productData[0].field[2]",
+              "order": 2,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Número de lotes y fecha de caducidad",
+              "value": "todos los lotes con fecha de caducidad inferior o igual al 21/02/25.",
+              "sourceField": "article.productData[0].field[3]",
+              "order": 3,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Peso de unidad",
+              "value": "175 g, 180 g, 189 g y 195 g",
+              "sourceField": "article.productData[0].field[4]",
+              "order": 4,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Temperatura",
+              "value": "refrigerado",
+              "sourceField": "article.productData[0].field[5]",
+              "order": 5,
+              "section": "product_data",
+              "context": "list:0"
+            }
+          ],
+          "materialParagraphs": [
+            {
+              "value": "La Agencia Española de Seguridad Alimentaria y Nutrición ha tenido conocimiento, a través de la Red de Alerta Alimentaria Europea (RASFF), de una notificación de alerta trasladada por las autoridades sanitarias de Francia relativa a la posible presencia de Escherichia coli productor de toxina Shiga (STEC) en queso madurado elaborado con leche cruda, Morbier DOP.",
+              "sourceField": "article.body.p[0]",
+              "order": 0,
+              "section": "publication"
+            },
+            {
+              "value": "Según la información disponible, la distribución ha sido a todo el territorio nacional",
+              "sourceField": "article.body.p[1]",
+              "order": 1,
+              "section": "publication"
+            },
+            {
+              "value": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI) y al Centro de Coordinación de Alertas y Emergencias Sanitarias (CCAES), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización y se informe de la existencia de posibles casos.",
+              "sourceField": "article.body.p[2]",
+              "order": 2,
+              "section": "publication"
+            },
+            {
+              "value": "Se recomienda a las personas que tengan en su domicilio productos afectados por esta alerta, se abstengan de consumirlos.",
+              "sourceField": "article.body.p[3]",
+              "order": 3,
+              "section": "publication"
+            },
+            {
+              "value": "En el caso de haber consumido alguno de los productos de los lotes afectados y presentar alguna sintomatología compatible con la toxiinfección por E. coli productora de shiga toxinas (calambres abdominales fuertes, que pueden progresar a una diarrea acuosa y sanguinolenta) se recomienda acudir a un centro de salud.",
+              "sourceField": "article.body.p[4]",
+              "order": 4,
+              "section": "publication"
+            },
+            {
+              "value": "Puede ampliar la información de la AESAN sobre la toxiinfección por E. coli productora de toxinas Shiga (STEC) en el siguiente enlace .",
+              "sourceField": "article.body.p[5]",
+              "order": 5,
+              "section": "publication"
+            },
+            {
+              "value": "Puede ampliar información sobre enfermedades de transmisión alimentaria en el portal de la AESAN.",
+              "sourceField": "article.body.p[6]",
+              "order": 6,
+              "section": "publication"
+            }
+          ],
+          "resources": [
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:4466442e-39cc-4643-8ce9-c3239a9cb2f2/morbier_dop1.png",
+              "label": null,
+              "sourceField": "article.image[0]",
+              "order": 0
+            },
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:5bcb23ac-fee9-45e4-8f80-f141cdad235b/morbier_dop2.jpg",
+              "label": null,
+              "sourceField": "article.image[1]",
+              "order": 1
+            },
+            {
+              "kind": "document",
+              "url": "https://www.aesan.gob.es/dam/jcr:2b64c4f0-02fa-4a8f-b66c-621ae6842108/Toxiinfecci%C3%B3n%20por%20Escherichia%20coli.pdf",
+              "label": "enlace",
+              "sourceField": "article.link[2]",
+              "order": 2
+            },
+            {
+              "kind": "link",
+              "url": "https://www.aesan.gob.es/seguridad-alimentaria/riesgos-biologicos/enfermedades-transmision-alimentaria",
+              "label": "enfermedades de transmisión alimentaria",
+              "sourceField": "article.link[3]",
+              "order": 3
+            }
+          ],
+          "officialDates": [
+            {
+              "label": null,
+              "value": "06/02/2025",
+              "sourceField": "pageInfo.date",
+              "order": 0
+            },
+            {
+              "label": "Fecha y hora",
+              "value": "06/02/2025 14:00",
+              "sourceField": "article.date[1]",
+              "order": 1
+            }
+          ]
+        }
+      ],
       "aesanAlertClassification": {
         "schemaVersion": 1,
         "status": "known",
@@ -53979,6 +55664,18 @@
         "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
         "officialLabel": "Alertas alimentarias de interés para toda la población",
         "publications": [
+          {
+            "sourceRecordId": "44e410c7-6f09-4c41-a730-dc4cafc42311",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2025_05",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          },
           {
             "sourceRecordId": "690f969b-8acd-465a-bcf9-c827bb0709af",
             "sourceRecordIdType": "idAlert",
