@@ -50,7 +50,6 @@ jobs:
             "worker-versions",
             "worker-secret-list",
             "worker-bootstrap-secrets",
-            "d1-create-staging",
             "d1-canary-write",
             "d1-canary-read",
             "worker-rollback"
@@ -75,7 +74,8 @@ jobs:
 
           case "$OPERATION" in
             probe)
-              wrangler whoami
+              wrangler d1 info "$CF_D1" --json
+              wrangler deployments status --name "$CF_WORKER" --json
               ;;
             d1-list)
               wrangler d1 list --json
@@ -99,24 +99,6 @@ jobs:
               printf '%s' "$cursor_secret" | wrangler secret put VIGIA_QUERY_CURSOR_SECRET --name "$CF_WORKER" >/dev/null
               unset cursor_secret
               echo "STAGING_SECRETS_BOOTSTRAPPED names=VIGIA_SYNC_TOKEN,VIGIA_QUERY_CURSOR_SECRET"
-              ;;
-            d1-create-staging)
-              # Idempotent guard: only create the exact staging DB if absent.
-              existing="$(wrangler d1 list --json)"
-              if EXISTING_JSON="$existing" node --input-type=module <<'NODE'
-              const rows=JSON.parse(process.env.EXISTING_JSON||"[]");
-              process.exit(rows.some(row=>row.name==="nagamealert-staging") ? 42 : 0);
-              NODE
-              then
-                wrangler d1 create "$CF_D1" --location weur
-              else
-                status=$?
-                if [ "$status" -eq 42 ]; then
-                  echo "D1_STAGING_ALREADY_EXISTS"
-                else
-                  exit "$status"
-                fi
-              fi
               ;;
             d1-canary-write)
               # Harmless staging-only proof table. Never accepted against another DB name.
