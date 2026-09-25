@@ -90,7 +90,7 @@ test("drift: broken/changed pagination, failed page, duplicated cross-category U
   await assert.rejects(scanOfficialTaxonomy(conflicting.fetch), /multiple categories/u);
 });
 
-test("F0 offline replay: preserved taxonomy, ES382 unknown and current feed publications integrated", () => {
+test("F0 offline replay: frozen reviewed snapshot leaves only post-snapshot/current unresolved publications unknown", () => {
   assert.equal(reviewed.length, 166);
   const counts = Object.fromEntries(codes.map((code) => [code, reviewed.filter((x) => x.code === code).length]));
   assert.deepEqual(counts, { general_population:80, allergy_intolerance_adverse:71, food_supplements:14 });
@@ -100,12 +100,15 @@ test("F0 offline replay: preserved taxonomy, ES382 unknown and current feed publ
   const { feed:enriched, diagnostics } = enrichFeedTaxonomy(feed, { memberships }, { reviewed });
   assert.equal(enriched.alerts.length, 128);
   assert.deepEqual(diagnostics.gaps, []);
-  assert.deepEqual(diagnostics.unknown, [{ reference:"ES2026/382", urls:[path("2026_52_Ampliacion_1")] }]);
+  assert.deepEqual(diagnostics.unknown, [
+    { reference:"ES2026/575", urls:[path("2026_68")] },
+    { reference:"ES2026/382", urls:[path("2026_52_Ampliacion_1")] },
+  ]);
   assert.deepEqual(enriched.alerts.reduce((acc, alert) => {
     const taxonomy = alert.aesanAlertClassification;
     acc[taxonomy.code ?? taxonomy.status] = (acc[taxonomy.code ?? taxonomy.status] ?? 0) + 1;
     return acc;
-  }, {}), { general_population:59, allergy_intolerance_adverse:53, food_supplements:14, unknown:1 });
+  }, {}), { general_population:59, allergy_intolerance_adverse:53, food_supplements:14, unknown:2 });
   for (const [reference, code, count] of [
     ["ES2026/266", "allergy_intolerance_adverse", 1], ["ES2026/085", "allergy_intolerance_adverse", 2],
     ["ES2026/177", "general_population", 3], ["ES2026/517", "allergy_intolerance_adverse", 2],
@@ -149,9 +152,12 @@ test("F2 read-only 62-page capture replays exact current metrics and SHA-256 fix
   });
   assert.equal(scan.memberships.size, 168);
   const { diagnostics } = enrichFeedTaxonomy(feed, scan, { reviewed });
-  assert.deepEqual(diagnostics.gaps, []);
+  assert.deepEqual(diagnostics.gaps, [path("2026_68")]);
   assert.deepEqual(diagnostics.disappeared, []);
-  assert.deepEqual(diagnostics.unknown, [{ reference:"ES2026/382", urls:[path("2026_52_Ampliacion_1")] }]);
+  assert.deepEqual(diagnostics.unknown, [
+    { reference:"ES2026/575", urls:[path("2026_68")] },
+    { reference:"ES2026/382", urls:[path("2026_52_Ampliacion_1")] },
+  ]);
 });
 
 test("conflict wins over unknown; prior changes and URL↔UUID conflict block generation", () => {
