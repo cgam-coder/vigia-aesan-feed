@@ -28,7 +28,7 @@ jobs:
             mx:await safe(()=>dns.resolveMx(name)),
             txt:await safe(()=>dns.resolveTxt(name)),
             caa:await safe(()=>dns.resolveCaa(name)),
-            ds:await safe(()=>dns.resolveDs(name)),
+            ds:await safe(()=>dns.resolve(name, "DS")),
             dmarc:await safe(()=>dns.resolveTxt("_dmarc."+name)),
           });
           console.log("DNS_COLLATERAL_BASELINE "+JSON.stringify({
