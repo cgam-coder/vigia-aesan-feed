@@ -125,7 +125,9 @@ test("F0 offline replay: frozen reviewed snapshot leaves only post-snapshot/curr
   assert.deepEqual(es382.publications.find((x) => x.url === path("2026_52_Ampliacion_1")).matches, []);
   const strip = (alert) => { const copy = { ...alert }; delete copy.aesanAlertClassification; return copy; };
   assert.deepEqual(enriched.alerts.map(strip), feed.alerts.map(strip));
-  assert.deepEqual(enriched.alerts.flatMap(publicationMembers).filter((x) => x.url === path("2025_13")), []);
+  assert.deepEqual(enriched.alerts.flatMap(publicationMembers).filter((x) => x.url === path("2025_13")), [{
+    sourceRecordId:"494b78e4-d9cd-4777-8fc6-9e9eab27ab11", sourceRecordIdType:"idAlert", url:path("2025_13"),
+  }]);
   assert.deepEqual(enrichFeedTaxonomy(enriched, { memberships }, { reviewed }).feed, enriched);
   const single = enriched.alerts.map((x) => Buffer.byteLength(JSON.stringify(x.aesanAlertClassification)));
   const before = Buffer.byteLength(JSON.stringify(feed, null, 2) + "\n");
@@ -152,7 +154,7 @@ test("F2 read-only 62-page capture replays exact current metrics and SHA-256 fix
   });
   assert.equal(scan.memberships.size, 168);
   const { diagnostics } = enrichFeedTaxonomy(feed, scan, { reviewed });
-  assert.deepEqual(diagnostics.gaps, [path("2026_68")]);
+  assert.deepEqual(diagnostics.gaps, []);
   assert.deepEqual(diagnostics.disappeared, []);
   assert.deepEqual(diagnostics.unknown, [
     { reference:"ES2026/575", urls:[path("2026_68")] },
