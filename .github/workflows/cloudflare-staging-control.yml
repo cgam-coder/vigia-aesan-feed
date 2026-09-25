@@ -89,17 +89,19 @@ jobs:
             d1-create-staging)
               # Idempotent guard: only create the exact staging DB if absent.
               existing="$(wrangler d1 list --json)"
-              EXISTING_JSON="$existing" node --input-type=module <<'NODE'
+              if EXISTING_JSON="$existing" node --input-type=module <<'NODE'
               const rows=JSON.parse(process.env.EXISTING_JSON||"[]");
-              if(rows.some(row=>row.name==="nagamealert-staging")) process.exit(42);
+              process.exit(rows.some(row=>row.name==="nagamealert-staging") ? 42 : 0);
               NODE
-              status=$?
-              if [ "$status" -eq 42 ]; then
-                echo "D1_STAGING_ALREADY_EXISTS"
-              elif [ "$status" -ne 0 ]; then
-                exit "$status"
-              else
+              then
                 wrangler d1 create "$CF_D1" --location weur
+              else
+                status=$?
+                if [ "$status" -eq 42 ]; then
+                  echo "D1_STAGING_ALREADY_EXISTS"
+                else
+                  exit "$status"
+                fi
               fi
               ;;
             d1-canary-write)
