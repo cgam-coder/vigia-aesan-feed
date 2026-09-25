@@ -1,4 +1,4 @@
 {
-  "operation": "worker-secret-list",
-  "nonce": "cf-stage-secret-list-20260925-2235"
+  "operation": "staging-bootstrap-status",
+  "nonce": "cf-stage-bootstrap-status-20260925-2236"
 }
