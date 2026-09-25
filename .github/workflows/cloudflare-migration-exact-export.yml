@@ -19,7 +19,7 @@ jobs:
       NAGAMEALERT_SOURCE_BASE: https://vigia-alertas.csar68.chatgpt.site
       NAGAMEALERT_EXPORT_DIR: export
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Validate one-shot request
         shell: bash
         run: |
@@ -43,7 +43,7 @@ jobs:
           echo "EXPORT_ARCHIVE_BYTES=$bytes"
           cat nagamealert-operational-d1-export.tar.gz.sha256
       - name: Upload short-retention migration artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: nagamealert-operational-d1-export-${{ github.run_id }}
           path: |
