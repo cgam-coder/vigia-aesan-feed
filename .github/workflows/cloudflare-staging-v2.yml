@@ -67,11 +67,7 @@ jobs:
             d1-canary-read)
               test "$CF_D1" = "nagamealert-staging-db"
               out="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT nonce FROM cf_chat_control_probe WHERE nonce='$NONCE' LIMIT 1" --json)"
-              OUT="$out" EXPECTED="$NONCE" node --input-type=module <<'NODE'
-              const value=JSON.parse(process.env.OUT||"[]");
-              const rows=Array.isArray(value) ? value.flatMap(x=>x.results??[]) : [];
-              if(!rows.some(row=>row.nonce===process.env.EXPECTED)) throw new Error("canary not found");
-              NODE
+              OUT="$out" EXPECTED="$NONCE" node --input-type=module -e 'const value=JSON.parse(process.env.OUT||"[]"); const rows=Array.isArray(value)?value.flatMap(x=>x.results??[]):[]; if(!rows.some(row=>row.nonce===process.env.EXPECTED)) throw new Error("canary not found");'
               ;;
             worker-secret-list)
               wrangler secret list --name "$CF_WORKER" --format json >/dev/null
