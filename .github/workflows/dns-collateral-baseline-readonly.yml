@@ -1,0 +1,38 @@
+name: DNS collateral baseline read-only
+
+on:
+  push:
+    branches:
+      - work/cloudflare-chat-operability-proof
+    paths:
+      - "ops/dns-collateral-baseline-readonly.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  dns:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Read non-web DNS records
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import dns from "node:dns/promises";
+          const safe=async(fn)=>{try{return await fn()}catch(e){return {error:e.code??e.message}}};
+          const domain=async(name)=>({
+            ns:await safe(()=>dns.resolveNs(name)),
+            soa:await safe(()=>dns.resolveSoa(name)),
+            mx:await safe(()=>dns.resolveMx(name)),
+            txt:await safe(()=>dns.resolveTxt(name)),
+            caa:await safe(()=>dns.resolveCaa(name)),
+            dmarc:await safe(()=>dns.resolveTxt("_dmarc."+name)),
+          });
+          console.log("DNS_COLLATERAL_BASELINE "+JSON.stringify({
+            writes:0,
+            com:await domain("nagamealert.com"),
+            es:await domain("nagamealert.es")
+          }));
+          NODE
