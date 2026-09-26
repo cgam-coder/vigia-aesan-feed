@@ -44,7 +44,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","f1b-source-page-probe"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","f1b-source-page-probe","f1b-contract-staging-proof"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -356,6 +356,47 @@ jobs:
           }));
           NODE
               done
+              ;;
+            f1b-contract-staging-proof)
+              test -n "$VIGIA_SYNC_TOKEN"
+              base="https://vigia-runtime.c-gamiz93.workers.dev"
+              common_export=(
+                --header "Authorization: Bearer $VIGIA_SYNC_TOKEN"
+                --header "X-Nagame-Migration-Export: NAGAMEALERT_OPERATIONAL_D1_EXPORT_V2"
+              )
+              code="$(curl --silent --show-error --location --max-time 60 \
+                "${common_export[@]}" \
+                --output "$RUNNER_TEMP/f1b-contract.json" --write-out '%{http_code}' \
+                "$base/api/admin/migration-export?mode=contract")"
+              test "$code" = "200"
+              node - "$RUNNER_TEMP/f1b-contract.json" <<'NODE'
+          const fs=require("fs");
+          const c=JSON.parse(fs.readFileSync(process.argv[2],"utf8"))?.export;
+          if(!c||c.formatVersion!==2||c.pagination!=="logical-keyset"||
+             c.scope!=="operational-post-retention"||c.pre2020ArchiveIncluded!==false) throw new Error("invalid lightweight contract");
+          if("tables" in c) throw new Error("lightweight contract unexpectedly contains table counts");
+          if(c.ledger?.count!==13||c.ledger?.first!=="0000_massive_goliath.sql"||
+             c.ledger?.last!=="0012_useful_roulette.sql"||c.ledger?.has0013!==false) throw new Error("invalid contract ledger");
+          if(c.schema?.sha256!=="51094929c454ee125a5f437a114b32a08db28d29e8a615463d3f5feb7f035cb0") throw new Error("unexpected schema digest");
+          if(!Array.isArray(c.sequences)||!c.sequences.some(x=>x.name==="d1_migrations"&&x.seq===13)) throw new Error("missing migration sequence");
+          console.log("F1B_CONTRACT_STAGING "+JSON.stringify({
+            formatVersion:c.formatVersion,pagination:c.pagination,scope:c.scope,
+            ledger:{count:c.ledger.count,first:c.ledger.first,last:c.ledger.last,has0013:c.ledger.has0013},
+            schema:c.schema,sequences:c.sequences,
+            tablesPresent:Object.prototype.hasOwnProperty.call(c,"tables")
+          }));
+          NODE
+              code="$(curl --silent --show-error --location --max-time 60 \
+                "${common_export[@]}" \
+                --output "$RUNNER_TEMP/f1b-contract-page.json" --write-out '%{http_code}' \
+                "$base/api/admin/migration-export?mode=page&table=alerts&limit=1")"
+              test "$code" = "200"
+              node - "$RUNNER_TEMP/f1b-contract-page.json" <<'NODE'
+          const fs=require("fs");
+          const p=JSON.parse(fs.readFileSync(process.argv[2],"utf8"))?.export;
+          if(!p||p.table!=="alerts"||p.returned!==0||p.hasMore!==false||p.nextCursor!==null) throw new Error("staging page contract mismatch");
+          console.log("F1B_CONTRACT_STAGING_PAGE "+JSON.stringify({table:p.table,returned:p.returned,hasMore:p.hasMore,sha256:p.sha256}));
+          NODE
               ;;
           esac
           echo "CLOUDFLARE_STAGING_V2 operation=$OPERATION nonce=$NONCE status=PASS"
