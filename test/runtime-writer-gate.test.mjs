@@ -44,7 +44,7 @@ test("every production D1 writer is gated by the reusable writer gate", () => {
     for (const job of jobs) {
       const block = jobBlock(workflow, job);
       writerJobs += 1;
-      assert.match(block, /needs: (?:writer_gate|\\[writer_gate, runtime_target\\])/u, `${path}:${job} missing writer gate dependency`);
+      assert.match(block, /needs: (?:writer_gate|\[writer_gate, runtime_target\])/u, `${path}:${job} missing writer gate dependency`);
       assert.match(block, /if: needs\.writer_gate\.outputs\.allowed == 'true'/u,
         `${path}:${job} missing gate condition`);
     }
