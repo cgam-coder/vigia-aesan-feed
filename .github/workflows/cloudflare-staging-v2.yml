@@ -43,7 +43,8 @@ jobs:
             "probe","d1-canary-write","d1-canary-read",
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status",
-            "staging-bootstrap-status","staging-bootstrap-apply"
+            "staging-bootstrap-status","staging-bootstrap-apply",
+            "staging-ledger-cert","staging-http-smoke"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -106,6 +107,24 @@ jobs:
               cat "$RUNNER_TEMP/bootstrap-apply.json"
               test "$code" = "200"
               node -e 'const fs=require("fs"); const b=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(!["ready","already-ready"].includes(b.status)||b.target!=="0012"||b.applied!==13) process.exit(1);' "$RUNNER_TEMP/bootstrap-apply.json"
+              ;;
+            staging-ledger-cert)
+              out="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT id,name FROM d1_migrations ORDER BY id ASC" --json)"
+              OUT="$out" node -e 'const v=JSON.parse(process.env.OUT||"[]"); const rows=(Array.isArray(v)?v:[]).flatMap(x=>x.results??[]); if(rows.length!==13) throw new Error("ledger count"); const names=rows.map(r=>r.name); if(names[0]!=="0000_massive_goliath.sql"||names.at(-1)!=="0012_useful_roulette.sql"||names.some(n=>String(n).startsWith("0013_"))) throw new Error("ledger chain"); console.log("STAGING_LEDGER_CERT "+JSON.stringify({count:rows.length,first:names[0],last:names.at(-1),has0013:names.some(n=>String(n).startsWith("0013_"))}));'
+              ;;
+            staging-http-smoke)
+              base="https://vigia-runtime.c-gamiz93.workers.dev"
+              probe_url(){
+                local name="$1"; local url="$2"; local expected="$3"
+                local headers="$RUNNER_TEMP/$name.headers"; local body="$RUNNER_TEMP/$name.body"
+                local code
+                code="$(curl --silent --show-error --location --max-time 60 --dump-header "$headers" --output "$body" --write-out '%{http_code}' "$url")"
+                test "$code" = "$expected"
+                echo "STAGING_HTTP name=$name status=$code bytes=$(wc -c < "$body") xrobots=$(awk 'BEGIN{IGNORECASE=1} /^x-robots-tag:/{gsub("\\r",""); sub(/^[^:]*:[[:space:]]*/,""); print; exit}' "$headers")"
+              }
+              probe_url root "$base/" 200
+              probe_url es "$base/es/" 200
+              probe_url terminal "$base/api/terminal/alerts?period=7d&pageSize=1" 200
               ;;
           esac
           echo "CLOUDFLARE_STAGING_V2 operation=$OPERATION nonce=$NONCE status=PASS"
