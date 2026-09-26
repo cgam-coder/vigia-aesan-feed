@@ -1,4 +1,4 @@
 {
-  "operation": "worker-status",
-  "nonce": "cf-stage-post-redeploy-status-20260926-0702"
+  "operation": "staging-http-smoke",
+  "nonce": "cf-stage-post-redeploy-smoke-20260926-0703"
 }
