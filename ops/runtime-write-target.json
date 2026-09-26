@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "active": "sites",
+  "active": "cloudflare",
   "sitesBaseUrl": "https://vigia-alertas.csar68.chatgpt.site",
   "cloudflareBaseUrl": "https://vigia-runtime.c-gamiz93.workers.dev",
-  "cloudflareReady": false,
-  "reason": null
+  "cloudflareReady": true,
+  "reason": "cloudflare-owner-runtime-cutover-after-final-parity"
 }
