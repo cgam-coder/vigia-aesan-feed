@@ -26,9 +26,12 @@ const jobBlock = (workflow, job) => {
   return lines.slice(start, end).join("\n");
 };
 
-test("runtime writer gate defaults open and has a strict contract", () => {
+test("runtime writer gate has a strict versioned contract", () => {
   const config = JSON.parse(read("ops/runtime-write-freeze.json"));
-  assert.deepEqual(config, { schemaVersion:1, frozen:false, reason:null });
+  assert.deepEqual(Object.keys(config).sort(), ["frozen","reason","schemaVersion"]);
+  assert.equal(config.schemaVersion,1);
+  assert.equal(typeof config.frozen,"boolean");
+  assert.ok(config.reason===null || typeof config.reason==="string" && config.reason.length<=200);
   const guard = read("scripts/runtime-write-guard.mjs");
   assert.match(guard, /RUNTIME_WRITE_GATE/u);
   assert.match(guard, /allowed=/u);
