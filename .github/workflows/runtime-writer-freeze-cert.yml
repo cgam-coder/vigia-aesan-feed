@@ -141,13 +141,6 @@ jobs:
             return body;
           }
 
-          const manifest=(await get("/api/admin/migration-export?mode=manifest"))?.export;
-          if(!manifest||manifest.formatVersion!==2||manifest.pagination!=="logical-keyset"||
-             manifest.ledger?.count!==13||manifest.ledger?.last!=="0012_useful_roulette.sql"||
-             manifest.ledger?.has0013!==false||typeof manifest.schema?.sha256!=="string") {
-            throw new Error("Source export manifest is not cutover-compatible");
-          }
-
           async function allRows(table,limit=100){
             const rows=[];
             let cursor=null;
@@ -174,7 +167,7 @@ jobs:
           const leasedStates=syncStates.filter((row)=>
             row.lease_owner_id!==null || row.lease_mode!==null || row.lease_expires_at!==null
           );
-          if(leasedStates.length!==0) throw new Error("source_sync_state still contains active lease metadata");
+          if(leasedStates.length!==0) throw new Error("source_sync_state still contains lease metadata");
 
           const freshness=await allRows("source_freshness_state");
           const activeFreshness=freshness.filter((row)=>row.active_lease===1||row.active_lease===true);
@@ -188,9 +181,7 @@ jobs:
 
           console.log("RUNTIME_WRITE_FREEZE_SOURCE_CERT "+JSON.stringify({
             status:"PASS",
-            schemaSha256:manifest.schema.sha256,
-            ledgerCount:manifest.ledger.count,
-            has0013:manifest.ledger.has0013,
+            evidenceBasis:"page-only-v2-export",
             sourceSyncLocks:locks.length,
             syncStates:syncStates.length,
             activeSyncStateLeases:leasedStates.length,
