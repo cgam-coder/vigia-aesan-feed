@@ -30,7 +30,7 @@ jobs:
     steps:
       - name: Refresh RAPNA
         env:
-          VIGIA_RAPNA_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/rapna/sync
+          VIGIA_RAPNA_SYNC_URL: "${{ needs.writer_gate.outputs.base_url }}/api/rapna/sync"
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           response_file="${RUNNER_TEMP}/rapna-sync.json"
@@ -73,7 +73,7 @@ jobs:
     steps:
       - name: Reconcile the complete RAPNA CURRENT index
         env:
-          VIGIA_RAPNA_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/rapna/sync
+          VIGIA_RAPNA_SYNC_URL: "${{ needs.writer_gate.outputs.base_url }}/api/rapna/sync"
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           set -euo pipefail
