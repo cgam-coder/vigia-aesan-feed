@@ -23,8 +23,11 @@ jobs:
   writer_gate:
     uses: ./.github/workflows/runtime-writer-gate.yml
 
+  runtime_target:
+    uses: ./.github/workflows/runtime-writer-target.yml
+
   update:
-    needs: writer_gate
+    needs: [writer_gate, runtime_target]
     if: needs.writer_gate.outputs.allowed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -76,7 +79,7 @@ jobs:
           node -e 'const fs=require("node:fs"); const feed=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(!Array.isArray(feed?.alerts)) throw new Error("Published feed is invalid"); console.log(JSON.stringify({publishedAlerts:feed.alerts.length}));' "${published_feed}"
       - name: Ingest published feed into VIGIA
         env:
-          VIGIA_AESAN_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/aesan/sync
+          VIGIA_AESAN_SYNC_URL: ${{ format('{0}/api/aesan/sync', needs.runtime_target.outputs.base_url) }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           if [ -z "${VIGIA_SYNC_TOKEN}" ]; then
