@@ -49,157 +49,41 @@ jobs:
           const allowedKeys=new Set(["operation","nonce","expectedSourceContractSha256"]);
           if(Object.keys(request).some((key)=>!allowedKeys.has(key))) throw new Error("unexpected request key");
           if(request.operation==="preflight") {
-            if("expectedSourceContractSha256" in request) throw new Error("preflight does not accept expectedSourceContractSha256");
-          } else if(typeof request.expectedSourceContractSha256!=="string"||
-                    !/^[a-f0-9]{64}$/.test(request.expectedSourceContractSha256)) {
-            throw new Error("expectedSourceContractSha256 is required");
-          }
-
-          const sourceBase=process.env.SOURCE_BASE;
-          const targetBase=process.env.TARGET_BASE;
-          const token=process.env.VIGIA_SYNC_TOKEN;
-          if(!sourceBase||!targetBase||!token) throw new Error("missing fixed transfer environment");
-
-          const sourceHeaders={
-            Authorization:`Bearer ${token}`,
-            "X-Nagame-Migration-Export":"NAGAMEALERT_OPERATIONAL_D1_EXPORT_V2",
-          };
-          const targetHeaders={
-            Authorization:`Bearer ${token}`,
-            "X-Nagame-Migration-Import":"NAGAMEALERT_STAGING_D1_IMPORT_V2",
-          };
-          const tableOrder=[
-            "alerts","alert_versions","alert_source_identities","alert_aliases",
-            "alert_dimension_state","alert_categories","alert_hazards","alert_geographies","alert_actors",
-            "source_checks","source_freshness_state","source_sync_state","source_sync_locks",
-            "source_revision_certifications","source_backfill_snapshots","source_backfill_snapshot_chunks",
-            "dimension_rebuild_state"
-          ];
-
-          const stable=(value)=>{
-            if(Array.isArray(value)) return value.map(stable);
-            if(value&&typeof value==="object") {
-              return Object.fromEntries(Object.entries(value)
-                .sort(([a],[b])=>a.localeCompare(b))
-                .map(([key,entry])=>[key,stable(entry)]));
-            }
-            return value;
-          };
-          const canonicalRows=(rows)=>rows.map((row)=>JSON.stringify(stable(row))).join("\n");
-          const digest=(rows)=>createHash("sha256").update(canonicalRows(rows)).digest("hex");
-          const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
-
-          async function fetchJson(url,{headers={},method="GET",body,timeout=120000}={}) {
-            const response=await fetch(url,{
-              method,headers:{...headers,...(body!==undefined?{"Content-Type":"application/json"}:{})},
-              body:body===undefined?undefined:JSON.stringify(body),
-              signal:AbortSignal.timeout(timeout),
-              redirect:"follow",
-            });
-            let parsed;
-            try { parsed=await response.json(); } catch { parsed=null; }
-            if(!response.ok) {
-              const message=typeof parsed?.error==="string"?parsed.error.slice(0,500):`HTTP ${response.status}`;
-              throw new Error(`${new URL(url).pathname} failed: ${message}`);
-            }
-            return parsed;
-          }
-
-          function validateContract(m,{staging,requiresCounts}) {
-            if(!m||m.formatVersion!==2||m.pagination!=="logical-keyset"||
-               m.scope!=="operational-post-retention"||m.pre2020ArchiveIncluded!==false) {
-              throw new Error("invalid F1B contract");
-            }
-            if(staging&&m.staging!==true) throw new Error("target is not staging");
-            if(m.ledger?.count!==13||m.ledger?.first!=="0000_massive_goliath.sql"||
-               m.ledger?.last!=="0012_useful_roulette.sql"||m.ledger?.has0013!==false||
-               !Array.isArray(m.ledger?.names)||m.ledger.names.length!==13) {
-              throw new Error("invalid F1B ledger contract");
-            }
-            if(staging&&(typeof m.schema?.sha256!=="string"||!/^[a-f0-9]{64}$/.test(m.schema.sha256))) {
-              throw new Error("invalid target schema digest");
-            }
-            if(!m.tableContract) throw new Error("missing table contract");
-            if(requiresCounts&&!m.tables) throw new Error("target manifest counts missing");
-            if(!same(Object.keys(m.tableContract),tableOrder)) throw new Error("unexpected table order");
-            for(const table of tableOrder) {
-              const spec=m.tableContract[table];
-              if(!spec||!Array.isArray(spec.keys)||spec.keys.length<1||spec.keys.length>2||
-                 !Number.isSafeInteger(spec.maxLimit)||spec.maxLimit<1||spec.maxLimit>100) {
-                throw new Error(`invalid table contract for ${table}`);
-              }
-              if(m.tables!==undefined&&(!Number.isSafeInteger(m.tables[table])||m.tables[table]<0)) {
-                throw new Error(`invalid count for ${table}`);
-              }
-            }
-          }
-
-          const contractFingerprint=(value)=>createHash("sha256").update(JSON.stringify(stable({
-            tableContract:value.tableContract,
-            migrationNames:value.ledger.names,
-          }))).digest("hex");
-
-          async function manifests() {
-            const [sourceBody,targetBody]=await Promise.all([
-              fetchJson(`${sourceBase}/api/admin/migration-export?mode=contract`,{headers:sourceHeaders}),
-              fetchJson(`${targetBase}/api/admin/migration-import?mode=manifest`,{headers:targetHeaders}),
-            ]);
-            const source=sourceBody?.export;
-            const target=targetBody?.import;
-            validateContract(source,{staging:false,requiresCounts:false});
-            validateContract(target,{staging:true,requiresCounts:true});
-            if(!same(source.tableContract,target.tableContract)) throw new Error("source/target logical contract mismatch");
-            const sourceContractSha256=contractFingerprint(source);
-            const targetContractSha256=contractFingerprint(target);
-            if(sourceContractSha256!==targetContractSha256) throw new Error("source/target contract fingerprint mismatch");
-            return {source,target,sourceContractSha256,targetContractSha256};
-          }
-
-          function validatePage(page,table,spec,cursor) {
-            if(!page||page.table!==table||!same(page.cursor,cursor)||!Array.isArray(page.rows)||
-               page.returned!==page.rows.length||page.rows.length>spec.maxLimit||
-               typeof page.hasMore!=="boolean"||typeof page.sha256!=="string"||
-               !/^[a-f0-9]{64}$/.test(page.sha256)||digest(page.rows)!==page.sha256) {
-              throw new Error(`invalid page contract for ${table}`);
-            }
-            if(page.hasMore&&(!page.rows.length||page.nextCursor===null)) throw new Error(`invalid continuation for ${table}`);
-            if(!page.hasMore&&page.nextCursor!==null) throw new Error(`terminal cursor invalid for ${table}`);
-            return page;
-          }
-
-          async function sourcePage(table,spec,cursor) {
-            const params=new URLSearchParams({mode:"page",table,limit:String(spec.maxLimit)});
-            if(cursor!==null) params.set("cursor",JSON.stringify(cursor));
-            const body=await fetchJson(`${sourceBase}/api/admin/migration-export?${params}`,{headers:sourceHeaders});
-            return validatePage(body?.export,table,spec,cursor);
-          }
-
-          async function targetPage(table,spec,cursor) {
-            const params=new URLSearchParams({mode:"page",table,limit:String(spec.maxLimit)});
-            if(cursor!==null) params.set("cursor",JSON.stringify(cursor));
-            const body=await fetchJson(`${targetBase}/api/admin/migration-import?${params}`,{headers:targetHeaders});
-            return validatePage(body?.import,table,spec,cursor);
-          }
-
-          function assertPinned(sourceContractSha256) {
-            if(sourceContractSha256!==request.expectedSourceContractSha256) {
-              throw new Error("source contract moved after preflight");
-            }
-          }
-
-          if(request.operation==="preflight") {
             const {source,target,sourceContractSha256,targetContractSha256}=await manifests();
+            if(!Array.isArray(target.importState)||target.importState.length!==tableOrder.length) {
+              throw new Error("target import checkpoint is not initialized");
+            }
+            if(tableOrder.some((table)=>target.tables[table]!==0)) {
+              throw new Error("target operational tables are not empty before initial transfer");
+            }
+            if(target.importState.some((row)=>
+              Number(row.completed)!==0||Number(row.pages)!==0||Number(row.rows_imported)!==0||row.cursor_json!==null
+            )) {
+              throw new Error("target import checkpoint is not clean before initial transfer");
+            }
+            const probes=[];
+            for(const table of tableOrder) {
+              const page=await sourceProbe(table,tableContract[table]);
+              probes.push({
+                table,
+                returned:page.returned,
+                hasMore:page.hasMore,
+                sha256:page.sha256,
+                lastCursor:page.lastCursor,
+              });
+            }
             console.log("F1B_SOURCE_PREFLIGHT "+JSON.stringify({
               nonce:request.nonce,
+              contractBasis:"versioned-17-table-page-contract+certified-0012-baseline",
               contractSha256:sourceContractSha256,
-              ledger:{count:source.ledger.count,first:source.ledger.first,last:source.ledger.last,has0013:source.ledger.has0013},
+              sourcePageProbes:probes,
             }));
             console.log("F1B_TARGET_PREFLIGHT "+JSON.stringify({
               contractSha256:targetContractSha256,
               schema:target.schema,
               ledger:{count:target.ledger.count,first:target.ledger.first,last:target.ledger.last,has0013:target.ledger.has0013},
               tables:target.tables,
-              importStateRows:Array.isArray(target.importState)?target.importState.length:null,
+              importStateRows:target.importState.length,
               extraTables:target.extraTables,
             }));
             process.exit(0);
@@ -309,8 +193,8 @@ jobs:
               nonce:request.nonce,totalPages,totalRows,
               sourceContractSha256,
               targetSchemaSha256:target.schema.sha256,
-              ledgerCount:source.ledger.count,
-              has0013:source.ledger.has0013,
+              targetLedgerCount:target.ledger.count,
+              targetHas0013:target.ledger.has0013,
             }));
           }
           NODE
