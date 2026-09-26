@@ -1,0 +1,34 @@
+name: Runtime writer gate proof
+
+on:
+  push:
+    branches:
+      - work/cloudflare-cutover-writer-freeze
+    paths:
+      - "ops/runtime-write-freeze.json"
+      - "scripts/runtime-write-guard.mjs"
+      - ".github/workflows/runtime-writer-gate.yml"
+      - ".github/workflows/runtime-writer-gate-proof.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  writer_gate:
+    uses: ./.github/workflows/runtime-writer-gate.yml
+
+  simulated_writer:
+    needs: writer_gate
+    if: needs.writer_gate.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prove writer would run when gate is open
+        run: echo "SIMULATED_WRITER=RUN"
+
+  frozen_observer:
+    needs: writer_gate
+    if: needs.writer_gate.outputs.frozen == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prove writer is skipped when gate is frozen
+        run: echo "SIMULATED_WRITER=SKIPPED reason=${{ needs.writer_gate.outputs.reason }}"
