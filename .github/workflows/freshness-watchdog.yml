@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
-      VIGIA_FRESHNESS_URL: https://vigia-alertas.csar68.chatgpt.site/api/freshness
+      VIGIA_FRESHNESS_URL: "${{ needs.writer_gate.outputs.base_url }}/api/freshness"
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
       - name: Audit official parity and run bounded recovery
