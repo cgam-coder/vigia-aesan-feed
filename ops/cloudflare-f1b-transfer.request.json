@@ -1,5 +1,5 @@
 {
-  "operation": "transfer-resume",
-  "nonce": "f1b-bulk-transfer-resume-1-20260926-1305",
+  "operation": "repair-parity",
+  "nonce": "f1b-final-delta-freeze-20260926-1627",
   "expectedSourceContractSha256": "30a242fe27ea4706dbeb1bbfd08c4856cf063c7b4f8b63d79c78b04d3ee53a22"
 }
