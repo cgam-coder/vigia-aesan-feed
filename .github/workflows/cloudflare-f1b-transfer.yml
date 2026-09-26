@@ -43,7 +43,7 @@ jobs:
           if(!request||typeof request!=="object"||Array.isArray(request)) throw new Error("invalid request");
           if(typeof request.operation!=="string"||!operations.has(request.operation)) throw new Error("operation not allowed");
           if(typeof request.nonce!=="string"||!/^[A-Za-z0-9._:-]{8,120}$/.test(request.nonce)) throw new Error("invalid nonce");
-          const allowedKeys=new Set(["operation","nonce","expectedSourceContractSha256"]);
+          const allowedKeys=new Set(["operation","nonce","expectedSourceContractSha256","startTable"]);
           if(Object.keys(request).some((key)=>!allowedKeys.has(key))) throw new Error("unexpected request key");
           if(request.operation==="diagnose-category-page") {
             const {target,contractSha256}=await targetState();
@@ -115,6 +115,16 @@ jobs:
             dimension_rebuild_state:{keys:["source"],maxLimit:100},
           };
           const tableOrder=Object.keys(tableContract);
+          if("startTable" in request) {
+            if(request.operation!=="repair-parity"||typeof request.startTable!=="string"||
+               !tableOrder.includes(request.startTable)) {
+              throw new Error("startTable is only valid for repair-parity and must name a transfer table");
+            }
+          }
+          const repairStartTable=request.operation==="repair-parity"&&typeof request.startTable==="string"
+            ? request.startTable
+            : tableOrder[0];
+          const repairStartIndex=tableOrder.indexOf(repairStartTable);
 
           const stable=(value)=>{
             if(Array.isArray(value)) return value.map(stable);
@@ -339,8 +349,10 @@ jobs:
             const {target,contractSha256}=await targetState();
             assertPinned(contractSha256);
             let totalPages=0,totalRows=0;
+            const rowsByTable={};
+            const repairTables=tableOrder.slice(repairStartIndex);
 
-            for(const table of tableOrder) {
+            for(const table of repairTables) {
               let cursor=null,pages=0,rows=0;
               let repairedPages=0;
               while(true) {
@@ -388,6 +400,7 @@ jobs:
                 }
 
                 pages+=1; rows+=source.returned; totalPages+=1; totalRows+=source.returned;
+                rowsByTable[table]=rows;
                 if(pages%50===0||!source.hasMore) {
                   console.log("F1B_REPAIR_PARITY_PROGRESS "+JSON.stringify({
                     table,pages,rows,repairedPages,hasMore:source.hasMore
@@ -407,13 +420,14 @@ jobs:
             }
 
             const after=(await targetState()).target;
-            const observedRows=Object.values(after.tables).reduce((sum,value)=>sum+Number(value),0);
-            if(observedRows!==totalRows) {
-              throw new Error(`post-repair total count mismatch: target=${observedRows} scanned=${totalRows}`);
+            for(const table of repairTables) {
+              if(after.tables[table]!==rowsByTable[table]) {
+                throw new Error(`post-repair count mismatch for ${table}: target=${after.tables[table]} scanned=${rowsByTable[table]}`);
+              }
             }
 
             console.log("F1B_REPAIR_PARITY_PASS "+JSON.stringify({
-              nonce:request.nonce,totalPages,totalRows,
+              nonce:request.nonce,startTable:repairStartTable,totalPages,totalRows,
               sourceContractSha256:contractSha256,
               targetSchemaSha256:after.schema.sha256,
               targetLedgerCount:after.ledger.count,
