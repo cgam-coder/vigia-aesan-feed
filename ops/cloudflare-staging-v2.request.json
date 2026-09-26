@@ -1,4 +1,4 @@
 {
-  "operation": "worker-status",
-  "nonce": "cf-stage-worker-status-current-20260926-0701"
+  "operation": "worker-versions",
+  "nonce": "cf-stage-worker-versions-full-20260926-0703"
 }
