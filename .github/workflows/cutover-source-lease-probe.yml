@@ -1,0 +1,73 @@
+name: Cutover source lease probe
+
+on:
+  push:
+    branches:
+      - work/cloudflare-chat-operability-proof
+    paths:
+      - "ops/cutover-source-lease-probe.request.json"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Read safe lease metadata from frozen Sites source
+        env:
+          TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module - <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const req=JSON.parse(await readFile("ops/cutover-source-lease-probe.request.json","utf8"));
+          if(req?.operation!=="probe-source-leases"||
+             typeof req.nonce!=="string"||!/^[A-Za-z0-9._:-]{8,120}$/.test(req.nonce)||
+             Object.keys(req).some((k)=>!["operation","nonce"].includes(k))) {
+            throw new Error("invalid lease probe request");
+          }
+          const base="https://vigia-alertas.csar68.chatgpt.site";
+          const headers={
+            Authorization:"Bearer "+process.env.TOKEN,
+            "X-Nagame-Migration-Export":"NAGAMEALERT_OPERATIONAL_D1_EXPORT_V2",
+          };
+          async function page(table){
+            const r=await fetch(base+"/api/admin/migration-export?mode=page&table="+encodeURIComponent(table)+"&limit=100",{
+              headers,signal:AbortSignal.timeout(60_000)
+            });
+            const body=await r.json().catch(()=>null);
+            if(r.status!==200) throw new Error(table+" HTTP "+r.status+" "+(body?.error??""));
+            return body?.export?.rows??[];
+          }
+          const [locks,sync,fresh,dimension]=await Promise.all([
+            page("source_sync_locks"),
+            page("source_sync_state"),
+            page("source_freshness_state"),
+            page("dimension_rebuild_state"),
+          ]);
+          const safeLocks=locks.map((r)=>({
+            source:r.source,mode:r.mode,acquired_at:r.acquired_at,
+            heartbeat_at:r.heartbeat_at,expires_at:r.expires_at
+          }));
+          const safeSync=sync.filter((r)=>r.lease_owner_id!==null||r.lease_mode!==null||r.lease_expires_at!==null)
+            .map((r)=>({source:r.source,mode:r.mode,status:r.status,lease_mode:r.lease_mode,lease_expires_at:r.lease_expires_at}));
+          const safeFresh=fresh.filter((r)=>r.active_lease===1||r.active_lease===true)
+            .map((r)=>({source:r.source,status:r.status,active_lease:r.active_lease,updated_at:r.updated_at}));
+          const safeDimension=dimension.filter((r)=>r.status==="running"||r.lease_owner_id!==null||r.lease_expires_at!==null)
+            .map((r)=>({source:r.source,status:r.status,lease_expires_at:r.lease_expires_at,updated_at:r.updated_at}));
+          console.log("CUTOVER_SOURCE_LEASE_PROBE "+JSON.stringify({
+            nonce:req.nonce,locks:safeLocks,syncLeases:safeSync,
+            activeFreshness:safeFresh,activeDimension:safeDimension
+          }));
+          NODE
