@@ -31,13 +31,13 @@ test("freeze certification waits only for pre-freeze production writers", () => 
   assert.match(workflow, /15_000/u);
 });
 
-test("freeze certification requires Sites and source-export V2", () => {
+test("freeze certification requires Sites and page-only V2 source export", () => {
   assert.match(workflow, /test "\$ACTIVE_TARGET" = "sites"/u);
   assert.match(workflow, /https:\/\/vigia-alertas\.csar68\.chatgpt\.site/u);
   assert.match(workflow, /NAGAMEALERT_OPERATIONAL_D1_EXPORT_V2/u);
-  assert.match(workflow, /formatVersion!==2/u);
-  assert.match(workflow, /0012_useful_roulette\.sql/u);
-  assert.match(workflow, /has0013!==false/u);
+  assert.match(workflow, /mode:"page"/u);
+  assert.doesNotMatch(workflow, /mode=manifest|mode:"manifest"|sqlite_schema|sqlite_sequence|d1_migrations/u);
+  assert.match(workflow, /evidenceBasis:"page-only-v2-export"/u);
 });
 
 test("freeze certification proves all runtime lease surfaces are idle", () => {
