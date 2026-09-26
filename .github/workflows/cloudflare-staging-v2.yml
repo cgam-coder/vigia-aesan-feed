@@ -88,7 +88,7 @@ jobs:
               ;;
             worker-versions)
               versions_json="$(wrangler versions list --name "$CF_WORKER" --json)"
-              VERSIONS_JSON="$versions_json" node -e 'const v=JSON.parse(process.env.VERSIONS_JSON||"[]"); const rows=Array.isArray(v)?v:[]; console.log("WORKER_VERSIONS "+JSON.stringify(rows.slice(0,8).map(x=>({id:x.id,created_on:x.created_on,message:x.annotations?.["workers/message"]??null}))));'
+              VERSIONS_JSON="$versions_json" node -e 'const v=JSON.parse(process.env.VERSIONS_JSON||"[]"); const rows=Array.isArray(v)?v:[]; console.log("WORKER_VERSIONS "+JSON.stringify({count:rows.length,ids:rows.map(x=>x.id)}));'
               ;;
             worker-rollback)
               test "$CF_WORKER" = "vigia-runtime"
