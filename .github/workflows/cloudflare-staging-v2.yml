@@ -42,16 +42,21 @@ jobs:
           const allowed=new Set([
             "probe","d1-canary-write","d1-canary-read",
             "worker-secret-list","worker-bootstrap-secrets",
-            "worker-versions","worker-status",
+            "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
             "staging-ledger-cert","staging-http-smoke"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
           if(typeof body.nonce!=="string" || !/^[A-Za-z0-9._:-]{8,120}$/.test(body.nonce)) throw new Error("invalid nonce");
-          if(Object.keys(body).some(k=>!["operation","nonce"].includes(k))) throw new Error("unexpected key");
+          const allowedKeys=new Set(["operation","nonce","versionId"]);
+          if(Object.keys(body).some(k=>!allowedKeys.has(k))) throw new Error("unexpected key");
+          if(body.operation==="worker-rollback"){
+            if(typeof body.versionId!=="string" || !/^[0-9a-f-]{20,80}$/i.test(body.versionId)) throw new Error("invalid versionId");
+          } else if("versionId" in body) throw new Error("versionId only valid for rollback");
           console.log("OPERATION="+body.operation);
           console.log("NONCE="+body.nonce);
+          if(body.versionId) console.log("VERSION_ID="+body.versionId);
           NODE
           source "$RUNNER_TEMP/request.env"
           wrangler(){ npx --yes wrangler@4.135.0 "$@"; }
@@ -82,7 +87,13 @@ jobs:
               unset cursor_secret
               ;;
             worker-versions)
-              wrangler versions list --name "$CF_WORKER" --json >/dev/null
+              versions_json="$(wrangler versions list --name "$CF_WORKER" --json)"
+              VERSIONS_JSON="$versions_json" node -e 'const v=JSON.parse(process.env.VERSIONS_JSON||"[]"); const rows=Array.isArray(v)?v:[]; console.log("WORKER_VERSIONS "+JSON.stringify(rows.slice(0,8).map(x=>({id:x.id,created_on:x.created_on,message:x.annotations?.["workers/message"]??null}))));'
+              ;;
+            worker-rollback)
+              test "$CF_WORKER" = "vigia-runtime"
+              wrangler rollback "$VERSION_ID" --name "$CF_WORKER" --message "NagameAlert staging rollback $NONCE" >/dev/null
+              echo "WORKER_ROLLBACK version=$VERSION_ID status=PASS"
               ;;
             worker-status)
               status_json="$(wrangler deployments status --name "$CF_WORKER" --json)"
