@@ -129,7 +129,9 @@ test("F0 frozen replay: 166 reviewed publications, 165 known, ES382 unknown, thr
   const memberships = new Map(reviewed.filter((x) => x.code).map((item) => [item.url, [ALERT_TYPES[item.code]]]));
   const gaps = ["2025_13", "2025_13_Amp", "2025_05"].map(path);
   for (const url of gaps) memberships.set(url, [ALERT_TYPES.general_population]);
-  assert.equal(reviewedFeed.alerts.length, 127);\n  assert.equal(reviewedFeed.alerts.flatMap(publicationMembers).length, 166);\n  const { feed:enriched, diagnostics } = enrichFeedTaxonomy(reviewedFeed, { memberships }, { reviewed });
+  assert.equal(reviewedFeed.alerts.length, 127);
+  assert.equal(reviewedFeed.alerts.flatMap(publicationMembers).length, 166);
+  const { feed:enriched, diagnostics } = enrichFeedTaxonomy(reviewedFeed, { memberships }, { reviewed });
   assert.equal(enriched.alerts.length, 127);
   assert.deepEqual(diagnostics.gaps, gaps.sort());
   assert.deepEqual(diagnostics.unknown, [{ reference:"ES2026/382", urls:[path("2026_52_Ampliacion_1")] }]);
