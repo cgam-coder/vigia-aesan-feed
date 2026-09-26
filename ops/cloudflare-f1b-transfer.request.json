@@ -1,4 +1,5 @@
 {
-  "operation": "preflight",
-  "nonce": "f1b-source-pages-preflight-v162-20260926-1251"
+  "operation": "transfer-resume",
+  "nonce": "f1b-bulk-transfer-v162-20260926-1254",
+  "expectedSourceContractSha256": "30a242fe27ea4706dbeb1bbfd08c4856cf063c7b4f8b63d79c78b04d3ee53a22"
 }
