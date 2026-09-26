@@ -79,10 +79,10 @@ jobs:
           let row=Array.isArray(raw)?raw[0]:(raw?.result??raw);
           if(Array.isArray(row)) row=row[0];
           if(!row||typeof row!=="object") throw new Error("invalid d1 info payload");
-          const fileSize=Number(row.file_size);
+          const fileSize=Number(row.file_size ?? row.database_size);
           const rawNumTables=Number(row.num_tables);
           if(!Number.isSafeInteger(fileSize)||fileSize<0) {
-            throw new Error("missing d1 file_size; keys="+Object.keys(row).sort().join(","));
+            throw new Error("missing d1 size; keys="+Object.keys(row).sort().join(","));
           }
           const numTables=Number.isSafeInteger(rawNumTables)&&rawNumTables>=0?rawNumTables:null;
           console.log("D1_INFO "+JSON.stringify({
