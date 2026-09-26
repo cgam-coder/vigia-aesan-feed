@@ -46,13 +46,13 @@ jobs:
           if(!request||typeof request!=="object"||Array.isArray(request)) throw new Error("invalid request");
           if(typeof request.operation!=="string"||!operations.has(request.operation)) throw new Error("operation not allowed");
           if(typeof request.nonce!=="string"||!/^[A-Za-z0-9._:-]{8,120}$/.test(request.nonce)) throw new Error("invalid nonce");
-          const allowedKeys=new Set(["operation","nonce","expectedSourceSchemaSha256"]);
+          const allowedKeys=new Set(["operation","nonce","expectedSourceContractSha256"]);
           if(Object.keys(request).some((key)=>!allowedKeys.has(key))) throw new Error("unexpected request key");
           if(request.operation==="preflight") {
-            if("expectedSourceSchemaSha256" in request) throw new Error("preflight does not accept expectedSourceSchemaSha256");
-          } else if(typeof request.expectedSourceSchemaSha256!=="string"||
-                    !/^[a-f0-9]{64}$/.test(request.expectedSourceSchemaSha256)) {
-            throw new Error("expectedSourceSchemaSha256 is required");
+            if("expectedSourceContractSha256" in request) throw new Error("preflight does not accept expectedSourceContractSha256");
+          } else if(typeof request.expectedSourceContractSha256!=="string"||
+                    !/^[a-f0-9]{64}$/.test(request.expectedSourceContractSha256)) {
+            throw new Error("expectedSourceContractSha256 is required");
           }
 
           const sourceBase=process.env.SOURCE_BASE;
@@ -112,11 +112,12 @@ jobs:
             }
             if(staging&&m.staging!==true) throw new Error("target is not staging");
             if(m.ledger?.count!==13||m.ledger?.first!=="0000_massive_goliath.sql"||
-               m.ledger?.last!=="0012_useful_roulette.sql"||m.ledger?.has0013!==false) {
+               m.ledger?.last!=="0012_useful_roulette.sql"||m.ledger?.has0013!==false||
+               !Array.isArray(m.ledger?.names)||m.ledger.names.length!==13) {
               throw new Error("invalid F1B ledger contract");
             }
-            if(typeof m.schema?.sha256!=="string"||!/^[a-f0-9]{64}$/.test(m.schema.sha256)) {
-              throw new Error("invalid schema digest");
+            if(staging&&(typeof m.schema?.sha256!=="string"||!/^[a-f0-9]{64}$/.test(m.schema.sha256))) {
+              throw new Error("invalid target schema digest");
             }
             if(!m.tableContract) throw new Error("missing table contract");
             if(requiresCounts&&!m.tables) throw new Error("target manifest counts missing");
@@ -133,6 +134,11 @@ jobs:
             }
           }
 
+          const contractFingerprint=(value)=>createHash("sha256").update(JSON.stringify(stable({
+            tableContract:value.tableContract,
+            migrationNames:value.ledger.names,
+          }))).digest("hex");
+
           async function manifests() {
             const [sourceBody,targetBody]=await Promise.all([
               fetchJson(`${sourceBase}/api/admin/migration-export?mode=contract`,{headers:sourceHeaders}),
@@ -142,9 +148,11 @@ jobs:
             const target=targetBody?.import;
             validateContract(source,{staging:false,requiresCounts:false});
             validateContract(target,{staging:true,requiresCounts:true});
-            if(source.schema.sha256!==target.schema.sha256) throw new Error("source/target schema digest mismatch");
             if(!same(source.tableContract,target.tableContract)) throw new Error("source/target logical contract mismatch");
-            return {source,target};
+            const sourceContractSha256=contractFingerprint(source);
+            const targetContractSha256=contractFingerprint(target);
+            if(sourceContractSha256!==targetContractSha256) throw new Error("source/target contract fingerprint mismatch");
+            return {source,target,sourceContractSha256,targetContractSha256};
           }
 
           function validatePage(page,table,spec,cursor) {
@@ -173,21 +181,22 @@ jobs:
             return validatePage(body?.import,table,spec,cursor);
           }
 
-          function assertPinned(source) {
-            if(source.schema.sha256!==request.expectedSourceSchemaSha256) {
-              throw new Error("source schema moved after preflight");
+          function assertPinned(sourceContractSha256) {
+            if(sourceContractSha256!==request.expectedSourceContractSha256) {
+              throw new Error("source contract moved after preflight");
             }
           }
 
           if(request.operation==="preflight") {
-            const {source,target}=await manifests();
+            const {source,target,sourceContractSha256,targetContractSha256}=await manifests();
             console.log("F1B_SOURCE_PREFLIGHT "+JSON.stringify({
               nonce:request.nonce,
-              schema:source.schema,
+              contractSha256:sourceContractSha256,
               ledger:{count:source.ledger.count,first:source.ledger.first,last:source.ledger.last,has0013:source.ledger.has0013},
               sequences:source.sequences,
             }));
             console.log("F1B_TARGET_PREFLIGHT "+JSON.stringify({
+              contractSha256:targetContractSha256,
               schema:target.schema,
               ledger:{count:target.ledger.count,first:target.ledger.first,last:target.ledger.last,has0013:target.ledger.has0013},
               tables:target.tables,
@@ -198,8 +207,8 @@ jobs:
           }
 
           if(request.operation==="transfer-resume") {
-            const {source,target}=await manifests();
-            assertPinned(source);
+            const {source,target,sourceContractSha256}=await manifests();
+            assertPinned(sourceContractSha256);
             if(!Array.isArray(target.importState)||target.importState.length!==tableOrder.length) {
               throw new Error("target import checkpoint is not initialized");
             }
@@ -254,7 +263,7 @@ jobs:
             }
             console.log("F1B_TRANSFER_COMPLETE "+JSON.stringify({
               nonce:request.nonce,totalPages,totalRows,
-              sourceSchemaSha256:source.schema.sha256,
+              sourceContractSha256,
               sequencesApplied:sequences.import.sequences,
               tables:after.tables,
             }));
@@ -262,8 +271,8 @@ jobs:
           }
 
           if(request.operation==="parity") {
-            const {source,target}=await manifests();
-            assertPinned(source);
+            const {source,target,sourceContractSha256}=await manifests();
+            assertPinned(sourceContractSha256);
             const sourceSeq=[...(source.sequences??[])].sort((a,b)=>a.name.localeCompare(b.name));
             const targetSeq=[...(target.sequences??[])].sort((a,b)=>a.name.localeCompare(b.name));
             if(!same(sourceSeq,targetSeq)) throw new Error("sqlite_sequence mismatch");
@@ -300,7 +309,8 @@ jobs:
             }
             console.log("F1B_PARITY_PASS "+JSON.stringify({
               nonce:request.nonce,totalPages,totalRows,
-              schemaSha256:source.schema.sha256,
+              sourceContractSha256,
+              targetSchemaSha256:target.schema.sha256,
               ledgerCount:source.ledger.count,
               has0013:source.ledger.has0013,
             }));
