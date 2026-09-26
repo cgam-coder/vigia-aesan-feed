@@ -1,4 +1,4 @@
 {
-  "operation": "staging-ledger-cert",
-  "nonce": "cf-stage-clean-ledger-20260926-0709"
+  "operation": "f1b-import-manifest",
+  "nonce": "f1b-import-manifest-20260926-0820"
 }
