@@ -11,7 +11,11 @@ concurrency:
   group: vigia-oecd-historical-reconcile
   cancel-in-progress: false
 jobs:
+  writer_gate:
+    uses: ./.github/workflows/runtime-writer-gate.yml
+
   reconcile:
+    needs: writer_gate
     runs-on: ubuntu-latest
     timeout-minutes: 225
     env:
