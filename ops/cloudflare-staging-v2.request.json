@@ -1,4 +1,4 @@
 {
-  "operation": "staging-ledger-cert",
-  "nonce": "cf-stage-post-redeploy-ledger-20260926-0704"
+  "operation": "worker-status",
+  "nonce": "cf-stage-post-cleanup-status-20260926-0707"
 }
