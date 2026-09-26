@@ -1,4 +1,4 @@
 {
-  "operation": "staging-bootstrap-status",
-  "nonce": "cf-stage-ledger-cert-20260926-0653"
+  "operation": "staging-ledger-cert",
+  "nonce": "cf-stage-ledger-exact-20260926-0656"
 }
