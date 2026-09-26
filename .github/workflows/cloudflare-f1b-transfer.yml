@@ -313,38 +313,52 @@ jobs:
 
             for(const table of tableOrder) {
               let cursor=null,pages=0,rows=0;
+              let repairedPages=0;
               while(true) {
-                const source=await sourcePage(table,cursor);
-                const repaired=(await fetchJson(
-                  `${targetBase}/api/admin/migration-import?mode=repair-page`,
-                  {
-                    headers:{
-                      ...targetHeaders,
-                      "X-Nagame-Migration-Repair":"REPAIR-STAGING-F1B-V2",
-                    },
-                    method:"POST",
-                    body:source,
-                    timeout:180000,
-                  }
-                ))?.import;
-                if(repaired?.status!=="range-repaired"||repaired.table!==table||
-                   repaired.rows!==source.returned||repaired.hasMore!==source.hasMore) {
-                  throw new Error(`target rejected repair range for ${table}`);
-                }
+                const [source,before]=await Promise.all([
+                  sourcePage(table,cursor),
+                  targetPage(table,cursor),
+                ]);
+                const inParity=
+                  source.returned===before.returned &&
+                  source.hasMore===before.hasMore &&
+                  same(source.lastCursor,before.lastCursor) &&
+                  same(source.nextCursor,before.nextCursor) &&
+                  source.sha256===before.sha256;
 
-                const targetPageAfter=await targetPage(table,cursor);
-                if(source.returned!==targetPageAfter.returned||
-                   source.hasMore!==targetPageAfter.hasMore||
-                   !same(source.lastCursor,targetPageAfter.lastCursor)||
-                   !same(source.nextCursor,targetPageAfter.nextCursor)||
-                   source.sha256!==targetPageAfter.sha256) {
-                  throw new Error(`repair parity mismatch for ${table} after ${JSON.stringify(cursor)}`);
+                if(!inParity) {
+                  const repaired=(await fetchJson(
+                    `${targetBase}/api/admin/migration-import?mode=repair-page`,
+                    {
+                      headers:{
+                        ...targetHeaders,
+                        "X-Nagame-Migration-Repair":"REPAIR-STAGING-F1B-V2",
+                      },
+                      method:"POST",
+                      body:source,
+                      timeout:180000,
+                    }
+                  ))?.import;
+                  if(repaired?.status!=="range-repaired"||repaired.table!==table||
+                     repaired.rows!==source.returned||repaired.hasMore!==source.hasMore) {
+                    throw new Error(`target rejected repair range for ${table}`);
+                  }
+
+                  const after=await targetPage(table,cursor);
+                  if(source.returned!==after.returned||
+                     source.hasMore!==after.hasMore||
+                     !same(source.lastCursor,after.lastCursor)||
+                     !same(source.nextCursor,after.nextCursor)||
+                     source.sha256!==after.sha256) {
+                    throw new Error(`repair parity mismatch for ${table} after ${JSON.stringify(cursor)}`);
+                  }
+                  repairedPages+=1;
                 }
 
                 pages+=1; rows+=source.returned; totalPages+=1; totalRows+=source.returned;
                 if(pages%50===0||!source.hasMore) {
                   console.log("F1B_REPAIR_PARITY_PROGRESS "+JSON.stringify({
-                    table,pages,rows,hasMore:source.hasMore
+                    table,pages,rows,repairedPages,hasMore:source.hasMore
                   }));
                 }
                 if(!source.hasMore) break;
