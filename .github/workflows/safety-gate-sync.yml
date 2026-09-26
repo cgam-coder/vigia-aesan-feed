@@ -1,4 +1,5 @@
 name: VIGIA Safety Gate + OECD recent sync
+# Post-cutover verification: first live writer run targets owner Cloudflare runtime.
 
 on:
   push:
