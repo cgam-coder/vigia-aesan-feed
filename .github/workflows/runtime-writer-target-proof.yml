@@ -1,0 +1,28 @@
+name: Runtime writer target proof
+
+on:
+  push:
+    branches:
+      - work/cloudflare-cutover-writer-routing
+    paths:
+      - "ops/runtime-write-target.json"
+      - "scripts/runtime-write-target.mjs"
+      - ".github/workflows/runtime-writer-target.yml"
+      - ".github/workflows/runtime-writer-target-proof.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  runtime_target:
+    uses: ./.github/workflows/runtime-writer-target.yml
+
+  observe:
+    needs: runtime_target
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prove selected target without network access
+        run: |
+          echo "TARGET_ACTIVE=${{ needs.runtime_target.outputs.active }}"
+          echo "TARGET_BASE=${{ needs.runtime_target.outputs.base_url }}"
+          echo "TARGET_CLOUDFLARE_READY=${{ needs.runtime_target.outputs.cloudflare_ready }}"
