@@ -1,4 +1,4 @@
 {
-  "operation": "f1b-v162-empty-roundtrip",
-  "nonce": "f1b-v162-empty-roundtrip-20260926-1221"
+  "operation": "f1b-import-manifest",
+  "nonce": "f1b-target-clean-cert-20260926-1226"
 }
