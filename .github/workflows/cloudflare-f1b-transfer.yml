@@ -1,0 +1,299 @@
+name: Cloudflare F1B operational D1 transfer
+
+on:
+  push:
+    branches:
+      - work/cloudflare-chat-operability-proof
+    paths:
+      - "ops/cloudflare-f1b-transfer.request.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-f1b-operational-transfer
+  cancel-in-progress: false
+
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      SOURCE_BASE: https://vigia-alertas.csar68.chatgpt.site
+      TARGET_BASE: https://vigia-runtime.c-gamiz93.workers.dev
+      CF_D1: nagamealert-staging-db
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Execute allowlisted F1B transfer operation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+          request="ops/cloudflare-f1b-transfer.request.json"
+          node --input-type=module - "$request" <<'NODE'
+          import { readFile } from "node:fs/promises";
+          import { createHash } from "node:crypto";
+
+          const request=JSON.parse(await readFile(process.argv[2],"utf8"));
+          const operations=new Set(["preflight","transfer-resume","parity"]);
+          if(!request||typeof request!=="object"||Array.isArray(request)) throw new Error("invalid request");
+          if(typeof request.operation!=="string"||!operations.has(request.operation)) throw new Error("operation not allowed");
+          if(typeof request.nonce!=="string"||!/^[A-Za-z0-9._:-]{8,120}$/.test(request.nonce)) throw new Error("invalid nonce");
+          const allowedKeys=new Set(["operation","nonce","expectedSourceSchemaSha256"]);
+          if(Object.keys(request).some((key)=>!allowedKeys.has(key))) throw new Error("unexpected request key");
+          if(request.operation==="preflight") {
+            if("expectedSourceSchemaSha256" in request) throw new Error("preflight does not accept expectedSourceSchemaSha256");
+          } else if(typeof request.expectedSourceSchemaSha256!=="string"||
+                    !/^[a-f0-9]{64}$/.test(request.expectedSourceSchemaSha256)) {
+            throw new Error("expectedSourceSchemaSha256 is required");
+          }
+
+          const sourceBase=process.env.SOURCE_BASE;
+          const targetBase=process.env.TARGET_BASE;
+          const token=process.env.VIGIA_SYNC_TOKEN;
+          if(!sourceBase||!targetBase||!token) throw new Error("missing fixed transfer environment");
+
+          const sourceHeaders={
+            Authorization:`Bearer ${token}`,
+            "X-Nagame-Migration-Export":"NAGAMEALERT_OPERATIONAL_D1_EXPORT_V2",
+          };
+          const targetHeaders={
+            Authorization:`Bearer ${token}`,
+            "X-Nagame-Migration-Import":"NAGAMEALERT_STAGING_D1_IMPORT_V2",
+          };
+          const tableOrder=[
+            "alerts","alert_versions","alert_source_identities","alert_aliases",
+            "alert_dimension_state","alert_categories","alert_hazards","alert_geographies","alert_actors",
+            "source_checks","source_freshness_state","source_sync_state","source_sync_locks",
+            "source_revision_certifications","source_backfill_snapshots","source_backfill_snapshot_chunks",
+            "dimension_rebuild_state"
+          ];
+
+          const stable=(value)=>{
+            if(Array.isArray(value)) return value.map(stable);
+            if(value&&typeof value==="object") {
+              return Object.fromEntries(Object.entries(value)
+                .sort(([a],[b])=>a.localeCompare(b))
+                .map(([key,entry])=>[key,stable(entry)]));
+            }
+            return value;
+          };
+          const canonicalRows=(rows)=>rows.map((row)=>JSON.stringify(stable(row))).join("\n");
+          const digest=(rows)=>createHash("sha256").update(canonicalRows(rows)).digest("hex");
+          const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+
+          async function fetchJson(url,{headers={},method="GET",body,timeout=120000}={}) {
+            const response=await fetch(url,{
+              method,headers:{...headers,...(body!==undefined?{"Content-Type":"application/json"}:{})},
+              body:body===undefined?undefined:JSON.stringify(body),
+              signal:AbortSignal.timeout(timeout),
+              redirect:"follow",
+            });
+            let parsed;
+            try { parsed=await response.json(); } catch { parsed=null; }
+            if(!response.ok) {
+              const message=typeof parsed?.error==="string"?parsed.error.slice(0,500):`HTTP ${response.status}`;
+              throw new Error(`${new URL(url).pathname} failed: ${message}`);
+            }
+            return parsed;
+          }
+
+          function validateManifest(m,{staging}) {
+            if(!m||m.formatVersion!==2||m.pagination!=="logical-keyset"||
+               m.scope!=="operational-post-retention"||m.pre2020ArchiveIncluded!==false) {
+              throw new Error("invalid F1B manifest contract");
+            }
+            if(staging&&m.staging!==true) throw new Error("target is not staging");
+            if(m.ledger?.count!==13||m.ledger?.first!=="0000_massive_goliath.sql"||
+               m.ledger?.last!=="0012_useful_roulette.sql"||m.ledger?.has0013!==false) {
+              throw new Error("invalid F1B ledger contract");
+            }
+            if(typeof m.schema?.sha256!=="string"||!/^[a-f0-9]{64}$/.test(m.schema.sha256)) {
+              throw new Error("invalid schema digest");
+            }
+            if(!m.tableContract||!m.tables) throw new Error("missing table contract");
+            if(!same(Object.keys(m.tableContract),tableOrder)) throw new Error("unexpected table order");
+            for(const table of tableOrder) {
+              const spec=m.tableContract[table];
+              if(!spec||!Array.isArray(spec.keys)||spec.keys.length<1||spec.keys.length>2||
+                 !Number.isSafeInteger(spec.maxLimit)||spec.maxLimit<1||spec.maxLimit>100) {
+                throw new Error(`invalid table contract for ${table}`);
+              }
+              if(!Number.isSafeInteger(m.tables[table])||m.tables[table]<0) throw new Error(`invalid count for ${table}`);
+            }
+          }
+
+          async function manifests() {
+            const [sourceBody,targetBody]=await Promise.all([
+              fetchJson(`${sourceBase}/api/admin/migration-export?mode=manifest`,{headers:sourceHeaders}),
+              fetchJson(`${targetBase}/api/admin/migration-import?mode=manifest`,{headers:targetHeaders}),
+            ]);
+            const source=sourceBody?.export;
+            const target=targetBody?.import;
+            validateManifest(source,{staging:false});
+            validateManifest(target,{staging:true});
+            if(source.schema.sha256!==target.schema.sha256) throw new Error("source/target schema digest mismatch");
+            if(!same(source.tableContract,target.tableContract)) throw new Error("source/target logical contract mismatch");
+            return {source,target};
+          }
+
+          function validatePage(page,table,spec,cursor) {
+            if(!page||page.table!==table||!same(page.cursor,cursor)||!Array.isArray(page.rows)||
+               page.returned!==page.rows.length||page.rows.length>spec.maxLimit||
+               typeof page.hasMore!=="boolean"||typeof page.sha256!=="string"||
+               !/^[a-f0-9]{64}$/.test(page.sha256)||digest(page.rows)!==page.sha256) {
+              throw new Error(`invalid page contract for ${table}`);
+            }
+            if(page.hasMore&&(!page.rows.length||page.nextCursor===null)) throw new Error(`invalid continuation for ${table}`);
+            if(!page.hasMore&&page.nextCursor!==null) throw new Error(`terminal cursor invalid for ${table}`);
+            return page;
+          }
+
+          async function sourcePage(table,spec,cursor) {
+            const params=new URLSearchParams({mode:"page",table,limit:String(spec.maxLimit)});
+            if(cursor!==null) params.set("cursor",JSON.stringify(cursor));
+            const body=await fetchJson(`${sourceBase}/api/admin/migration-export?${params}`,{headers:sourceHeaders});
+            return validatePage(body?.export,table,spec,cursor);
+          }
+
+          async function targetPage(table,spec,cursor) {
+            const params=new URLSearchParams({mode:"page",table,limit:String(spec.maxLimit)});
+            if(cursor!==null) params.set("cursor",JSON.stringify(cursor));
+            const body=await fetchJson(`${targetBase}/api/admin/migration-import?${params}`,{headers:targetHeaders});
+            return validatePage(body?.import,table,spec,cursor);
+          }
+
+          function assertPinned(source) {
+            if(source.schema.sha256!==request.expectedSourceSchemaSha256) {
+              throw new Error("source schema moved after preflight");
+            }
+          }
+
+          if(request.operation==="preflight") {
+            const {source,target}=await manifests();
+            console.log("F1B_SOURCE_PREFLIGHT "+JSON.stringify({
+              nonce:request.nonce,
+              schema:source.schema,
+              ledger:{count:source.ledger.count,first:source.ledger.first,last:source.ledger.last,has0013:source.ledger.has0013},
+              tables:source.tables,
+              sequences:source.sequences,
+            }));
+            console.log("F1B_TARGET_PREFLIGHT "+JSON.stringify({
+              schema:target.schema,
+              ledger:{count:target.ledger.count,first:target.ledger.first,last:target.ledger.last,has0013:target.ledger.has0013},
+              tables:target.tables,
+              importStateRows:Array.isArray(target.importState)?target.importState.length:null,
+              extraTables:target.extraTables,
+            }));
+            process.exit(0);
+          }
+
+          if(request.operation==="transfer-resume") {
+            const {source,target}=await manifests();
+            assertPinned(source);
+            if(!Array.isArray(target.importState)||target.importState.length!==tableOrder.length) {
+              throw new Error("target import checkpoint is not initialized");
+            }
+            const states=new Map(target.importState.map((row)=>[row.table_name,row]));
+            let totalPages=0;
+            let totalRows=0;
+            for(const table of tableOrder) {
+              const spec=source.tableContract[table];
+              const state=states.get(table);
+              if(!state) throw new Error(`missing target state for ${table}`);
+              if(Number(state.completed)===1) {
+                console.log("F1B_TRANSFER_TABLE "+JSON.stringify({table,status:"already-complete",rows:Number(state.rows_imported),pages:Number(state.pages)}));
+                continue;
+              }
+              let cursor=state.cursor_json===null?null:JSON.parse(String(state.cursor_json));
+              let pages=Number(state.pages)||0;
+              let rows=Number(state.rows_imported)||0;
+              while(true) {
+                const page=await sourcePage(table,spec,cursor);
+                const applied=await fetchJson(`${targetBase}/api/admin/migration-import?mode=page`,{
+                  headers:targetHeaders,method:"POST",body:page,timeout:180000,
+                });
+                if(applied?.import?.status!=="page-applied"||applied?.import?.table!==table||
+                   applied?.import?.rows!==page.returned||applied?.import?.hasMore!==page.hasMore) {
+                  throw new Error(`target rejected page contract for ${table}`);
+                }
+                pages+=1;
+                rows+=page.returned;
+                totalPages+=1;
+                totalRows+=page.returned;
+                if(pages%25===0||!page.hasMore) {
+                  console.log("F1B_TRANSFER_PROGRESS "+JSON.stringify({table,pages,rows,hasMore:page.hasMore}));
+                }
+                if(!page.hasMore) break;
+                cursor=page.nextCursor;
+              }
+            }
+            const sequences=await fetchJson(`${targetBase}/api/admin/migration-import?mode=sequences`,{
+              headers:targetHeaders,method:"POST",body:{sequences:source.sequences},
+            });
+            if(sequences?.import?.status!=="sequences-applied") throw new Error("sequence application failed");
+            const after=(await manifests()).target;
+            for(const table of tableOrder) {
+              if(after.tables[table]!==source.tables[table]) throw new Error(`post-transfer count mismatch for ${table}`);
+            }
+            console.log("F1B_TRANSFER_COMPLETE "+JSON.stringify({
+              nonce:request.nonce,totalPages,totalRows,
+              sourceSchemaSha256:source.schema.sha256,
+              sequencesApplied:sequences.import.sequences,
+              tables:after.tables,
+            }));
+            process.exit(0);
+          }
+
+          if(request.operation==="parity") {
+            const {source,target}=await manifests();
+            assertPinned(source);
+            for(const table of tableOrder) {
+              if(source.tables[table]!==target.tables[table]) throw new Error(`count mismatch for ${table}`);
+            }
+            const sourceSeq=[...(source.sequences??[])].sort((a,b)=>a.name.localeCompare(b.name));
+            const targetSeq=[...(target.sequences??[])].sort((a,b)=>a.name.localeCompare(b.name));
+            if(!same(sourceSeq,targetSeq)) throw new Error("sqlite_sequence mismatch");
+            let totalPages=0;
+            let totalRows=0;
+            for(const table of tableOrder) {
+              const spec=source.tableContract[table];
+              let cursor=null;
+              let pages=0;
+              let rows=0;
+              while(true) {
+                const [left,right]=await Promise.all([
+                  sourcePage(table,spec,cursor),
+                  targetPage(table,spec,cursor),
+                ]);
+                if(left.returned!==right.returned||left.hasMore!==right.hasMore||
+                   !same(left.lastCursor,right.lastCursor)||!same(left.nextCursor,right.nextCursor)||
+                   left.sha256!==right.sha256) {
+                  throw new Error(`page parity mismatch for ${table} after ${JSON.stringify(cursor)}`);
+                }
+                pages+=1;
+                rows+=left.returned;
+                totalPages+=1;
+                totalRows+=left.returned;
+                if(pages%50===0||!left.hasMore) {
+                  console.log("F1B_PARITY_PROGRESS "+JSON.stringify({table,pages,rows,hasMore:left.hasMore}));
+                }
+                if(!left.hasMore) break;
+                cursor=left.nextCursor;
+              }
+            }
+            console.log("F1B_PARITY_PASS "+JSON.stringify({
+              nonce:request.nonce,totalPages,totalRows,
+              schemaSha256:source.schema.sha256,
+              ledgerCount:source.ledger.count,
+              has0013:source.ledger.has0013,
+            }));
+          }
+          NODE
