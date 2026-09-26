@@ -1,0 +1,7 @@
+{
+  "operation": "finalize",
+  "nonce": "cloudflare-cutover-finalize-20260926-1746",
+  "expectedRepairRunId": 36251903938,
+  "expectedSourceContractSha256": "30a242fe27ea4706dbeb1bbfd08c4856cf063c7b4f8b63d79c78b04d3ee53a22",
+  "expectedFreezeSha": "8f5decd555252761fec22fbb011ed41890f5ce36"
+}
