@@ -1,0 +1,85 @@
+name: Cutover cancel pre-freeze writers
+
+on:
+  push:
+    branches:
+      - work/cloudflare-chat-operability-proof
+    paths:
+      - "ops/cutover-cancel-pre-freeze.request.json"
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Cancel only allowlisted pre-freeze writer runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module - <<'NODE'
+          import { readFile } from "node:fs/promises";
+
+          const request=JSON.parse(await readFile("ops/cutover-cancel-pre-freeze.request.json","utf8"));
+          const allowedIds=new Set([36249771108,36244048345,36249872656,36249872647]);
+          const allowedPaths=new Set([
+            ".github/workflows/oecd-historical-reconcile.yml",
+            ".github/workflows/rasff-control.yml",
+          ]);
+          if(!request||request.operation!=="cancel-pre-freeze"||
+             typeof request.nonce!=="string"||!/^[A-Za-z0-9._:-]{8,120}$/.test(request.nonce)||
+             !Array.isArray(request.runIds)||request.runIds.length<1||
+             request.runIds.some((id)=>!Number.isSafeInteger(id)||!allowedIds.has(id))||
+             new Set(request.runIds).size!==request.runIds.length||
+             Object.keys(request).some((key)=>!["operation","nonce","runIds"].includes(key))) {
+            throw new Error("invalid bounded cancellation request");
+          }
+
+          const repo=process.env.REPO;
+          const token=process.env.GH_TOKEN;
+          const headers={
+            Authorization:"Bearer "+token,
+            Accept:"application/vnd.github+json",
+            "X-GitHub-Api-Version":"2022-11-28",
+            "User-Agent":"NagameAlert-Cutover-Cancel/1.0",
+          };
+
+          async function getRun(id){
+            const response=await fetch("https://api.github.com/repos/"+repo+"/actions/runs/"+id,{headers});
+            if(response.status!==200) throw new Error("run lookup failed "+id+" HTTP "+response.status);
+            return response.json();
+          }
+
+          for(const id of request.runIds){
+            const run=await getRun(id);
+            if(!allowedPaths.has(run.path)) throw new Error("unexpected workflow path for "+id);
+            if(!["queued","in_progress","pending","waiting","requested"].includes(run.status)){
+              console.log("CUTOVER_CANCEL_ALREADY_TERMINAL "+JSON.stringify({
+                id,status:run.status,conclusion:run.conclusion,path:run.path
+              }));
+              continue;
+            }
+            const response=await fetch(
+              "https://api.github.com/repos/"+repo+"/actions/runs/"+id+"/cancel",
+              {method:"POST",headers}
+            );
+            if(![202,409].includes(response.status)){
+              throw new Error("cancel failed "+id+" HTTP "+response.status);
+            }
+            console.log("CUTOVER_CANCEL_REQUESTED "+JSON.stringify({
+              id,path:run.path,priorStatus:run.status,http:response.status,headSha:run.head_sha
+            }));
+          }
+          NODE
