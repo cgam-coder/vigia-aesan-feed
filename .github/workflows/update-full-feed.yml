@@ -8,6 +8,7 @@ on:
   schedule:
     - cron: "27 3 * * *"
   workflow_dispatch:
+  # A main-branch edit to this workflow is also the bounded recovery trigger when dispatch is unavailable to the operator.
 
 permissions:
   contents: write
