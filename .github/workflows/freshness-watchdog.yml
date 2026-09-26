@@ -17,7 +17,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  writer_gate:
+    uses: ./.github/workflows/runtime-writer-gate.yml
+
   parity:
+    needs: writer_gate
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
