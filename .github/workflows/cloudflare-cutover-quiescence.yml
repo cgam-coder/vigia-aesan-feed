@@ -1,0 +1,194 @@
+name: Cloudflare cutover quiescence
+
+on:
+  push:
+    branches:
+      - work/cloudflare-chat-operability-proof
+    paths:
+      - "ops/cloudflare-cutover-quiescence.request.json"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: cloudflare-cutover-quiescence
+  cancel-in-progress: false
+
+jobs:
+  quiescence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+      SOURCE_BASE: https://vigia-alertas.csar68.chatgpt.site
+      REPOSITORY: cgam-coder/vigia-aesan-feed
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Observe or certify writer quiescence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+          request="ops/cloudflare-cutover-quiescence.request.json"
+          node --input-type=module - "$request" <<'NODE'
+          import { readFile } from "node:fs/promises";
+
+          const request=JSON.parse(await readFile(process.argv[2],"utf8"));
+          if(!request||typeof request!=="object"||Array.isArray(request)) throw new Error("invalid request");
+          if(!["observe","certify"].includes(request.operation)) throw new Error("operation not allowed");
+          if(typeof request.nonce!=="string"||!/^[A-Za-z0-9._:-]{8,120}$/.test(request.nonce)) throw new Error("invalid nonce");
+          if(Object.keys(request).some((key)=>!["operation","nonce"].includes(key))) throw new Error("unexpected request key");
+
+          const repo=process.env.REPOSITORY;
+          const source=process.env.SOURCE_BASE;
+          const token=process.env.VIGIA_SYNC_TOKEN;
+          const githubToken=process.env.GH_TOKEN;
+          if(!repo||!source||!token||!githubToken) throw new Error("missing fixed quiescence environment");
+
+          const writerWorkflows=[
+            "update-feed.yml",
+            "update-full-feed.yml",
+            "rapna-sync.yml",
+            "safety-gate-sync.yml",
+            "oecd-historical-reconcile.yml",
+            "oecd-recent-freshness-retry.yml",
+            "rasff-control.yml",
+            "freshness-watchdog.yml",
+            "gh-fixes-closure-once.yml",
+          ];
+          const sources=[
+            {source:"AESAN",route:"aesan"},
+            {source:"RAPNA",route:"rapna"},
+            {source:"RASFF",route:"rasff"},
+            {source:"SAFETY GATE",route:"safety-gate"},
+            {source:"OECD",route:"oecd"},
+          ];
+
+          const ghHeaders={
+            Authorization:`Bearer ${githubToken}`,
+            Accept:"application/vnd.github+json",
+            "X-GitHub-Api-Version":"2022-11-28",
+          };
+          const vigiaHeaders={Authorization:`Bearer ${token}`};
+
+          async function jsonFetch(url,options={},timeout=60000){
+            const response=await fetch(url,{...options,signal:AbortSignal.timeout(timeout),redirect:"follow"});
+            const raw=await response.text();
+            let body;
+            try{ body=JSON.parse(raw); } catch { throw new Error(`non-JSON HTTP ${response.status} from ${new URL(url).pathname}`); }
+            if(!response.ok) throw new Error(`HTTP ${response.status} from ${new URL(url).pathname}: ${String(body?.message??body?.error??"").slice(0,300)}`);
+            return body;
+          }
+
+          async function mainJson(path){
+            const url=`https://api.github.com/repos/${repo}/contents/${path}?ref=main`;
+            const body=await jsonFetch(url,{headers:ghHeaders});
+            if(body?.encoding!=="base64"||typeof body.content!=="string") throw new Error(`invalid main control file ${path}`);
+            return JSON.parse(Buffer.from(body.content.replace(/\n/g,""),"base64").toString("utf8"));
+          }
+
+          async function readMainControl(){
+            const [freeze,target]=await Promise.all([
+              mainJson("ops/runtime-write-freeze.json"),
+              mainJson("ops/runtime-writer-target.json"),
+            ]);
+            return {freeze,target};
+          }
+
+          async function activeWriterRuns(){
+            const active=[];
+            for(const workflow of writerWorkflows){
+              const url=`https://api.github.com/repos/${repo}/actions/workflows/${encodeURIComponent(workflow)}/runs?branch=main&per_page=100`;
+              const body=await jsonFetch(url,{headers:ghHeaders});
+              for(const run of body.workflow_runs??[]){
+                if(run.status!=="completed"){
+                  active.push({
+                    workflow,
+                    id:run.id,
+                    status:run.status,
+                    event:run.event,
+                    createdAt:run.created_at,
+                    updatedAt:run.updated_at,
+                  });
+                }
+              }
+            }
+            return active.sort((a,b)=>a.workflow.localeCompare(b.workflow)||a.id-b.id);
+          }
+
+          function classifyLease(lease,nowMs){
+            if(lease===null||lease===undefined) return {state:"none",lease:null};
+            if(!lease||typeof lease!=="object"||Array.isArray(lease)) return {state:"unsafe",lease:{reason:"malformed"}};
+            const expiresAt=typeof lease.expiresAt==="string"?lease.expiresAt:null;
+            const expiresMs=expiresAt?Date.parse(expiresAt):Number.NaN;
+            const safe={
+              ownerId:typeof lease.ownerId==="string"?lease.ownerId:null,
+              mode:typeof lease.mode==="string"?lease.mode:null,
+              acquiredAt:typeof lease.acquiredAt==="string"?lease.acquiredAt:null,
+              heartbeatAt:typeof lease.heartbeatAt==="string"?lease.heartbeatAt:null,
+              expiresAt,
+            };
+            if(!Number.isFinite(expiresMs)) return {state:"unsafe",lease:safe};
+            return {state:expiresMs>nowMs?"active":"expired",lease:safe};
+          }
+
+          async function sourceLeases(){
+            const nowMs=Date.now();
+            const observations=[];
+            for(const item of sources){
+              const body=await jsonFetch(`${source}/api/${item.route}/sync?observe=1`,{headers:vigiaHeaders});
+              const classified=classifyLease(body?.lease??null,nowMs);
+              observations.push({source:item.source,...classified});
+            }
+            return observations;
+          }
+
+          const compact=(value)=>JSON.stringify(value);
+
+          if(request.operation==="observe"){
+            const [runs,leases]=await Promise.all([activeWriterRuns(),sourceLeases()]);
+            console.log("CUTOVER_QUIESCENCE_OBSERVE "+compact({
+              nonce:request.nonce,
+              activeWriterRuns:runs,
+              leases,
+              activeLeaseCount:leases.filter((x)=>x.state==="active"||x.state==="unsafe").length,
+            }));
+            process.exit(0);
+          }
+
+          const control=await readMainControl();
+          if(control.freeze?.schemaVersion!==1||control.freeze?.frozen!==true||
+             typeof control.freeze?.reason!=="string"||control.freeze.reason.trim()===""){
+            throw new Error("main writer freeze is not explicitly active");
+          }
+          if(control.target?.schemaVersion!==1||control.target?.target!=="sites"){
+            throw new Error("main writer target must remain sites before final delta");
+          }
+
+          const runs1=await activeWriterRuns();
+          if(runs1.length) throw new Error("writer workflows are still active: "+compact(runs1));
+          const leases1=await sourceLeases();
+          const unsafe1=leases1.filter((x)=>x.state==="active"||x.state==="unsafe");
+          if(unsafe1.length) throw new Error("source leases are still active/unsafe: "+compact(unsafe1));
+
+          await new Promise((resolve)=>setTimeout(resolve,5000));
+
+          const [runs2,leases2]=await Promise.all([activeWriterRuns(),sourceLeases()]);
+          const unsafe2=leases2.filter((x)=>x.state==="active"||x.state==="unsafe");
+          if(runs2.length) throw new Error("writer workflows became active during quiescence check: "+compact(runs2));
+          if(unsafe2.length) throw new Error("source leases became active/unsafe during quiescence check: "+compact(unsafe2));
+
+          console.log("CUTOVER_QUIESCENCE_CERTIFIED "+compact({
+            nonce:request.nonce,
+            freeze:{frozen:true,reason:control.freeze.reason},
+            target:"sites",
+            activeWriterRuns:0,
+            activeLeases:0,
+            leases:leases2,
+            checkedTwice:true,
+          }));
+          NODE
