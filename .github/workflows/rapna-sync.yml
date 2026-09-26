@@ -22,15 +22,18 @@ jobs:
   writer_gate:
     uses: ./.github/workflows/runtime-writer-gate.yml
 
+  runtime_target:
+    uses: ./.github/workflows/runtime-writer-target.yml
+
   sync:
-    needs: writer_gate
+    needs: [writer_gate, runtime_target]
     if: needs.writer_gate.outputs.allowed == 'true' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '23 * * * *' || github.event.schedule == '53 * * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Refresh RAPNA
         env:
-          VIGIA_RAPNA_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/rapna/sync
+          VIGIA_RAPNA_SYNC_URL: ${{ format('{0}/api/rapna/sync', needs.runtime_target.outputs.base_url) }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           response_file="${RUNNER_TEMP}/rapna-sync.json"
@@ -66,14 +69,14 @@ jobs:
           ' "${http_code}" "${response_file}"
 
   current_parity:
-    needs: writer_gate
+    needs: [writer_gate, runtime_target]
     if: needs.writer_gate.outputs.allowed == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.schedule == '41 4 * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Reconcile the complete RAPNA CURRENT index
         env:
-          VIGIA_RAPNA_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/rapna/sync
+          VIGIA_RAPNA_SYNC_URL: ${{ format('{0}/api/rapna/sync', needs.runtime_target.outputs.base_url) }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           set -euo pipefail
