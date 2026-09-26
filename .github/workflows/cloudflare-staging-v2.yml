@@ -44,7 +44,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -70,6 +70,27 @@ jobs:
               test "$CF_D1" = "nagamealert-staging-db"
               sql="CREATE TABLE IF NOT EXISTS cf_chat_control_probe (nonce TEXT PRIMARY KEY, created_at TEXT NOT NULL); INSERT OR REPLACE INTO cf_chat_control_probe (nonce, created_at) VALUES ('$NONCE', datetime('now'));"
               wrangler d1 execute "$CF_D1" --remote --command "$sql" --yes --json >/dev/null
+              ;;
+            d1-info)
+              test "$CF_D1" = "nagamealert-staging-db"
+              info_json="$(wrangler d1 info "$CF_D1" --json)"
+              INFO_JSON="$info_json" node --input-type=module - <<'NODE'
+          const raw=JSON.parse(process.env.INFO_JSON||"{}");
+          const row=Array.isArray(raw)?raw[0]:raw;
+          if(!row||typeof row!=="object") throw new Error("invalid d1 info payload");
+          const fileSize=Number(row.file_size);
+          const numTables=Number(row.num_tables);
+          if(!Number.isSafeInteger(fileSize)||fileSize<0) throw new Error("missing d1 file_size");
+          if(!Number.isSafeInteger(numTables)||numTables<1) throw new Error("missing d1 num_tables");
+          console.log("D1_INFO "+JSON.stringify({
+            name:row.name??null,
+            fileSizeBytes:fileSize,
+            fileSizeGiB:Number((fileSize/1024/1024/1024).toFixed(4)),
+            numTables,
+            version:row.version??null,
+            runningInRegion:row.running_in_region??null,
+          }));
+          NODE
               ;;
             d1-canary-read)
               test "$CF_D1" = "nagamealert-staging-db"
