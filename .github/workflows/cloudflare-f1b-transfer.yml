@@ -193,7 +193,6 @@ jobs:
               nonce:request.nonce,
               contractSha256:sourceContractSha256,
               ledger:{count:source.ledger.count,first:source.ledger.first,last:source.ledger.last,has0013:source.ledger.has0013},
-              sequences:source.sequences,
             }));
             console.log("F1B_TARGET_PREFLIGHT "+JSON.stringify({
               contractSha256:targetContractSha256,
@@ -247,9 +246,11 @@ jobs:
               }
             }
             const sequences=await fetchJson(`${targetBase}/api/admin/migration-import?mode=sequences`,{
-              headers:targetHeaders,method:"POST",body:{sequences:source.sequences},
+              headers:targetHeaders,method:"POST",body:{derive:true},
             });
-            if(sequences?.import?.status!=="sequences-applied") throw new Error("sequence application failed");
+            if(sequences?.import?.status!=="sequences-derived"||!Array.isArray(sequences.import.sequences)) {
+              throw new Error("sequence derivation failed");
+            }
             const after=(await manifests()).target;
             if(!Array.isArray(after.importState)||after.importState.length!==tableOrder.length) {
               throw new Error("target import checkpoint disappeared after transfer");
@@ -264,7 +265,7 @@ jobs:
             console.log("F1B_TRANSFER_COMPLETE "+JSON.stringify({
               nonce:request.nonce,totalPages,totalRows,
               sourceContractSha256,
-              sequencesApplied:sequences.import.sequences,
+              sequencesDerived:sequences.import.sequences,
               tables:after.tables,
             }));
             process.exit(0);
@@ -273,9 +274,6 @@ jobs:
           if(request.operation==="parity") {
             const {source,target,sourceContractSha256}=await manifests();
             assertPinned(sourceContractSha256);
-            const sourceSeq=[...(source.sequences??[])].sort((a,b)=>a.name.localeCompare(b.name));
-            const targetSeq=[...(target.sequences??[])].sort((a,b)=>a.name.localeCompare(b.name));
-            if(!same(sourceSeq,targetSeq)) throw new Error("sqlite_sequence mismatch");
             let totalPages=0;
             let totalRows=0;
             for(const table of tableOrder) {
