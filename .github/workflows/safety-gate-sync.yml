@@ -14,8 +14,12 @@ permissions:
   contents: read
 
 jobs:
+  writer_gate:
+    uses: ./.github/workflows/runtime-writer-gate.yml
+
   safety_gate:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.schedule == '7,37 * * * *'
+    needs: writer_gate
+    if: needs.writer_gate.outputs.allowed == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.schedule == '7,37 * * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
@@ -160,7 +164,8 @@ jobs:
           fi
 
   oecd:
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '22,52 * * * *'
+    needs: writer_gate
+    if: needs.writer_gate.outputs.allowed == 'true' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '22,52 * * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
