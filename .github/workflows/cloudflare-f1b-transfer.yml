@@ -20,10 +20,8 @@ jobs:
     timeout-minutes: 350
     env:
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       SOURCE_BASE: https://vigia-alertas.csar68.chatgpt.site
       TARGET_BASE: https://vigia-runtime.c-gamiz93.workers.dev
-      CF_D1: nagamealert-staging-db
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -36,8 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$VIGIA_SYNC_TOKEN"
-          request="ops/cloudflare-f1b-transfer.request.json"
-          node --input-type=module - "$request" <<'NODE'
+          node --input-type=module - "ops/cloudflare-f1b-transfer.request.json" <<'NODE'
           import { readFile } from "node:fs/promises";
           import { createHash } from "node:crypto";
 
@@ -49,7 +46,155 @@ jobs:
           const allowedKeys=new Set(["operation","nonce","expectedSourceContractSha256"]);
           if(Object.keys(request).some((key)=>!allowedKeys.has(key))) throw new Error("unexpected request key");
           if(request.operation==="preflight") {
-            const {source,target,sourceContractSha256,targetContractSha256}=await manifests();
+            if("expectedSourceContractSha256" in request) throw new Error("preflight does not accept expectedSourceContractSha256");
+          } else if(typeof request.expectedSourceContractSha256!=="string"||
+                    !/^[a-f0-9]{64}$/.test(request.expectedSourceContractSha256)) {
+            throw new Error("expectedSourceContractSha256 is required");
+          }
+
+          const sourceBase=process.env.SOURCE_BASE;
+          const targetBase=process.env.TARGET_BASE;
+          const token=process.env.VIGIA_SYNC_TOKEN;
+          if(!sourceBase||!targetBase||!token) throw new Error("missing fixed transfer environment");
+
+          const sourceHeaders={
+            Authorization:`Bearer ${token}`,
+            "X-Nagame-Migration-Export":"NAGAMEALERT_OPERATIONAL_D1_EXPORT_V2",
+          };
+          const targetHeaders={
+            Authorization:`Bearer ${token}`,
+            "X-Nagame-Migration-Import":"NAGAMEALERT_STAGING_D1_IMPORT_V2",
+          };
+
+          const tableContract={
+            alerts:{keys:["id"],maxLimit:100},
+            alert_versions:{keys:["id"],maxLimit:100},
+            alert_source_identities:{keys:["alert_id"],maxLimit:100},
+            alert_aliases:{keys:["id"],maxLimit:100},
+            alert_dimension_state:{keys:["alert_id"],maxLimit:100},
+            alert_categories:{keys:["id"],maxLimit:100},
+            alert_hazards:{keys:["id"],maxLimit:100},
+            alert_geographies:{keys:["id"],maxLimit:100},
+            alert_actors:{keys:["id"],maxLimit:100},
+            source_checks:{keys:["id"],maxLimit:100},
+            source_freshness_state:{keys:["source"],maxLimit:100},
+            source_sync_state:{keys:["source","mode"],maxLimit:100},
+            source_sync_locks:{keys:["source"],maxLimit:100},
+            source_revision_certifications:{keys:["source","mode"],maxLimit:100},
+            source_backfill_snapshots:{keys:["id"],maxLimit:100},
+            source_backfill_snapshot_chunks:{keys:["snapshot_id","sequence"],maxLimit:4},
+            dimension_rebuild_state:{keys:["source"],maxLimit:100},
+          };
+          const tableOrder=Object.keys(tableContract);
+
+          const stable=(value)=>{
+            if(Array.isArray(value)) return value.map(stable);
+            if(value&&typeof value==="object") {
+              return Object.fromEntries(Object.entries(value)
+                .sort(([a],[b])=>a.localeCompare(b))
+                .map(([key,entry])=>[key,stable(entry)]));
+            }
+            return value;
+          };
+          const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+          const digestRows=(rows)=>createHash("sha256")
+            .update(rows.map((row)=>JSON.stringify(stable(row))).join("\n")).digest("hex");
+
+          async function fetchJson(url,{headers={},method="GET",body,timeout=120000}={}) {
+            const response=await fetch(url,{
+              method,
+              headers:{...headers,...(body!==undefined?{"Content-Type":"application/json"}:{})},
+              body:body===undefined?undefined:JSON.stringify(body),
+              signal:AbortSignal.timeout(timeout),
+              redirect:"follow",
+            });
+            const raw=await response.text();
+            let parsed=null;
+            try { parsed=JSON.parse(raw); } catch {}
+            if(!response.ok) {
+              const message=typeof parsed?.error==="string"?parsed.error.slice(0,500):`HTTP ${response.status}`;
+              throw new Error(`${new URL(url).pathname} failed: ${message}`);
+            }
+            return parsed;
+          }
+
+          function validateTargetManifest(target) {
+            if(!target||target.formatVersion!==2||target.pagination!=="logical-keyset"||
+               target.scope!=="operational-post-retention"||target.pre2020ArchiveIncluded!==false||
+               target.staging!==true) throw new Error("invalid target manifest");
+            if(target.ledger?.count!==13||target.ledger?.first!=="0000_massive_goliath.sql"||
+               target.ledger?.last!=="0012_useful_roulette.sql"||target.ledger?.has0013!==false||
+               !Array.isArray(target.ledger?.names)||target.ledger.names.length!==13) {
+              throw new Error("invalid target migration ledger");
+            }
+            if(typeof target.schema?.sha256!=="string"||!/^[a-f0-9]{64}$/.test(target.schema.sha256)) {
+              throw new Error("invalid target schema digest");
+            }
+            if(!same(target.tableContract,tableContract)) throw new Error("target logical contract mismatch");
+            if(!target.tables||tableOrder.some((table)=>!Number.isSafeInteger(target.tables[table])||target.tables[table]<0)) {
+              throw new Error("invalid target table counts");
+            }
+          }
+
+          async function targetState() {
+            const target=(await fetchJson(
+              `${targetBase}/api/admin/migration-import?mode=manifest`,
+              {headers:targetHeaders}
+            ))?.import;
+            validateTargetManifest(target);
+            const contractSha256=createHash("sha256").update(JSON.stringify(stable({
+              tableContract,
+              migrationNames:target.ledger.names,
+            }))).digest("hex");
+            return {target,contractSha256};
+          }
+
+          function validatePage(page,table,spec,cursor) {
+            if(!page||page.table!==table||!same(page.cursor,cursor)||!Array.isArray(page.rows)||
+               page.returned!==page.rows.length||page.rows.length>spec.maxLimit||
+               typeof page.hasMore!=="boolean"||typeof page.sha256!=="string"||
+               !/^[a-f0-9]{64}$/.test(page.sha256)||digestRows(page.rows)!==page.sha256) {
+              throw new Error(`invalid page contract for ${table}`);
+            }
+            if(page.hasMore&&(!page.rows.length||page.nextCursor===null)) {
+              throw new Error(`invalid continuation for ${table}`);
+            }
+            if(!page.hasMore&&page.nextCursor!==null) {
+              throw new Error(`terminal cursor invalid for ${table}`);
+            }
+            return page;
+          }
+
+          async function sourcePage(table,cursor,limit=tableContract[table].maxLimit) {
+            const spec=tableContract[table];
+            const params=new URLSearchParams({mode:"page",table,limit:String(limit)});
+            if(cursor!==null) params.set("cursor",JSON.stringify(cursor));
+            const page=(await fetchJson(
+              `${sourceBase}/api/admin/migration-export?${params}`,
+              {headers:sourceHeaders}
+            ))?.export;
+            return validatePage(page,table,spec,cursor);
+          }
+
+          async function targetPage(table,cursor) {
+            const spec=tableContract[table];
+            const params=new URLSearchParams({mode:"page",table,limit:String(spec.maxLimit)});
+            if(cursor!==null) params.set("cursor",JSON.stringify(cursor));
+            const page=(await fetchJson(
+              `${targetBase}/api/admin/migration-import?${params}`,
+              {headers:targetHeaders}
+            ))?.import;
+            return validatePage(page,table,spec,cursor);
+          }
+
+          const assertPinned=(contractSha256)=>{
+            if(contractSha256!==request.expectedSourceContractSha256) {
+              throw new Error("versioned migration contract moved after preflight");
+            }
+          };
+
+          if(request.operation==="preflight") {
+            const {target,contractSha256}=await targetState();
             if(!Array.isArray(target.importState)||target.importState.length!==tableOrder.length) {
               throw new Error("target import checkpoint is not initialized");
             }
@@ -57,13 +202,13 @@ jobs:
               throw new Error("target operational tables are not empty before initial transfer");
             }
             if(target.importState.some((row)=>
-              Number(row.completed)!==0||Number(row.pages)!==0||Number(row.rows_imported)!==0||row.cursor_json!==null
-            )) {
-              throw new Error("target import checkpoint is not clean before initial transfer");
-            }
+              Number(row.completed)!==0||Number(row.pages)!==0||
+              Number(row.rows_imported)!==0||row.cursor_json!==null
+            )) throw new Error("target import checkpoint is not clean before initial transfer");
+
             const probes=[];
             for(const table of tableOrder) {
-              const page=await sourceProbe(table,tableContract[table]);
+              const page=await sourcePage(table,null,1);
               probes.push({
                 table,
                 returned:page.returned,
@@ -72,16 +217,20 @@ jobs:
                 lastCursor:page.lastCursor,
               });
             }
+
             console.log("F1B_SOURCE_PREFLIGHT "+JSON.stringify({
               nonce:request.nonce,
-              contractBasis:"versioned-17-table-page-contract+certified-0012-baseline",
-              contractSha256:sourceContractSha256,
+              contractBasis:"versioned-17-table-page-contract+previously-certified-production-0012-baseline",
+              contractSha256,
               sourcePageProbes:probes,
             }));
             console.log("F1B_TARGET_PREFLIGHT "+JSON.stringify({
-              contractSha256:targetContractSha256,
+              contractSha256,
               schema:target.schema,
-              ledger:{count:target.ledger.count,first:target.ledger.first,last:target.ledger.last,has0013:target.ledger.has0013},
+              ledger:{
+                count:target.ledger.count,first:target.ledger.first,
+                last:target.ledger.last,has0013:target.ledger.has0013
+              },
               tables:target.tables,
               importStateRows:target.importState.length,
               extraTables:target.extraTables,
@@ -90,38 +239,39 @@ jobs:
           }
 
           if(request.operation==="transfer-resume") {
-            const {source,target,sourceContractSha256}=await manifests();
-            assertPinned(sourceContractSha256);
+            const {target,contractSha256}=await targetState();
+            assertPinned(contractSha256);
             if(!Array.isArray(target.importState)||target.importState.length!==tableOrder.length) {
               throw new Error("target import checkpoint is not initialized");
             }
             const states=new Map(target.importState.map((row)=>[row.table_name,row]));
-            let totalPages=0;
-            let totalRows=0;
+            let totalPages=0,totalRows=0;
+
             for(const table of tableOrder) {
-              const spec=source.tableContract[table];
               const state=states.get(table);
               if(!state) throw new Error(`missing target state for ${table}`);
               if(Number(state.completed)===1) {
-                console.log("F1B_TRANSFER_TABLE "+JSON.stringify({table,status:"already-complete",rows:Number(state.rows_imported),pages:Number(state.pages)}));
+                console.log("F1B_TRANSFER_TABLE "+JSON.stringify({
+                  table,status:"already-complete",
+                  rows:Number(state.rows_imported),pages:Number(state.pages)
+                }));
                 continue;
               }
               let cursor=state.cursor_json===null?null:JSON.parse(String(state.cursor_json));
               let pages=Number(state.pages)||0;
               let rows=Number(state.rows_imported)||0;
+
               while(true) {
-                const page=await sourcePage(table,spec,cursor);
-                const applied=await fetchJson(`${targetBase}/api/admin/migration-import?mode=page`,{
-                  headers:targetHeaders,method:"POST",body:page,timeout:180000,
-                });
-                if(applied?.import?.status!=="page-applied"||applied?.import?.table!==table||
-                   applied?.import?.rows!==page.returned||applied?.import?.hasMore!==page.hasMore) {
+                const page=await sourcePage(table,cursor);
+                const applied=(await fetchJson(
+                  `${targetBase}/api/admin/migration-import?mode=page`,
+                  {headers:targetHeaders,method:"POST",body:page,timeout:180000}
+                ))?.import;
+                if(applied?.status!=="page-applied"||applied.table!==table||
+                   applied.rows!==page.returned||applied.hasMore!==page.hasMore) {
                   throw new Error(`target rejected page contract for ${table}`);
                 }
-                pages+=1;
-                rows+=page.returned;
-                totalPages+=1;
-                totalRows+=page.returned;
+                pages+=1; rows+=page.returned; totalPages+=1; totalRows+=page.returned;
                 if(pages%25===0||!page.hasMore) {
                   console.log("F1B_TRANSFER_PROGRESS "+JSON.stringify({table,pages,rows,hasMore:page.hasMore}));
                 }
@@ -129,16 +279,16 @@ jobs:
                 cursor=page.nextCursor;
               }
             }
-            const sequences=await fetchJson(`${targetBase}/api/admin/migration-import?mode=sequences`,{
-              headers:targetHeaders,method:"POST",body:{derive:true},
-            });
-            if(sequences?.import?.status!=="sequences-derived"||!Array.isArray(sequences.import.sequences)) {
+
+            const sequences=(await fetchJson(
+              `${targetBase}/api/admin/migration-import?mode=sequences`,
+              {headers:targetHeaders,method:"POST",body:{derive:true}}
+            ))?.import;
+            if(sequences?.status!=="sequences-derived"||!Array.isArray(sequences.sequences)) {
               throw new Error("sequence derivation failed");
             }
-            const after=(await manifests()).target;
-            if(!Array.isArray(after.importState)||after.importState.length!==tableOrder.length) {
-              throw new Error("target import checkpoint disappeared after transfer");
-            }
+
+            const after=(await targetState()).target;
             const afterStates=new Map(after.importState.map((row)=>[row.table_name,row]));
             for(const table of tableOrder) {
               const state=afterStates.get(table);
@@ -146,39 +296,34 @@ jobs:
                 throw new Error(`post-transfer checkpoint/count mismatch for ${table}`);
               }
             }
+
             console.log("F1B_TRANSFER_COMPLETE "+JSON.stringify({
               nonce:request.nonce,totalPages,totalRows,
-              sourceContractSha256,
-              sequencesDerived:sequences.import.sequences,
+              sourceContractSha256:contractSha256,
+              sequencesDerived:sequences.sequences,
               tables:after.tables,
             }));
             process.exit(0);
           }
 
           if(request.operation==="parity") {
-            const {source,target,sourceContractSha256}=await manifests();
-            assertPinned(sourceContractSha256);
-            let totalPages=0;
-            let totalRows=0;
+            const {target,contractSha256}=await targetState();
+            assertPinned(contractSha256);
+            let totalPages=0,totalRows=0;
+
             for(const table of tableOrder) {
-              const spec=source.tableContract[table];
-              let cursor=null;
-              let pages=0;
-              let rows=0;
+              let cursor=null,pages=0,rows=0;
               while(true) {
                 const [left,right]=await Promise.all([
-                  sourcePage(table,spec,cursor),
-                  targetPage(table,spec,cursor),
+                  sourcePage(table,cursor),
+                  targetPage(table,cursor),
                 ]);
                 if(left.returned!==right.returned||left.hasMore!==right.hasMore||
                    !same(left.lastCursor,right.lastCursor)||!same(left.nextCursor,right.nextCursor)||
                    left.sha256!==right.sha256) {
                   throw new Error(`page parity mismatch for ${table} after ${JSON.stringify(cursor)}`);
                 }
-                pages+=1;
-                rows+=left.returned;
-                totalPages+=1;
-                totalRows+=left.returned;
+                pages+=1; rows+=left.returned; totalPages+=1; totalRows+=left.returned;
                 if(pages%50===0||!left.hasMore) {
                   console.log("F1B_PARITY_PROGRESS "+JSON.stringify({table,pages,rows,hasMore:left.hasMore}));
                 }
@@ -186,12 +331,15 @@ jobs:
                 cursor=left.nextCursor;
               }
               if(target.tables[table]!==rows) {
-                throw new Error(`target count mismatch after full parity scan for ${table}: target=${target.tables[table]} scanned=${rows}`);
+                throw new Error(
+                  `target count mismatch after full parity scan for ${table}: target=${target.tables[table]} scanned=${rows}`
+                );
               }
             }
+
             console.log("F1B_PARITY_PASS "+JSON.stringify({
               nonce:request.nonce,totalPages,totalRows,
-              sourceContractSha256,
+              sourceContractSha256:contractSha256,
               targetSchemaSha256:target.schema.sha256,
               targetLedgerCount:target.ledger.count,
               targetHas0013:target.ledger.has0013,
