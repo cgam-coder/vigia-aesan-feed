@@ -1,0 +1,54 @@
+name: Cloudflare migration exact export
+
+on:
+  push:
+    branches:
+      - work/cloudflare-migration-transport
+    paths:
+      - "ops/cloudflare-migration-export-request.json"
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+      NAGAMEALERT_SOURCE_BASE: https://vigia-alertas.csar68.chatgpt.site
+      NAGAMEALERT_EXPORT_DIR: export
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Validate one-shot request
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const request=JSON.parse(await readFile("ops/cloudflare-migration-export-request.json","utf8"));
+          const exact=JSON.stringify(Object.keys(request).sort());
+          if(exact!==JSON.stringify(["authorized","expectedLedger","pre2020"].sort())) throw new Error("Unexpected request shape");
+          if(request.authorized!==true || request.expectedLedger!=="0012" || request.pre2020!==false) throw new Error("Request gate failed");
+          NODE
+      - name: Export exact operational D1
+        run: node scripts/cloudflare-migration-export.mjs
+      - name: Package export
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf nagamealert-operational-d1-export.tar.gz export
+          sha256sum nagamealert-operational-d1-export.tar.gz > nagamealert-operational-d1-export.tar.gz.sha256
+          bytes="$(stat -c '%s' nagamealert-operational-d1-export.tar.gz)"
+          echo "EXPORT_ARCHIVE_BYTES=$bytes"
+          cat nagamealert-operational-d1-export.tar.gz.sha256
+      - name: Upload short-retention migration artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nagamealert-operational-d1-export-${{ github.run_id }}
+          path: |
+            nagamealert-operational-d1-export.tar.gz
+            nagamealert-operational-d1-export.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
