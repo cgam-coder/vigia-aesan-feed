@@ -34,7 +34,7 @@ jobs:
       - name: Preview, repair only when required, and re-audit
         shell: bash
         env:
-          VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+          VIGIA_BASE_URL: "${{ needs.writer_gate.outputs.base_url }}"
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           set -euo pipefail
