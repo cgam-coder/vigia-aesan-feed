@@ -145,7 +145,18 @@ jobs:
                 --header "X-Nagame-Migration-Import: NAGAMEALERT_STAGING_D1_IMPORT_V2" \
                 --output "$RUNNER_TEMP/f1b-import-manifest.json" --write-out '%{http_code}' \
                 "$base/api/admin/migration-import?mode=manifest")"
-              test "$code" = "200"
+              if [ "$code" != "200" ]; then
+                HTTP_CODE="$code" node - "$RUNNER_TEMP/f1b-import-manifest.json" <<'NODE'
+          const fs=require("fs");
+          let error="non-json response";
+          try {
+            const body=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
+            if(typeof body?.error==="string") error=body.error.slice(0,500);
+          } catch {}
+          console.log("F1B_IMPORT_MANIFEST_ERROR "+JSON.stringify({http:Number(process.env.HTTP_CODE),error}));
+          NODE
+                exit 1
+              fi
               node - "$RUNNER_TEMP/f1b-import-manifest.json" <<'NODE'
           const fs=require("fs");
           const body=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
