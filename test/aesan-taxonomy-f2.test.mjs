@@ -12,6 +12,38 @@ import { AESAN_LIST_URL } from "../scripts/aesan.mjs";
 
 const reviewed = JSON.parse(await readFile(new URL("fixtures/aesan-taxonomy-f0-reviewed.json", import.meta.url))).publications;
 const feed = JSON.parse(await readFile(new URL("../feed.json", import.meta.url)));
+const projectReviewedCorpus = (sourceFeed, publications) => {
+  const reviewedUrls = new Set(publications.map((item) => item.url));
+  const alerts = sourceFeed.alerts
+    .filter((alert) => reviewedUrls.has(alert.url))
+    .map((alert) => {
+      const projected = { ...alert };
+      if (Array.isArray(alert.publicationHistory)) {
+        const history = alert.publicationHistory.filter((item) => reviewedUrls.has(item.url));
+        if (history.length) projected.publicationHistory = history;
+        else delete projected.publicationHistory;
+      }
+      if (alert.publicationSelection && Array.isArray(alert.publicationSelection.members)) {
+        projected.publicationSelection = {
+          ...alert.publicationSelection,
+          members:alert.publicationSelection.members.filter((item) => reviewedUrls.has(item.url)),
+        };
+      }
+      if (alert.aesanAlertClassification && Array.isArray(alert.aesanAlertClassification.publications)) {
+        projected.aesanAlertClassification = {
+          ...alert.aesanAlertClassification,
+          publications:alert.aesanAlertClassification.publications.filter((item) => reviewedUrls.has(item.url)),
+        };
+      }
+      return projected;
+    });
+  return {
+    ...sourceFeed,
+    archive:sourceFeed.archive ? { ...sourceFeed.archive, totalAlerts:alerts.length } : sourceFeed.archive,
+    alerts,
+  };
+};
+const reviewedFeed = projectReviewedCorpus(feed, reviewed);
 const codes = Object.keys(ALERT_TYPES);
 const path = (suffix) => `https://www.aesan.gob.es/alertas/${suffix}`;
 const selector = (selected) => `<select id="filter-select" value="${ALERT_TYPES[selected].sourceTypeId}">${codes.map((code) =>
@@ -90,14 +122,14 @@ test("drift: broken/changed pagination, failed page, duplicated cross-category U
   await assert.rejects(scanOfficialTaxonomy(conflicting.fetch), /multiple categories/u);
 });
 
-test("F0 offline replay: 166 preserved publications, 165 known, ES382 unknown, three external gaps", () => {
+test("F0 frozen replay: 166 reviewed publications, 165 known, ES382 unknown, three external gaps", () => {
   assert.equal(reviewed.length, 166);
   const counts = Object.fromEntries(codes.map((code) => [code, reviewed.filter((x) => x.code === code).length]));
   assert.deepEqual(counts, { general_population:80, allergy_intolerance_adverse:71, food_supplements:14 });
   const memberships = new Map(reviewed.filter((x) => x.code).map((item) => [item.url, [ALERT_TYPES[item.code]]]));
   const gaps = ["2025_13", "2025_13_Amp", "2025_05"].map(path);
   for (const url of gaps) memberships.set(url, [ALERT_TYPES.general_population]);
-  const { feed:enriched, diagnostics } = enrichFeedTaxonomy(feed, { memberships }, { reviewed });
+  assert.equal(reviewedFeed.alerts.length, 127);\n  assert.equal(reviewedFeed.alerts.flatMap(publicationMembers).length, 166);\n  const { feed:enriched, diagnostics } = enrichFeedTaxonomy(reviewedFeed, { memberships }, { reviewed });
   assert.equal(enriched.alerts.length, 127);
   assert.deepEqual(diagnostics.gaps, gaps.sort());
   assert.deepEqual(diagnostics.unknown, [{ reference:"ES2026/382", urls:[path("2026_52_Ampliacion_1")] }]);
@@ -121,7 +153,7 @@ test("F0 offline replay: 166 preserved publications, 165 known, ES382 unknown, t
   assert.equal(es382.publications.find((x) => x.url === path("2026_52")).matches[0].code, "allergy_intolerance_adverse");
   assert.deepEqual(es382.publications.find((x) => x.url === path("2026_52_Ampliacion_1")).matches, []);
   const strip = (alert) => { const copy = { ...alert }; delete copy.aesanAlertClassification; return copy; };
-  assert.deepEqual(enriched.alerts.map(strip), feed.alerts.map(strip));
+  assert.deepEqual(enriched.alerts.map(strip), reviewedFeed.alerts.map(strip));
   assert.deepEqual(enriched.alerts.flatMap(publicationMembers).filter((x) => x.url === path("2025_13")), []);
   assert.deepEqual(enrichFeedTaxonomy(enriched, { memberships }, { reviewed }).feed, enriched);
   const single = enriched.alerts.map((x) => Buffer.byteLength(JSON.stringify(x.aesanAlertClassification)));
@@ -148,7 +180,7 @@ test("F2 read-only 62-page capture replays exact current metrics and SHA-256 fix
     allergy_intolerance_adverse:[25, 497, 71], food_supplements:[5, 98, 14], general_population:[30, 581, 83],
   });
   assert.equal(scan.memberships.size, 168);
-  const { diagnostics } = enrichFeedTaxonomy(feed, scan, { reviewed });
+  const { diagnostics } = enrichFeedTaxonomy(reviewedFeed, scan, { reviewed });
   assert.deepEqual(diagnostics.gaps, [path("2025_05"), path("2025_13"), path("2025_13_Amp")]);
   assert.deepEqual(diagnostics.disappeared, []);
   assert.deepEqual(diagnostics.unknown, [{ reference:"ES2026/382", urls:[path("2026_52_Ampliacion_1")] }]);
