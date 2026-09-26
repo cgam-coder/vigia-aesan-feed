@@ -18,6 +18,7 @@ jobs:
 
   retry-recent-if-stale:
     needs: writer_gate
+    if: needs.writer_gate.outputs.allowed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     concurrency:
