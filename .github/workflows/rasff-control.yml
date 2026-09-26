@@ -21,8 +21,12 @@ permissions:
   contents: read
 
 jobs:
+  writer_gate:
+    uses: ./.github/workflows/runtime-writer-gate.yml
+
   recent:
-    if: github.event_name == 'schedule' && github.event.schedule == '9,39 * * * *' || github.event_name == 'workflow_dispatch' && inputs.lane == 'recent'
+    needs: writer_gate
+    if: needs.writer_gate.outputs.allowed == 'true' && (github.event_name == 'schedule' && github.event.schedule == '9,39 * * * *' || github.event_name == 'workflow_dispatch' && inputs.lane == 'recent')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency:
@@ -42,7 +46,8 @@ jobs:
           node scripts/rasff-control.mjs recent
 
   reconcile:
-    if: github.event_name == 'push' || github.event_name == 'schedule' && github.event.schedule == '17 * * * *' || github.event_name == 'workflow_dispatch' && inputs.lane == 'reconcile'
+    needs: writer_gate
+    if: needs.writer_gate.outputs.allowed == 'true' && (github.event_name == 'push' || github.event_name == 'schedule' && github.event.schedule == '17 * * * *' || github.event_name == 'workflow_dispatch' && inputs.lane == 'reconcile')
     runs-on: ubuntu-latest
     timeout-minutes: 360
     concurrency:

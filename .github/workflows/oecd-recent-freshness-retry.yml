@@ -13,7 +13,12 @@ permissions:
   contents: read
 
 jobs:
+  writer_gate:
+    uses: ./.github/workflows/runtime-writer-gate.yml
+
   retry-recent-if-stale:
+    needs: writer_gate
+    if: needs.writer_gate.outputs.allowed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     concurrency:

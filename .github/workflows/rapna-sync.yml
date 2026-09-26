@@ -19,8 +19,12 @@ permissions:
   contents: read
 
 jobs:
+  writer_gate:
+    uses: ./.github/workflows/runtime-writer-gate.yml
+
   sync:
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '23 * * * *' || github.event.schedule == '53 * * * *'
+    needs: writer_gate
+    if: needs.writer_gate.outputs.allowed == 'true' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '23 * * * *' || github.event.schedule == '53 * * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -62,7 +66,8 @@ jobs:
           ' "${http_code}" "${response_file}"
 
   current_parity:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.schedule == '41 4 * * *'
+    needs: writer_gate
+    if: needs.writer_gate.outputs.allowed == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.schedule == '41 4 * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
