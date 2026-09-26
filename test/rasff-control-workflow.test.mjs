@@ -72,7 +72,7 @@ test("RASFF never recovers semantic errors or malformed D1 references as transie
 test("a workflow release activates one gated reconcile without restarting the corpus", () => {
   assert.match(workflow, /push:\n\s+branches: \[main\]\n\s+paths:\n\s+- "\.github\/workflows\/rasff-control\.yml"/u);
   assert.match(workflow, /writer_gate:\n\s+uses: \.\/\.github\/workflows\/runtime-writer-gate\.yml/u);
-  assert.equal((workflow.match(/needs: writer_gate/gu) ?? []).length, 2);
+  assert.match(workflow, /runtime_target:\\n\\s+uses: \\.\\/\\.github\\/workflows\\/runtime-writer-target\\.yml/u);\n  assert.equal((workflow.match(/needs: \\[writer_gate, runtime_target\\]/gu) ?? []).length, 2);
   assert.match(workflow, /if: needs\.writer_gate\.outputs\.allowed == 'true' && \(github\.event_name == 'push'/u);
   assert.match(workflow, /node scripts\/rasff-control\.mjs reconcile/u);
   assert.doesNotMatch(workflow, /restart=1/u);
