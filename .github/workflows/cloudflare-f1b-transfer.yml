@@ -105,10 +105,10 @@ jobs:
             return parsed;
           }
 
-          function validateManifest(m,{staging}) {
+          function validateContract(m,{staging,requiresCounts}) {
             if(!m||m.formatVersion!==2||m.pagination!=="logical-keyset"||
                m.scope!=="operational-post-retention"||m.pre2020ArchiveIncluded!==false) {
-              throw new Error("invalid F1B manifest contract");
+              throw new Error("invalid F1B contract");
             }
             if(staging&&m.staging!==true) throw new Error("target is not staging");
             if(m.ledger?.count!==13||m.ledger?.first!=="0000_massive_goliath.sql"||
@@ -118,7 +118,8 @@ jobs:
             if(typeof m.schema?.sha256!=="string"||!/^[a-f0-9]{64}$/.test(m.schema.sha256)) {
               throw new Error("invalid schema digest");
             }
-            if(!m.tableContract||!m.tables) throw new Error("missing table contract");
+            if(!m.tableContract) throw new Error("missing table contract");
+            if(requiresCounts&&!m.tables) throw new Error("target manifest counts missing");
             if(!same(Object.keys(m.tableContract),tableOrder)) throw new Error("unexpected table order");
             for(const table of tableOrder) {
               const spec=m.tableContract[table];
@@ -126,19 +127,21 @@ jobs:
                  !Number.isSafeInteger(spec.maxLimit)||spec.maxLimit<1||spec.maxLimit>100) {
                 throw new Error(`invalid table contract for ${table}`);
               }
-              if(!Number.isSafeInteger(m.tables[table])||m.tables[table]<0) throw new Error(`invalid count for ${table}`);
+              if(m.tables!==undefined&&(!Number.isSafeInteger(m.tables[table])||m.tables[table]<0)) {
+                throw new Error(`invalid count for ${table}`);
+              }
             }
           }
 
           async function manifests() {
             const [sourceBody,targetBody]=await Promise.all([
-              fetchJson(`${sourceBase}/api/admin/migration-export?mode=manifest`,{headers:sourceHeaders}),
+              fetchJson(`${sourceBase}/api/admin/migration-export?mode=contract`,{headers:sourceHeaders}),
               fetchJson(`${targetBase}/api/admin/migration-import?mode=manifest`,{headers:targetHeaders}),
             ]);
             const source=sourceBody?.export;
             const target=targetBody?.import;
-            validateManifest(source,{staging:false});
-            validateManifest(target,{staging:true});
+            validateContract(source,{staging:false,requiresCounts:false});
+            validateContract(target,{staging:true,requiresCounts:true});
             if(source.schema.sha256!==target.schema.sha256) throw new Error("source/target schema digest mismatch");
             if(!same(source.tableContract,target.tableContract)) throw new Error("source/target logical contract mismatch");
             return {source,target};
@@ -182,7 +185,6 @@ jobs:
               nonce:request.nonce,
               schema:source.schema,
               ledger:{count:source.ledger.count,first:source.ledger.first,last:source.ledger.last,has0013:source.ledger.has0013},
-              tables:source.tables,
               sequences:source.sequences,
             }));
             console.log("F1B_TARGET_PREFLIGHT "+JSON.stringify({
@@ -240,8 +242,15 @@ jobs:
             });
             if(sequences?.import?.status!=="sequences-applied") throw new Error("sequence application failed");
             const after=(await manifests()).target;
+            if(!Array.isArray(after.importState)||after.importState.length!==tableOrder.length) {
+              throw new Error("target import checkpoint disappeared after transfer");
+            }
+            const afterStates=new Map(after.importState.map((row)=>[row.table_name,row]));
             for(const table of tableOrder) {
-              if(after.tables[table]!==source.tables[table]) throw new Error(`post-transfer count mismatch for ${table}`);
+              const state=afterStates.get(table);
+              if(!state||Number(state.completed)!==1||Number(state.rows_imported)!==after.tables[table]) {
+                throw new Error(`post-transfer checkpoint/count mismatch for ${table}`);
+              }
             }
             console.log("F1B_TRANSFER_COMPLETE "+JSON.stringify({
               nonce:request.nonce,totalPages,totalRows,
@@ -255,9 +264,6 @@ jobs:
           if(request.operation==="parity") {
             const {source,target}=await manifests();
             assertPinned(source);
-            for(const table of tableOrder) {
-              if(source.tables[table]!==target.tables[table]) throw new Error(`count mismatch for ${table}`);
-            }
             const sourceSeq=[...(source.sequences??[])].sort((a,b)=>a.name.localeCompare(b.name));
             const targetSeq=[...(target.sequences??[])].sort((a,b)=>a.name.localeCompare(b.name));
             if(!same(sourceSeq,targetSeq)) throw new Error("sqlite_sequence mismatch");
@@ -287,6 +293,9 @@ jobs:
                 }
                 if(!left.hasMore) break;
                 cursor=left.nextCursor;
+              }
+              if(target.tables[table]!==rows) {
+                throw new Error(`target count mismatch after full parity scan for ${table}: target=${target.tables[table]} scanned=${rows}`);
               }
             }
             console.log("F1B_PARITY_PASS "+JSON.stringify({
