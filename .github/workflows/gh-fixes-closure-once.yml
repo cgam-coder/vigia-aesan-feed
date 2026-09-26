@@ -21,6 +21,7 @@ jobs:
 
   repair-and-verify:
     needs: writer_gate
+    if: needs.writer_gate.outputs.allowed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
