@@ -294,7 +294,7 @@ jobs:
 
           // 6. Read-only Worker smoke against owner-controlled runtime.
           const smokePaths=[
-            "/","/es/","/es/alertas/","/api/v2/alerts?limit=1",
+            "/","/es/","/es/alertas/","/api/v2/alerts?pageSize=1",
             "/api/aesan/sync?observe=1","/api/rapna/sync?observe=1",
             "/api/safety-gate/sync?observe=1","/api/oecd/sync?observe=1",
             "/api/rasff/sync?observe=1"
