@@ -1,4 +1,4 @@
 {
-  "operation": "f1b-import-manifest",
-  "nonce": "f1b-final-delta-resume-progress-20260926-1726"
+  "operation": "owner-runtime-post-preflight",
+  "nonce": "owner-runtime-post-preflight-20260926-1729"
 }
