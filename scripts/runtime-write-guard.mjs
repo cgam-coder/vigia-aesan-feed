@@ -1,3 +1,4 @@
+import { appendFile } from "node:fs/promises";
 import { readFile } from "node:fs/promises";
 
 const path = new URL("../ops/runtime-write-freeze.json", import.meta.url);
@@ -17,9 +18,15 @@ if (raw.reason !== null && (typeof raw.reason !== "string" || raw.reason.length 
   throw new Error("RUNTIME_WRITE_GATE invalid reason");
 }
 
-if (raw.frozen) {
-  console.error("RUNTIME_WRITE_GATE=FROZEN reason=" + (raw.reason ?? "unspecified"));
-  process.exit(78);
+const state = raw.frozen ? "FROZEN" : "OPEN";
+const reason = raw.reason ?? (raw.frozen ? "unspecified" : "normal-operation");
+console.log(`RUNTIME_WRITE_GATE=${state} reason=${reason}`);
+
+if (process.env.GITHUB_OUTPUT) {
+  const outputReason = String(reason).replace(/[\r\n]/gu, " ").slice(0, 200);
+  await appendFile(process.env.GITHUB_OUTPUT,
+    `allowed=${raw.frozen ? "false" : "true"}\nfrozen=${raw.frozen ? "true" : "false"}\nreason=${outputReason}\n`,
+    "utf8");
 }
 
-console.log("RUNTIME_WRITE_GATE=OPEN");
+if (raw.frozen) process.exit(0);
