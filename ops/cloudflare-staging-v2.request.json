@@ -1,4 +1,4 @@
 {
-  "operation": "staging-http-smoke",
-  "nonce": "cf-stage-http-smoke-20260926-0657"
+  "operation": "worker-versions",
+  "nonce": "cf-stage-worker-versions-20260926-0659"
 }
