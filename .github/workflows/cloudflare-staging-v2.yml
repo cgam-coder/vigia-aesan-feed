@@ -44,7 +44,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","owner-runtime-readonly-smoke"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -70,6 +70,48 @@ jobs:
               test "$CF_D1" = "nagamealert-staging-db"
               sql="CREATE TABLE IF NOT EXISTS cf_chat_control_probe (nonce TEXT PRIMARY KEY, created_at TEXT NOT NULL); INSERT OR REPLACE INTO cf_chat_control_probe (nonce, created_at) VALUES ('$NONCE', datetime('now'));"
               wrangler d1 execute "$CF_D1" --remote --command "$sql" --yes --json >/dev/null
+              ;;
+            owner-runtime-readonly-smoke)
+              test -n "$VIGIA_SYNC_TOKEN"
+              base="https://vigia-runtime.c-gamiz93.workers.dev"
+              for path in / /es/ /es/alertas; do
+                code="$(curl --silent --show-error --location --max-time 60 \
+                  --output "$RUNNER_TEMP/public-smoke.json" --write-out '%{http_code}' "$base$path")"
+                test "$code" = "200"
+                echo "OWNER_RUNTIME_PUBLIC path=$path status=$code bytes=$(wc -c < "$RUNNER_TEMP/public-smoke.json")"
+              done
+              for endpoint in aesan rapna safety-gate oecd rasff; do
+                code="$(curl --silent --show-error --location --max-time 60 \
+                  --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
+                  --output "$RUNNER_TEMP/$endpoint-observe.json" --write-out '%{http_code}' \
+                  "$base/api/$endpoint/sync?observe=1")"
+                test "$code" = "200"
+                ENDPOINT="$endpoint" node --input-type=module - "$RUNNER_TEMP/$endpoint-observe.json" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.argv[2],"utf8"));
+          if(!body||typeof body!=="object"||Array.isArray(body)) throw new Error("invalid observe body");
+          console.log("OWNER_RUNTIME_OBSERVE "+JSON.stringify({
+            endpoint:process.env.ENDPOINT,
+            keys:Object.keys(body).sort(),
+            hasLease:Object.prototype.hasOwnProperty.call(body,"lease"),
+          }));
+          NODE
+              done
+              code="$(curl --silent --show-error --location --max-time 60 \
+                --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
+                --output "$RUNNER_TEMP/freshness-observe.json" --write-out '%{http_code}' \
+                "$base/api/freshness?observe=1")"
+              test "$code" = "200"
+              node --input-type=module - "$RUNNER_TEMP/freshness-observe.json" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.argv[2],"utf8"));
+          if(!Array.isArray(body?.states)) throw new Error("invalid freshness observe body");
+          console.log("OWNER_RUNTIME_FRESHNESS "+JSON.stringify({
+            states:body.states.length,
+            sources:body.states.map((row)=>row.source).filter(Boolean).sort(),
+          }));
+          NODE
+              echo "OWNER_RUNTIME_READONLY_SMOKE status=PASS"
               ;;
             d1-info)
               test "$CF_D1" = "nagamealert-staging-db"
