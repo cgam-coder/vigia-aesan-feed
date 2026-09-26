@@ -39,12 +39,41 @@ jobs:
           import { createHash } from "node:crypto";
 
           const request=JSON.parse(await readFile(process.argv[2],"utf8"));
-          const operations=new Set(["preflight","transfer-resume","repair-parity","parity"]);
+          const operations=new Set(["preflight","transfer-resume","repair-parity","parity","diagnose-category-page"]);
           if(!request||typeof request!=="object"||Array.isArray(request)) throw new Error("invalid request");
           if(typeof request.operation!=="string"||!operations.has(request.operation)) throw new Error("operation not allowed");
           if(typeof request.nonce!=="string"||!/^[A-Za-z0-9._:-]{8,120}$/.test(request.nonce)) throw new Error("invalid nonce");
           const allowedKeys=new Set(["operation","nonce","expectedSourceContractSha256"]);
           if(Object.keys(request).some((key)=>!allowedKeys.has(key))) throw new Error("unexpected request key");
+          if(request.operation==="diagnose-category-page") {
+            const {target,contractSha256}=await targetState();
+            assertPinned(contractSha256);
+            const cursor=[217581];
+            const [source,targetPageValue]=await Promise.all([
+              sourcePage("alert_categories",cursor),
+              targetPage("alert_categories",cursor),
+            ]);
+            console.log("F1B_DIAGNOSE_CATEGORY_PAGE "+JSON.stringify({
+              cursor,
+              source:{
+                returned:source.returned,
+                hasMore:source.hasMore,
+                lastCursor:source.lastCursor,
+                nextCursor:source.nextCursor,
+                sha256:source.sha256
+              },
+              target:{
+                returned:targetPageValue.returned,
+                hasMore:targetPageValue.hasMore,
+                lastCursor:targetPageValue.lastCursor,
+                nextCursor:targetPageValue.nextCursor,
+                sha256:targetPageValue.sha256
+              },
+              targetCount:target.tables.alert_categories
+            }));
+            process.exit(0);
+          }
+
           if(request.operation==="preflight") {
             if("expectedSourceContractSha256" in request) throw new Error("preflight does not accept expectedSourceContractSha256");
           } else if(typeof request.expectedSourceContractSha256!=="string"||
