@@ -44,7 +44,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","f1b-source-page-probe","f1b-contract-staging-proof"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -317,85 +317,6 @@ jobs:
           if(!m||Object.values(m.tables??{}).some(v=>v!==0)||m.ledger?.count!==13||m.ledger?.has0013!==false) throw new Error("canary cleanup failed");
           if(!Array.isArray(m.importState)||m.importState.length!==17||m.importState.some(r=>Number(r.completed)!==0||Number(r.rows_imported)!==0)) throw new Error("canary checkpoint cleanup failed");
           console.log("F1B_IMPORT_CANARY_CLEAN "+JSON.stringify({ledgerCount:m.ledger.count,has0013:m.ledger.has0013,stateRows:m.importState.length}));
-          NODE
-              ;;
-            f1b-source-page-probe)
-              test -n "$VIGIA_SYNC_TOKEN"
-              base="https://vigia-alertas.csar68.chatgpt.site"
-              common_export=(
-                --header "Authorization: Bearer $VIGIA_SYNC_TOKEN"
-                --header "X-Nagame-Migration-Export: NAGAMEALERT_OPERATIONAL_D1_EXPORT_V2"
-              )
-              for table in alerts alert_versions source_sync_locks source_backfill_snapshot_chunks; do
-                out="$RUNNER_TEMP/source-page-$table.json"
-                code="$(curl --silent --show-error --location --max-time 60 \
-                  "${common_export[@]}" \
-                  --output "$out" --write-out '%{http_code}' \
-                  "$base/api/admin/migration-export?mode=page&table=$table&limit=1")"
-                HTTP_CODE="$code" TABLE="$table" node - "$out" <<'NODE'
-          const fs=require("fs");
-          const file=process.argv[2];
-          const status=Number(process.env.HTTP_CODE);
-          const table=process.env.TABLE;
-          let body=null;
-          try { body=JSON.parse(fs.readFileSync(file,"utf8")); } catch {}
-          if(status!==200){
-            const error=typeof body?.error==="string"?body.error.slice(0,500):"non-json";
-            console.log("F1B_SOURCE_PAGE_ERROR "+JSON.stringify({table,status,error}));
-            process.exit(1);
-          }
-          const p=body?.export;
-          if(!p||p.table!==table||!Array.isArray(p.rows)||typeof p.returned!=="number"||
-             typeof p.hasMore!=="boolean"||typeof p.sha256!=="string") throw new Error("invalid page contract");
-          const keys=p.rows[0]&&typeof p.rows[0]==="object"&&!Array.isArray(p.rows[0])
-            ?Object.keys(p.rows[0]).sort():[];
-          console.log("F1B_SOURCE_PAGE "+JSON.stringify({
-            table,status,returned:p.returned,hasMore:p.hasMore,
-            cursor:p.cursor,lastCursor:p.lastCursor,nextCursor:p.nextCursor,
-            sha256:p.sha256,rowKeys:keys
-          }));
-          NODE
-              done
-              ;;
-            f1b-contract-staging-proof)
-              test -n "$VIGIA_SYNC_TOKEN"
-              base="https://vigia-runtime.c-gamiz93.workers.dev"
-              common_export=(
-                --header "Authorization: Bearer $VIGIA_SYNC_TOKEN"
-                --header "X-Nagame-Migration-Export: NAGAMEALERT_OPERATIONAL_D1_EXPORT_V2"
-              )
-              code="$(curl --silent --show-error --location --max-time 60 \
-                "${common_export[@]}" \
-                --output "$RUNNER_TEMP/f1b-contract.json" --write-out '%{http_code}' \
-                "$base/api/admin/migration-export?mode=contract")"
-              test "$code" = "200"
-              node - "$RUNNER_TEMP/f1b-contract.json" <<'NODE'
-          const fs=require("fs");
-          const c=JSON.parse(fs.readFileSync(process.argv[2],"utf8"))?.export;
-          if(!c||c.formatVersion!==2||c.pagination!=="logical-keyset"||
-             c.scope!=="operational-post-retention"||c.pre2020ArchiveIncluded!==false) throw new Error("invalid lightweight contract");
-          if("tables" in c) throw new Error("lightweight contract unexpectedly contains table counts");
-          if(c.ledger?.count!==13||c.ledger?.first!=="0000_massive_goliath.sql"||
-             c.ledger?.last!=="0012_useful_roulette.sql"||c.ledger?.has0013!==false) throw new Error("invalid contract ledger");
-          if(c.schema?.sha256!=="51094929c454ee125a5f437a114b32a08db28d29e8a615463d3f5feb7f035cb0") throw new Error("unexpected schema digest");
-          if(!Array.isArray(c.sequences)||!c.sequences.some(x=>x.name==="d1_migrations"&&x.seq===13)) throw new Error("missing migration sequence");
-          console.log("F1B_CONTRACT_STAGING "+JSON.stringify({
-            formatVersion:c.formatVersion,pagination:c.pagination,scope:c.scope,
-            ledger:{count:c.ledger.count,first:c.ledger.first,last:c.ledger.last,has0013:c.ledger.has0013},
-            schema:c.schema,sequences:c.sequences,
-            tablesPresent:Object.prototype.hasOwnProperty.call(c,"tables")
-          }));
-          NODE
-              code="$(curl --silent --show-error --location --max-time 60 \
-                "${common_export[@]}" \
-                --output "$RUNNER_TEMP/f1b-contract-page.json" --write-out '%{http_code}' \
-                "$base/api/admin/migration-export?mode=page&table=alerts&limit=1")"
-              test "$code" = "200"
-              node - "$RUNNER_TEMP/f1b-contract-page.json" <<'NODE'
-          const fs=require("fs");
-          const p=JSON.parse(fs.readFileSync(process.argv[2],"utf8"))?.export;
-          if(!p||p.table!=="alerts"||p.returned!==0||p.hasMore!==false||p.nextCursor!==null) throw new Error("staging page contract mismatch");
-          console.log("F1B_CONTRACT_STAGING_PAGE "+JSON.stringify({table:p.table,returned:p.returned,hasMore:p.hasMore,sha256:p.sha256}));
           NODE
               ;;
           esac
