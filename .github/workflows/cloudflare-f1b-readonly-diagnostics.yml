@@ -1,0 +1,92 @@
+name: Cloudflare F1B read-only diagnostics
+
+on:
+  push:
+    branches:
+      - work/cloudflare-chat-operability-proof
+    paths:
+      - "ops/cloudflare-f1b-readonly-diagnostics.request.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-f1b-readonly-diagnostics
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+      SOURCE_BASE: https://vigia-alertas.csar68.chatgpt.site
+      TARGET_BASE: https://vigia-runtime.c-gamiz93.workers.dev
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - name: Diagnose category page metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+          node --input-type=module - "ops/cloudflare-f1b-readonly-diagnostics.request.json" <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const req=JSON.parse(await readFile(process.argv[2],"utf8"));
+          if(req?.operation!=="category-page"||req?.cursor!==217581) throw new Error("invalid diagnostic request");
+          const token=process.env.VIGIA_SYNC_TOKEN;
+          const sourceHeaders={
+            Authorization:"Bearer "+token,
+            "X-Nagame-Migration-Export":"NAGAMEALERT_OPERATIONAL_D1_EXPORT_V2",
+          };
+          const targetHeaders={
+            Authorization:"Bearer "+token,
+            "X-Nagame-Migration-Import":"NAGAMEALERT_STAGING_D1_IMPORT_V2",
+          };
+          async function get(base,path,headers){
+            const r=await fetch(base+path,{headers,signal:AbortSignal.timeout(60_000)});
+            const body=await r.json().catch(()=>null);
+            if(!r.ok) throw new Error(path+" HTTP "+r.status+" "+(body?.error??""));
+            return body;
+          }
+          const params=new URLSearchParams({
+            mode:"page",
+            table:"alert_categories",
+            limit:"100",
+            cursor:JSON.stringify([req.cursor])
+          });
+          const [sBody,tBody]=await Promise.all([
+            get(process.env.SOURCE_BASE,"/api/admin/migration-export?"+params,sourceHeaders),
+            get(process.env.TARGET_BASE,"/api/admin/migration-import?"+params,targetHeaders),
+          ]);
+          const s=sBody?.export, t=tBody?.import;
+          if(!s||!t) throw new Error("missing page payload");
+          console.log("F1B_CATEGORY_PAGE_METADATA "+JSON.stringify({
+            cursor:[req.cursor],
+            source:{
+              returned:s.returned,
+              hasMore:s.hasMore,
+              lastCursor:s.lastCursor,
+              nextCursor:s.nextCursor,
+              sha256:s.sha256
+            },
+            target:{
+              returned:t.returned,
+              hasMore:t.hasMore,
+              lastCursor:t.lastCursor,
+              nextCursor:t.nextCursor,
+              sha256:t.sha256
+            },
+            equal:{
+              returned:s.returned===t.returned,
+              hasMore:s.hasMore===t.hasMore,
+              lastCursor:JSON.stringify(s.lastCursor)===JSON.stringify(t.lastCursor),
+              nextCursor:JSON.stringify(s.nextCursor)===JSON.stringify(t.nextCursor),
+              sha256:s.sha256===t.sha256
+            }
+          }));
+          NODE
