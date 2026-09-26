@@ -319,12 +319,13 @@ jobs:
                   sourcePage(table,cursor),
                   targetPage(table,cursor),
                 ]);
-                const inParity=
+                const rowRangeInParity=
                   source.returned===before.returned &&
-                  source.hasMore===before.hasMore &&
                   same(source.lastCursor,before.lastCursor) &&
-                  same(source.nextCursor,before.nextCursor) &&
                   source.sha256===before.sha256;
+                const terminalInParity=
+                  source.hasMore ? true : before.hasMore===false && before.nextCursor===null;
+                const inParity=rowRangeInParity && terminalInParity;
 
                 if(!inParity) {
                   const repaired=(await fetchJson(
@@ -345,11 +346,13 @@ jobs:
                   }
 
                   const after=await targetPage(table,cursor);
-                  if(source.returned!==after.returned||
-                     source.hasMore!==after.hasMore||
-                     !same(source.lastCursor,after.lastCursor)||
-                     !same(source.nextCursor,after.nextCursor)||
-                     source.sha256!==after.sha256) {
+                  const repairedRangeMatches=
+                    source.returned===after.returned &&
+                    same(source.lastCursor,after.lastCursor) &&
+                    source.sha256===after.sha256;
+                  const repairedTerminalMatches=
+                    source.hasMore ? true : after.hasMore===false && after.nextCursor===null;
+                  if(!repairedRangeMatches||!repairedTerminalMatches) {
                     throw new Error(`repair parity mismatch for ${table} after ${JSON.stringify(cursor)}`);
                   }
                   repairedPages+=1;
