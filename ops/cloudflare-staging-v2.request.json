@@ -1,4 +1,4 @@
 {
-  "operation": "staging-http-smoke",
-  "nonce": "cf-stage-post-redeploy-smoke-20260926-0703"
+  "operation": "staging-ledger-cert",
+  "nonce": "cf-stage-post-redeploy-ledger-20260926-0704"
 }
