@@ -44,7 +44,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","owner-runtime-readonly-smoke"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -70,6 +70,32 @@ jobs:
               test "$CF_D1" = "nagamealert-staging-db"
               sql="CREATE TABLE IF NOT EXISTS cf_chat_control_probe (nonce TEXT PRIMARY KEY, created_at TEXT NOT NULL); INSERT OR REPLACE INTO cf_chat_control_probe (nonce, created_at) VALUES ('$NONCE', datetime('now'));"
               wrangler d1 execute "$CF_D1" --remote --command "$sql" --yes --json >/dev/null
+              ;;
+            owner-runtime-post-preflight)
+              test -n "$VIGIA_SYNC_TOKEN"
+              base="https://vigia-runtime.c-gamiz93.workers.dev"
+              for endpoint in aesan rapna safety-gate oecd rasff; do
+                code="$(curl --silent --show-error --location --request POST --max-time 90 \
+                  --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
+                  --output "$RUNNER_TEMP/$endpoint-preflight.json" --write-out '%{http_code}' \
+                  "$base/api/$endpoint/sync?mode=preflight")"
+                test "$code" = "200"
+                ENDPOINT="$endpoint" node --input-type=module - "$RUNNER_TEMP/$endpoint-preflight.json" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.argv[2],"utf8"));
+          if(body?.authorized!==true) throw new Error("preflight authorization failed");
+          console.log("OWNER_RUNTIME_POST_PREFLIGHT "+JSON.stringify({
+            endpoint:process.env.ENDPOINT,
+            authorized:body.authorized,
+            source:body.source??null,
+            officialIndex:body.officialIndex?{
+              totalElements:body.officialIndex.totalElements??null,
+              newestReference:body.officialIndex.newest?.reference??null
+            }:null
+          }));
+          NODE
+              done
+              echo "OWNER_RUNTIME_POST_PREFLIGHT_ALL status=PASS"
               ;;
             owner-runtime-readonly-smoke)
               test -n "$VIGIA_SYNC_TOKEN"
