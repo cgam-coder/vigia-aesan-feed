@@ -1,0 +1,344 @@
+name: Cloudflare cutover finalization gate
+
+on:
+  push:
+    branches:
+      - work/cloudflare-chat-operability-proof
+    paths:
+      - "ops/cloudflare-cutover-finalize.request.json"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: cloudflare-cutover-finalization
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      ACTIONS_TOKEN: ${{ github.token }}
+      GITHUB_REPOSITORY_NAME: ${{ github.repository }}
+      SOURCE_BASE: https://vigia-alertas.csar68.chatgpt.site
+      TARGET_BASE: https://vigia-runtime.c-gamiz93.workers.dev
+      CF_D1: nagamealert-staging-db
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Execute fail-closed finalization gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node --input-type=module - "ops/cloudflare-cutover-finalize.request.json" <<'NODE'
+          import { readFile } from "node:fs/promises";
+          import { createHash } from "node:crypto";
+
+          const request=JSON.parse(await readFile(process.argv[2],"utf8"));
+          const allowedKeys=new Set([
+            "operation","nonce","expectedRepairRunId","expectedSourceContractSha256",
+            "expectedFreezeSha"
+          ]);
+          if(!request||typeof request!=="object"||Array.isArray(request)) throw new Error("invalid request");
+          if(request.operation!=="finalize") throw new Error("operation must be finalize");
+          if(Object.keys(request).some((key)=>!allowedKeys.has(key))) throw new Error("unexpected request key");
+          if(typeof request.nonce!=="string"||!/^[A-Za-z0-9._:-]{8,120}$/.test(request.nonce)) throw new Error("invalid nonce");
+          if(!Number.isSafeInteger(request.expectedRepairRunId)||request.expectedRepairRunId<1) throw new Error("invalid repair run id");
+          if(typeof request.expectedSourceContractSha256!=="string"||
+             !/^[a-f0-9]{64}$/.test(request.expectedSourceContractSha256)) throw new Error("invalid contract sha");
+          if(typeof request.expectedFreezeSha!=="string"||!/^[a-f0-9]{40}$/.test(request.expectedFreezeSha)) {
+            throw new Error("invalid freeze sha");
+          }
+
+          const repo=process.env.GITHUB_REPOSITORY_NAME;
+          const actionsToken=process.env.ACTIONS_TOKEN;
+          const syncToken=process.env.VIGIA_SYNC_TOKEN;
+          const sourceBase=process.env.SOURCE_BASE;
+          const targetBase=process.env.TARGET_BASE;
+          if(!repo||!actionsToken||!syncToken||!sourceBase||!targetBase) throw new Error("missing environment");
+
+          const ghHeaders={
+            Authorization:"Bearer "+actionsToken,
+            Accept:"application/vnd.github+json",
+            "X-GitHub-Api-Version":"2022-11-28",
+            "User-Agent":"NagameAlert-Cutover-Finalize/1.0",
+          };
+          const sourceHeaders={
+            Authorization:"Bearer "+syncToken,
+            "X-Nagame-Migration-Export":"NAGAMEALERT_OPERATIONAL_D1_EXPORT_V2",
+          };
+          const targetHeaders={
+            Authorization:"Bearer "+syncToken,
+            "X-Nagame-Migration-Import":"NAGAMEALERT_STAGING_D1_IMPORT_V2",
+          };
+          const tableContract={
+            alerts:{keys:["id"],maxLimit:100},
+            alert_versions:{keys:["id"],maxLimit:100},
+            alert_source_identities:{keys:["alert_id"],maxLimit:100},
+            alert_aliases:{keys:["id"],maxLimit:100},
+            alert_dimension_state:{keys:["alert_id"],maxLimit:100},
+            alert_categories:{keys:["id"],maxLimit:100},
+            alert_hazards:{keys:["id"],maxLimit:100},
+            alert_geographies:{keys:["id"],maxLimit:100},
+            alert_actors:{keys:["id"],maxLimit:100},
+            source_checks:{keys:["id"],maxLimit:100},
+            source_freshness_state:{keys:["source"],maxLimit:100},
+            source_sync_state:{keys:["source","mode"],maxLimit:100},
+            source_sync_locks:{keys:["source"],maxLimit:100},
+            source_revision_certifications:{keys:["source","mode"],maxLimit:100},
+            source_backfill_snapshots:{keys:["id"],maxLimit:100},
+            source_backfill_snapshot_chunks:{keys:["snapshot_id","sequence"],maxLimit:4},
+            dimension_rebuild_state:{keys:["source"],maxLimit:100},
+          };
+          const tableOrder=Object.keys(tableContract);
+
+          const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
+          const stable=(value)=>{
+            if(Array.isArray(value)) return value.map(stable);
+            if(value&&typeof value==="object") return Object.fromEntries(
+              Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[k,stable(v)])
+            );
+            return value;
+          };
+          const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+          const digestRows=(rows)=>createHash("sha256")
+            .update(rows.map((row)=>JSON.stringify(stable(row))).join("\n")).digest("hex");
+
+          async function fetchJson(url,{headers={},method="GET",body,timeout=120000}={}){
+            const response=await fetch(url,{
+              method,
+              headers:{...headers,...(body!==undefined?{"Content-Type":"application/json"}:{})},
+              body:body===undefined?undefined:JSON.stringify(body),
+              signal:AbortSignal.timeout(timeout),
+              redirect:"follow",
+            });
+            const raw=await response.text();
+            let parsed=null; try{parsed=JSON.parse(raw);}catch{}
+            if(!response.ok){
+              const message=typeof parsed?.error==="string"?parsed.error.slice(0,500):`HTTP ${response.status}`;
+              throw new Error(`${new URL(url).pathname} failed: ${message}`);
+            }
+            return parsed;
+          }
+
+          async function githubJson(path){
+            const response=await fetch("https://api.github.com"+path,{headers:ghHeaders,signal:AbortSignal.timeout(30_000)});
+            if(!response.ok) throw new Error("GitHub API failed "+path+" HTTP "+response.status);
+            return response.json();
+          }
+
+          async function mainFile(path){
+            const body=await githubJson("/repos/"+repo+"/contents/"+path+"?ref=main");
+            if(typeof body?.content!=="string") throw new Error("missing main file "+path);
+            return JSON.parse(Buffer.from(body.content.replace(/\n/g,""),"base64").toString("utf8"));
+          }
+
+          // 1. Wait for the already-running repair-parity job. No retries/restarts are created here.
+          for(let attempt=1;attempt<=180;attempt++){
+            const run=await githubJson("/repos/"+repo+"/actions/runs/"+request.expectedRepairRunId);
+            if(run.status==="completed"){
+              if(run.conclusion!=="success") throw new Error("repair-parity run ended "+run.conclusion);
+              console.log("FINALIZE_REPAIR_RUN "+JSON.stringify({
+                status:"PASS",runId:run.id,conclusion:run.conclusion,headSha:run.head_sha
+              }));
+              break;
+            }
+            if(attempt===180) throw new Error("repair-parity did not complete within bounded wait");
+            if(attempt%10===0) console.log("FINALIZE_REPAIR_WAIT "+JSON.stringify({attempt,status:run.status}));
+            await sleep(20_000);
+          }
+
+          // 2. Re-read main controls after repair completion.
+          const freeze=await mainFile("ops/runtime-write-freeze.json");
+          const targetConfig=await mainFile("ops/runtime-write-target.json");
+          if(freeze?.schemaVersion!==1||freeze.frozen!==true) throw new Error("main writer freeze is not closed");
+          if(targetConfig?.schemaVersion!==1||targetConfig.active!=="sites"||
+             targetConfig.cloudflareReady!==false||
+             targetConfig.cloudflareBaseUrl!=="https://vigia-runtime.c-gamiz93.workers.dev") {
+            throw new Error("main target config is not frozen-on-Sites");
+          }
+          const mainBranch=await githubJson("/repos/"+repo+"/branches/main");
+          if(mainBranch?.commit?.sha!==request.expectedFreezeSha) {
+            throw new Error("main moved after freeze certification");
+          }
+          console.log("FINALIZE_MAIN_CONTROLS "+JSON.stringify({
+            status:"PASS",mainSha:mainBranch.commit.sha,frozen:freeze.frozen,
+            activeTarget:targetConfig.active,cloudflareReady:targetConfig.cloudflareReady
+          }));
+
+          // 3. Page-only source lease/drain recheck. Expired stale rows are tolerated; future leases are not.
+          async function allSourceRows(table,limit=100){
+            const rows=[]; let cursor=null;
+            for(let page=1;page<=100;page++){
+              const params=new URLSearchParams({mode:"page",table,limit:String(limit)});
+              if(cursor!==null) params.set("cursor",JSON.stringify(cursor));
+              const payload=(await fetchJson(sourceBase+"/api/admin/migration-export?"+params,{headers:sourceHeaders}))?.export;
+              if(!payload||payload.table!==table||!Array.isArray(payload.rows)||
+                 payload.returned!==payload.rows.length||typeof payload.hasMore!=="boolean") {
+                throw new Error("invalid source lease page "+table);
+              }
+              rows.push(...payload.rows);
+              if(!payload.hasMore) return rows;
+              if(payload.nextCursor===null) throw new Error("missing lease continuation "+table);
+              cursor=payload.nextCursor;
+            }
+            throw new Error("lease pagination exceeded "+table);
+          }
+          const now=Date.now();
+          const future=(value)=>typeof value==="string"&&Number.isFinite(Date.parse(value))&&Date.parse(value)>now;
+          const [locks,syncStates,freshness,dimension]=await Promise.all([
+            allSourceRows("source_sync_locks"),
+            allSourceRows("source_sync_state"),
+            allSourceRows("source_freshness_state"),
+            allSourceRows("dimension_rebuild_state"),
+          ]);
+          const activeLocks=locks.filter((row)=>future(row.expires_at));
+          const activeSync=syncStates.filter((row)=>future(row.lease_expires_at));
+          const activeLockSources=new Set(activeLocks.map((row)=>row.source));
+          const activeFresh=freshness.filter((row)=>
+            (row.active_lease===1||row.active_lease===true)&&activeLockSources.has(row.source)
+          );
+          const activeDimension=dimension.filter((row)=>
+            future(row.lease_expires_at)||
+            (row.status==="running"&&(row.lease_expires_at===null||row.lease_expires_at===undefined))
+          );
+          if(activeLocks.length||activeSync.length||activeFresh.length||activeDimension.length){
+            throw new Error("source write lease became active after freeze certification");
+          }
+          console.log("FINALIZE_SOURCE_DRAIN "+JSON.stringify({
+            status:"PASS",activeLocks:0,activeSyncStateLeases:0,
+            activeFreshnessLeases:0,activeDimensionLeases:0,
+            staleLockRows:locks.length
+          }));
+
+          // 4. Target manifest + versioned contract pin.
+          const target=(await fetchJson(
+            targetBase+"/api/admin/migration-import?mode=manifest",{headers:targetHeaders}
+          ))?.import;
+          if(!target||target.staging!==true||target.formatVersion!==2||
+             target.pagination!=="logical-keyset"||target.scope!=="operational-post-retention"||
+             target.pre2020ArchiveIncluded!==false) throw new Error("invalid target manifest");
+          if(target.ledger?.count!==13||target.ledger?.last!=="0012_useful_roulette.sql"||
+             target.ledger?.has0013!==false||!Array.isArray(target.ledger?.names)||
+             target.ledger.names.length!==13) throw new Error("invalid target ledger");
+          if(typeof target.schema?.sha256!=="string"||!/^[a-f0-9]{64}$/.test(target.schema.sha256)) {
+            throw new Error("invalid target schema sha");
+          }
+          if(!same(target.tableContract,tableContract)) throw new Error("target table contract mismatch");
+          const contractSha=createHash("sha256").update(JSON.stringify(stable({
+            tableContract,migrationNames:target.ledger.names
+          }))).digest("hex");
+          if(contractSha!==request.expectedSourceContractSha256) throw new Error("contract fingerprint moved");
+
+          function validatePage(page,table,cursor){
+            const spec=tableContract[table];
+            if(!page||page.table!==table||!same(page.cursor,cursor)||!Array.isArray(page.rows)||
+               page.returned!==page.rows.length||page.rows.length>spec.maxLimit||
+               typeof page.hasMore!=="boolean"||typeof page.sha256!=="string"||
+               !/^[a-f0-9]{64}$/.test(page.sha256)||digestRows(page.rows)!==page.sha256) {
+              throw new Error("invalid parity page "+table);
+            }
+            if(page.hasMore&&(!page.rows.length||page.nextCursor===null)) throw new Error("invalid continuation "+table);
+            if(!page.hasMore&&page.nextCursor!==null) throw new Error("invalid terminal cursor "+table);
+            return page;
+          }
+          async function page(base,headers,kind,table,cursor){
+            const spec=tableContract[table];
+            const params=new URLSearchParams({mode:"page",table,limit:String(spec.maxLimit)});
+            if(cursor!==null) params.set("cursor",JSON.stringify(cursor));
+            const body=await fetchJson(base+(kind==="source"?"/api/admin/migration-export?":"/api/admin/migration-import?")+params,{headers});
+            return validatePage(kind==="source"?body?.export:body?.import,table,cursor);
+          }
+
+          // 5. Full read-only parity. No repair writes occur here.
+          let totalPages=0,totalRows=0;
+          const counts={};
+          for(const table of tableOrder){
+            let cursor=null,pages=0,rows=0;
+            while(true){
+              const [left,right]=await Promise.all([
+                page(sourceBase,sourceHeaders,"source",table,cursor),
+                page(targetBase,targetHeaders,"target",table,cursor),
+              ]);
+              if(left.returned!==right.returned||left.hasMore!==right.hasMore||
+                 !same(left.lastCursor,right.lastCursor)||!same(left.nextCursor,right.nextCursor)||
+                 left.sha256!==right.sha256) {
+                throw new Error("final parity mismatch "+table+" after "+JSON.stringify(cursor));
+              }
+              pages+=1; rows+=left.returned; totalPages+=1; totalRows+=left.returned;
+              if(pages%250===0||!left.hasMore){
+                console.log("FINALIZE_PARITY_PROGRESS "+JSON.stringify({table,pages,rows,hasMore:left.hasMore}));
+              }
+              if(!left.hasMore) break;
+              cursor=left.nextCursor;
+            }
+            if(Number(target.tables?.[table])!==rows) {
+              throw new Error("target count mismatch "+table+" target="+target.tables?.[table]+" scanned="+rows);
+            }
+            counts[table]=rows;
+          }
+          console.log("FINALIZE_PARITY_PASS "+JSON.stringify({
+            status:"PASS",contractSha256:contractSha,targetSchemaSha256:target.schema.sha256,
+            totalPages,totalRows,tables:counts
+          }));
+
+          // 6. Read-only Worker smoke against owner-controlled runtime.
+          const smokePaths=[
+            "/","/es/","/es/alertas/","/api/v2/alerts?limit=1",
+            "/api/aesan/sync?observe=1","/api/rapna/sync?observe=1",
+            "/api/safety-gate/sync?observe=1","/api/oecd/sync?observe=1",
+            "/api/rasff/sync?observe=1"
+          ];
+          const smoke=[];
+          for(const path of smokePaths){
+            const headers=path.startsWith("/api/")?{Authorization:"Bearer "+syncToken}:{};
+            const response=await fetch(targetBase+path,{headers,redirect:"follow",signal:AbortSignal.timeout(60_000)});
+            if(response.status!==200) throw new Error("Worker smoke failed "+path+" HTTP "+response.status);
+            const text=await response.text();
+            smoke.push({path,status:response.status,bytes:text.length});
+          }
+          console.log("FINALIZE_WORKER_SMOKE "+JSON.stringify({status:"PASS",checks:smoke}));
+          NODE
+
+      - name: Read physical D1 size
+        shell: bash
+        run: |
+          set -euo pipefail
+          wrangler(){ npx --yes wrangler@4.135.0 "$@"; }
+          info_json="$(wrangler d1 info "$CF_D1" --json)"
+          INFO_JSON="$info_json" node --input-type=module - <<'NODE'
+          const raw=JSON.parse(process.env.INFO_JSON||"{}");
+          let row=Array.isArray(raw)?raw[0]:(raw?.result??raw);
+          if(Array.isArray(row)) row=row[0];
+          if(!row||typeof row!=="object") throw new Error("invalid d1 info payload");
+          const candidates=[
+            row.file_size,row.fileSize,row.size,row.database_size,row.databaseSize,
+            row?.database?.file_size,row?.database?.size
+          ].map(Number).filter(Number.isFinite);
+          if(!candidates.length) {
+            console.log("D1_INFO_RAW_KEYS "+JSON.stringify(Object.keys(row).sort()));
+            throw new Error("D1 physical file size unavailable from Wrangler");
+          }
+          const fileSize=Math.max(...candidates);
+          console.log("FINALIZE_D1_INFO "+JSON.stringify({
+            status:"PASS",
+            fileSizeBytes:fileSize,
+            fileSizeGiB:Number((fileSize/1024/1024/1024).toFixed(4)),
+            numTables:Number.isFinite(Number(row.num_tables))?Number(row.num_tables):null,
+            name:row.name??null
+          }));
+          NODE
+
+      - name: Final GO marker
+        run: |
+          echo 'FINALIZE_CUTOVER_RESULT={"status":"GO","writersFrozen":true,"targetStillSites":true,"publicDnsUnchanged":true}'
