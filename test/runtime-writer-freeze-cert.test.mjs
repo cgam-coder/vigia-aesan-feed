@@ -37,20 +37,27 @@ test("freeze certification requires Sites and page-only V2 source export", () =>
   assert.match(workflow, /NAGAMEALERT_OPERATIONAL_D1_EXPORT_V2/u);
   assert.match(workflow, /mode:"page"/u);
   assert.doesNotMatch(workflow, /mode=manifest|mode:"manifest"|sqlite_schema|sqlite_sequence|d1_migrations/u);
-  assert.match(workflow, /evidenceBasis:"page-only-v2-export"/u);
+  assert.match(workflow, /evidenceBasis:"page-only-v2-export\+unexpired-lease-semantics"/u);
 });
 
-test("freeze certification proves all runtime lease surfaces are idle", () => {
+test("freeze certification rejects only unexpired write authority and records stale lease metadata", () => {
   for (const table of [
     "source_sync_locks",
     "source_sync_state",
     "source_freshness_state",
     "dimension_rebuild_state",
   ]) assert.match(workflow, new RegExp(table, "u"), table);
-  assert.match(workflow, /locks\.length!==0/u);
-  assert.match(workflow, /lease_owner_id!==null/u);
-  assert.match(workflow, /lease_mode!==null/u);
-  assert.match(workflow, /lease_expires_at!==null/u);
-  assert.match(workflow, /row\.status==="running"/u);
+  assert.match(workflow, /Date\.parse\(value\)/u);
+  assert.match(workflow, /ms>now/u);
+  assert.match(workflow, /activeLocks=locks\.filter/u);
+  assert.match(workflow, /activeSyncStates=syncStates\.filter/u);
+  assert.match(workflow, /activeLockSources\.has\(row\.source\)/u);
+  assert.match(workflow, /future\(row\.lease_expires_at,now\)/u);
+  assert.match(workflow, /staleLockRows/u);
+  assert.match(workflow, /staleSyncLeaseMetadata/u);
+  assert.match(workflow, /staleFreshnessFlags/u);
+  assert.match(workflow, /attempt<=80/u);
+  assert.match(workflow, /RUNTIME_WRITE_FREEZE_SOURCE_WAIT/u);
   assert.match(workflow, /RUNTIME_WRITE_FREEZE_SOURCE_CERT/u);
+  assert.doesNotMatch(workflow, /locks\.length!==0/u);
 });
