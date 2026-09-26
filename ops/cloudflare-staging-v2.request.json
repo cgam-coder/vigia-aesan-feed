@@ -1,5 +1,4 @@
 {
-  "operation": "worker-rollback",
-  "nonce": "cf-stage-rollback-proof-20260926-0705",
-  "versionId": "e7f658d9-654a-42bf-8c6a-ab51a45370e4"
+  "operation": "worker-status",
+  "nonce": "cf-stage-post-rollback-status-20260926-0706"
 }
