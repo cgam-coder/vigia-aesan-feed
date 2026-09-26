@@ -44,7 +44,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","f1b-v163-manifest-contract-proof"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -317,54 +317,6 @@ jobs:
           if(!m||Object.values(m.tables??{}).some(v=>v!==0)||m.ledger?.count!==13||m.ledger?.has0013!==false) throw new Error("canary cleanup failed");
           if(!Array.isArray(m.importState)||m.importState.length!==17||m.importState.some(r=>Number(r.completed)!==0||Number(r.rows_imported)!==0)) throw new Error("canary checkpoint cleanup failed");
           console.log("F1B_IMPORT_CANARY_CLEAN "+JSON.stringify({ledgerCount:m.ledger.count,has0013:m.ledger.has0013,stateRows:m.importState.length}));
-          NODE
-              ;;
-            f1b-v163-manifest-contract-proof)
-              test -n "$VIGIA_SYNC_TOKEN"
-              BASE="https://vigia-runtime.c-gamiz93.workers.dev" TOKEN="$VIGIA_SYNC_TOKEN" node --input-type=module - <<'NODE'
-          const base=process.env.BASE, token=process.env.TOKEN;
-          const headers={
-            Authorization:"Bearer "+token,
-            "X-Nagame-Migration-Export":"NAGAMEALERT_OPERATIONAL_D1_EXPORT_V2",
-          };
-          async function get(mode){
-            const response=await fetch(base+"/api/admin/migration-export?mode="+mode,{
-              headers,signal:AbortSignal.timeout(60_000)
-            });
-            const body=await response.json();
-            if(!response.ok) throw new Error(mode+" HTTP "+response.status+" "+(body?.error??""));
-            return body?.export;
-          }
-          const contract=await get("contract");
-          const manifest=await get("manifest");
-          if(!contract||"sequences" in contract||"schema" in contract||"tables" in contract) {
-            throw new Error("contract regression");
-          }
-          if(!manifest||!Array.isArray(manifest.sequences)||
-             !manifest.sequences.some((row)=>row.name==="d1_migrations"&&row.seq===13)||
-             typeof manifest.schema?.sha256!=="string"||!manifest.tables) {
-            throw new Error("manifest compatibility regression");
-          }
-          if(contract.ledger?.count!==13||contract.ledger?.last!=="0012_useful_roulette.sql"||
-             contract.ledger?.has0013!==false||manifest.ledger?.has0013!==false) {
-            throw new Error("ledger regression");
-          }
-          console.log("F1B_V163_MANIFEST_CONTRACT "+JSON.stringify({
-            contract:{
-              tablesPresent:Object.prototype.hasOwnProperty.call(contract,"tables"),
-              schemaPresent:Object.prototype.hasOwnProperty.call(contract,"schema"),
-              sequencesPresent:Object.prototype.hasOwnProperty.call(contract,"sequences"),
-              ledgerCount:contract.ledger.count,
-              has0013:contract.ledger.has0013,
-              tableCount:Object.keys(contract.tableContract??{}).length
-            },
-            manifest:{
-              sequences:manifest.sequences,
-              schema:manifest.schema,
-              alerts:manifest.tables.alerts,
-              has0013:manifest.ledger.has0013
-            }
-          }));
           NODE
               ;;
           esac
