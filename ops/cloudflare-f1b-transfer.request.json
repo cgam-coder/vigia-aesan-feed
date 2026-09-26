@@ -1,5 +1,5 @@
 {
-  "operation": "repair-parity",
-  "nonce": "f1b-final-delta-freeze-resume-2-20260926-1713",
+  "operation": "diagnose-category-page",
+  "nonce": "f1b-diagnose-category-page-20260926-1755",
   "expectedSourceContractSha256": "30a242fe27ea4706dbeb1bbfd08c4856cf063c7b4f8b63d79c78b04d3ee53a22"
 }
