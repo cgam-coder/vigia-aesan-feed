@@ -1,4 +1,4 @@
 {
-  "operation": "worker-status",
-  "nonce": "cf-stage-post-cleanup-status-20260926-0707"
+  "operation": "staging-http-smoke",
+  "nonce": "cf-stage-clean-smoke-20260926-0708"
 }
