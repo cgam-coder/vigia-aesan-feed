@@ -39,7 +39,7 @@ jobs:
           import { createHash } from "node:crypto";
 
           const request=JSON.parse(await readFile(process.argv[2],"utf8"));
-          const operations=new Set(["preflight","transfer-resume","parity"]);
+          const operations=new Set(["preflight","transfer-resume","repair-parity","parity"]);
           if(!request||typeof request!=="object"||Array.isArray(request)) throw new Error("invalid request");
           if(typeof request.operation!=="string"||!operations.has(request.operation)) throw new Error("operation not allowed");
           if(typeof request.nonce!=="string"||!/^[A-Za-z0-9._:-]{8,120}$/.test(request.nonce)) throw new Error("invalid nonce");
@@ -300,6 +300,78 @@ jobs:
             console.log("F1B_TRANSFER_COMPLETE "+JSON.stringify({
               nonce:request.nonce,totalPages,totalRows,
               sourceContractSha256:contractSha256,
+              sequencesDerived:sequences.sequences,
+              tables:after.tables,
+            }));
+            process.exit(0);
+          }
+
+          if(request.operation==="repair-parity") {
+            const {target,contractSha256}=await targetState();
+            assertPinned(contractSha256);
+            let totalPages=0,totalRows=0;
+
+            for(const table of tableOrder) {
+              let cursor=null,pages=0,rows=0;
+              while(true) {
+                const source=await sourcePage(table,cursor);
+                const repaired=(await fetchJson(
+                  `${targetBase}/api/admin/migration-import?mode=repair-page`,
+                  {
+                    headers:{
+                      ...targetHeaders,
+                      "X-Nagame-Migration-Repair":"REPAIR-STAGING-F1B-V2",
+                    },
+                    method:"POST",
+                    body:source,
+                    timeout:180000,
+                  }
+                ))?.import;
+                if(repaired?.status!=="range-repaired"||repaired.table!==table||
+                   repaired.rows!==source.returned||repaired.hasMore!==source.hasMore) {
+                  throw new Error(`target rejected repair range for ${table}`);
+                }
+
+                const targetPageAfter=await targetPage(table,cursor);
+                if(source.returned!==targetPageAfter.returned||
+                   source.hasMore!==targetPageAfter.hasMore||
+                   !same(source.lastCursor,targetPageAfter.lastCursor)||
+                   !same(source.nextCursor,targetPageAfter.nextCursor)||
+                   source.sha256!==targetPageAfter.sha256) {
+                  throw new Error(`repair parity mismatch for ${table} after ${JSON.stringify(cursor)}`);
+                }
+
+                pages+=1; rows+=source.returned; totalPages+=1; totalRows+=source.returned;
+                if(pages%50===0||!source.hasMore) {
+                  console.log("F1B_REPAIR_PARITY_PROGRESS "+JSON.stringify({
+                    table,pages,rows,hasMore:source.hasMore
+                  }));
+                }
+                if(!source.hasMore) break;
+                cursor=source.nextCursor;
+              }
+            }
+
+            const sequences=(await fetchJson(
+              `${targetBase}/api/admin/migration-import?mode=sequences`,
+              {headers:targetHeaders,method:"POST",body:{derive:true}}
+            ))?.import;
+            if(sequences?.status!=="sequences-derived"||!Array.isArray(sequences.sequences)) {
+              throw new Error("sequence derivation failed after repair");
+            }
+
+            const after=(await targetState()).target;
+            const observedRows=Object.values(after.tables).reduce((sum,value)=>sum+Number(value),0);
+            if(observedRows!==totalRows) {
+              throw new Error(`post-repair total count mismatch: target=${observedRows} scanned=${totalRows}`);
+            }
+
+            console.log("F1B_REPAIR_PARITY_PASS "+JSON.stringify({
+              nonce:request.nonce,totalPages,totalRows,
+              sourceContractSha256:contractSha256,
+              targetSchemaSha256:after.schema.sha256,
+              targetLedgerCount:after.ledger.count,
+              targetHas0013:after.ledger.has0013,
               sequencesDerived:sequences.sequences,
               tables:after.tables,
             }));
