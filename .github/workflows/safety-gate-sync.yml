@@ -26,7 +26,7 @@ jobs:
       group: vigia-safety-gate-recent
       cancel-in-progress: false
     env:
-      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+      VIGIA_BASE_URL: "${{ needs.writer_gate.outputs.base_url }}"
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
       # Preflight <= 120s, mutation <= 420s, diagnostic <= 30s.
@@ -112,7 +112,7 @@ jobs:
 
       - name: Refresh Safety Gate
         env:
-          VIGIA_SAFETY_GATE_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/safety-gate/sync
+          VIGIA_SAFETY_GATE_SYNC_URL: "${{ needs.writer_gate.outputs.base_url }}/api/safety-gate/sync"
         run: |
           response_file="${RUNNER_TEMP}/safety-gate-sync.json"
           mutation_exit=0
@@ -172,7 +172,7 @@ jobs:
       group: vigia-oecd-recent
       cancel-in-progress: false
     env:
-      VIGIA_OECD_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/oecd/sync
+      VIGIA_OECD_SYNC_URL: "${{ needs.writer_gate.outputs.base_url }}/api/oecd/sync"
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
       - name: Preflight OECD authorization
