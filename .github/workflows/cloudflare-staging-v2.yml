@@ -44,7 +44,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary,"f1b-export-proof"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -317,6 +317,49 @@ jobs:
           if(!m||Object.values(m.tables??{}).some(v=>v!==0)||m.ledger?.count!==13||m.ledger?.has0013!==false) throw new Error("canary cleanup failed");
           if(!Array.isArray(m.importState)||m.importState.length!==17||m.importState.some(r=>Number(r.completed)!==0||Number(r.rows_imported)!==0)) throw new Error("canary checkpoint cleanup failed");
           console.log("F1B_IMPORT_CANARY_CLEAN "+JSON.stringify({ledgerCount:m.ledger.count,has0013:m.ledger.has0013,stateRows:m.importState.length}));
+          NODE
+              ;;
+            f1b-export-proof)
+              test -n "$VIGIA_SYNC_TOKEN"
+              base="https://vigia-runtime.c-gamiz93.workers.dev"
+              common_export=(
+                --header "Authorization: Bearer $VIGIA_SYNC_TOKEN"
+                --header "X-Nagame-Migration-Export: NAGAMEALERT_OPERATIONAL_D1_EXPORT_V2"
+              )
+              code="$(curl --silent --show-error --location --max-time 60 \
+                "${common_export[@]}" \
+                --output "$RUNNER_TEMP/f1b-export-manifest.json" --write-out '%{http_code}' \
+                "$base/api/admin/migration-export?mode=manifest")"
+              test "$code" = "200"
+              node - "$RUNNER_TEMP/f1b-export-manifest.json" <<'NODE'
+          const fs=require("fs");
+          const m=JSON.parse(fs.readFileSync(process.argv[2],"utf8"))?.export;
+          if(!m||m.formatVersion!==2||m.pagination!=="logical-keyset"||
+             m.scope!=="operational-post-retention"||m.pre2020ArchiveIncluded!==false) throw new Error("invalid export manifest contract");
+          if(m.ledger?.count!==13||m.ledger?.first!=="0000_massive_goliath.sql"||
+             m.ledger?.last!=="0012_useful_roulette.sql"||m.ledger?.has0013!==false) throw new Error("invalid export ledger");
+          if(typeof m.schema?.sha256!=="string"||!/^[a-f0-9]{64}$/.test(m.schema.sha256)) throw new Error("invalid export schema digest");
+          if(Object.values(m.tables??{}).some(v=>v!==0)) throw new Error("staging export proof expected empty operational tables");
+          console.log("F1B_EXPORT_MANIFEST "+JSON.stringify({
+            formatVersion:m.formatVersion,pagination:m.pagination,scope:m.scope,
+            ledger:{count:m.ledger.count,first:m.ledger.first,last:m.ledger.last,has0013:m.ledger.has0013},
+            schema:m.schema,tables:m.tables,sequences:m.sequences
+          }));
+          NODE
+              code="$(curl --silent --show-error --location --max-time 60 \
+                "${common_export[@]}" \
+                --output "$RUNNER_TEMP/f1b-export-page.json" --write-out '%{http_code}' \
+                "$base/api/admin/migration-export?mode=page&table=alerts&limit=1")"
+              test "$code" = "200"
+              node - "$RUNNER_TEMP/f1b-export-page.json" <<'NODE'
+          const fs=require("fs");
+          const p=JSON.parse(fs.readFileSync(process.argv[2],"utf8"))?.export;
+          if(!p||p.table!=="alerts"||p.cursor!==null||p.returned!==0||p.hasMore!==false||
+             p.lastCursor!==null||p.nextCursor!==null||!Array.isArray(p.rows)||p.rows.length!==0||
+             typeof p.sha256!=="string"||!/^[a-f0-9]{64}$/.test(p.sha256)) throw new Error("invalid empty export page");
+          console.log("F1B_EXPORT_PAGE "+JSON.stringify({
+            table:p.table,returned:p.returned,hasMore:p.hasMore,lastCursor:p.lastCursor,nextCursor:p.nextCursor,sha256:p.sha256
+          }));
           NODE
               ;;
           esac
