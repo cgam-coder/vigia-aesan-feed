@@ -1,4 +1,4 @@
 {
-  "operation": "staging-http-smoke",
-  "nonce": "cf-stage-clean-smoke-20260926-0708"
+  "operation": "staging-ledger-cert",
+  "nonce": "cf-stage-clean-ledger-20260926-0709"
 }
