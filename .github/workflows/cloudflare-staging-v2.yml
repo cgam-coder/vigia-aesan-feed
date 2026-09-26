@@ -44,7 +44,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","f1b-contract-v161-proof"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -317,38 +317,6 @@ jobs:
           if(!m||Object.values(m.tables??{}).some(v=>v!==0)||m.ledger?.count!==13||m.ledger?.has0013!==false) throw new Error("canary cleanup failed");
           if(!Array.isArray(m.importState)||m.importState.length!==17||m.importState.some(r=>Number(r.completed)!==0||Number(r.rows_imported)!==0)) throw new Error("canary checkpoint cleanup failed");
           console.log("F1B_IMPORT_CANARY_CLEAN "+JSON.stringify({ledgerCount:m.ledger.count,has0013:m.ledger.has0013,stateRows:m.importState.length}));
-          NODE
-              ;;
-            f1b-contract-v161-proof)
-              test -n "$VIGIA_SYNC_TOKEN"
-              base="https://vigia-runtime.c-gamiz93.workers.dev"
-              common_export=(
-                --header "Authorization: Bearer $VIGIA_SYNC_TOKEN"
-                --header "X-Nagame-Migration-Export: NAGAMEALERT_OPERATIONAL_D1_EXPORT_V2"
-              )
-              code="$(curl --silent --show-error --location --max-time 60 \
-                "${common_export[@]}" \
-                --output "$RUNNER_TEMP/f1b-v161-contract.json" --write-out '%{http_code}' \
-                "$base/api/admin/migration-export?mode=contract")"
-              test "$code" = "200"
-              node - "$RUNNER_TEMP/f1b-v161-contract.json" <<'NODE'
-          const fs=require("fs");
-          const x=JSON.parse(fs.readFileSync(process.argv[2],"utf8"))?.export;
-          if(!x||x.formatVersion!==2||x.pagination!=="logical-keyset"||
-             x.scope!=="operational-post-retention"||x.pre2020ArchiveIncluded!==false) throw new Error("invalid v161 contract");
-          if("schema" in x||"tables" in x) throw new Error("v161 contract must avoid schema introspection and counts");
-          if(x.ledger?.count!==13||x.ledger?.first!=="0000_massive_goliath.sql"||
-             x.ledger?.last!=="0012_useful_roulette.sql"||x.ledger?.has0013!==false||
-             !Array.isArray(x.ledger?.names)||x.ledger.names.length!==13) throw new Error("invalid v161 ledger");
-          if(!Array.isArray(x.sequences)||!x.sequences.some(s=>s.name==="d1_migrations"&&s.seq===13)) throw new Error("invalid v161 sequences");
-          if(!x.tableContract||Object.keys(x.tableContract).length!==17) throw new Error("invalid v161 table contract");
-          console.log("F1B_CONTRACT_V161 "+JSON.stringify({
-            formatVersion:x.formatVersion,pagination:x.pagination,scope:x.scope,
-            ledger:{count:x.ledger.count,first:x.ledger.first,last:x.ledger.last,has0013:x.ledger.has0013},
-            sequences:x.sequences,tableCount:Object.keys(x.tableContract).length,
-            schemaPresent:Object.prototype.hasOwnProperty.call(x,"schema"),
-            countsPresent:Object.prototype.hasOwnProperty.call(x,"tables")
-          }));
           NODE
               ;;
           esac
