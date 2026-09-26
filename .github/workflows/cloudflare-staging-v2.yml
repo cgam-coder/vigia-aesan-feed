@@ -44,7 +44,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -180,6 +180,46 @@ jobs:
             sqlite:m.sqlite,
           };
           console.log("F1B_IMPORT_MANIFEST "+JSON.stringify(safe));
+          NODE
+              ;;
+            f1b-import-reset)
+              test -n "$VIGIA_SYNC_TOKEN"
+              base="https://vigia-runtime.c-gamiz93.workers.dev"
+              common_auth=(
+                --header "Authorization: Bearer $VIGIA_SYNC_TOKEN"
+                --header "X-Nagame-Migration-Import: NAGAMEALERT_STAGING_D1_IMPORT_V2"
+              )
+              code="$(curl --silent --show-error --location --request POST --max-time 120 \
+                "${common_auth[@]}" \
+                --header "X-Nagame-Migration-Reset: RESET-STAGING-F1B-V2" \
+                --output "$RUNNER_TEMP/f1b-reset.json" --write-out '%{http_code}' \
+                "$base/api/admin/migration-import?mode=reset")"
+              test "$code" = "200"
+              node - "$RUNNER_TEMP/f1b-reset.json" <<'NODE'
+          const fs=require("fs");
+          const body=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
+          if(body?.import?.status!=="reset"||body?.import?.tables!==17) throw new Error("invalid F1B reset result");
+          console.log("F1B_IMPORT_RESET "+JSON.stringify(body.import));
+          NODE
+              code="$(curl --silent --show-error --location --max-time 60 \
+                "${common_auth[@]}" \
+                --output "$RUNNER_TEMP/f1b-after-reset.json" --write-out '%{http_code}' \
+                "$base/api/admin/migration-import?mode=manifest")"
+              test "$code" = "200"
+              node - "$RUNNER_TEMP/f1b-after-reset.json" <<'NODE'
+          const fs=require("fs");
+          const m=JSON.parse(fs.readFileSync(process.argv[2],"utf8"))?.import;
+          if(!m||m.staging!==true||m.ledger?.count!==13||m.ledger?.has0013!==false) throw new Error("post-reset ledger invalid");
+          if(Object.values(m.tables??{}).some(v=>v!==0)) throw new Error("post-reset operational rows remain");
+          if(!Array.isArray(m.importState)||m.importState.length!==17) throw new Error("post-reset import state invalid");
+          if(m.importState.some(r=>Number(r.completed)!==0||Number(r.pages)!==0||Number(r.rows_imported)!==0||r.cursor_json!==null)) throw new Error("post-reset checkpoint not clean");
+          if(!Array.isArray(m.extraTables)||m.extraTables.length!==1||m.extraTables[0]!=="cf_f1b_import_state") throw new Error("post-reset extra table contract invalid");
+          console.log("F1B_IMPORT_RESET_CERT "+JSON.stringify({
+            ledger:{count:m.ledger.count,first:m.ledger.first,last:m.ledger.last,has0013:m.ledger.has0013},
+            stateRows:m.importState.length,
+            extraTables:m.extraTables,
+            tables:m.tables
+          }));
           NODE
               ;;
           esac
