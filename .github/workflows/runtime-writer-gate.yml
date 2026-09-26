@@ -12,6 +12,12 @@ on:
       reason:
         description: Human-readable gate reason
         value: ${{ jobs.gate.outputs.reason }}
+      target:
+        description: Versioned writer destination
+        value: ${{ jobs.gate.outputs.target }}
+      base_url:
+        description: Fixed base URL resolved from the versioned target
+        value: ${{ jobs.gate.outputs.base_url }}
 
 permissions:
   contents: read
@@ -23,6 +29,8 @@ jobs:
       allowed: ${{ steps.guard.outputs.allowed }}
       frozen: ${{ steps.guard.outputs.frozen }}
       reason: ${{ steps.guard.outputs.reason }}
+      target: ${{ steps.target.outputs.target }}
+      base_url: ${{ steps.target.outputs.base_url }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -31,7 +39,12 @@ jobs:
         name: Evaluate runtime writer gate
         shell: bash
         run: node scripts/runtime-write-guard.mjs
-      - name: Report gate
+      - id: target
+        name: Resolve runtime writer target
+        shell: bash
+        run: node scripts/runtime-writer-target.mjs
+      - name: Report gate and target
         shell: bash
         run: |
           echo "RUNTIME_WRITE_GATE allowed=${{ steps.guard.outputs.allowed }} frozen=${{ steps.guard.outputs.frozen }} reason=${{ steps.guard.outputs.reason }}"
+          echo "RUNTIME_WRITER_TARGET target=${{ steps.target.outputs.target }} base_url=${{ steps.target.outputs.base_url }}"

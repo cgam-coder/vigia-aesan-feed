@@ -75,7 +75,7 @@ jobs:
           node -e 'const fs=require("node:fs"); const feed=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(!Array.isArray(feed?.alerts)) throw new Error("Published feed is invalid"); console.log(JSON.stringify({publishedAlerts:feed.alerts.length}));' "${published_feed}"
       - name: Ingest published feed into VIGIA
         env:
-          VIGIA_AESAN_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/aesan/sync
+          VIGIA_AESAN_SYNC_URL: "${{ needs.writer_gate.outputs.base_url }}/api/aesan/sync"
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           if [ -z "${VIGIA_SYNC_TOKEN}" ]; then

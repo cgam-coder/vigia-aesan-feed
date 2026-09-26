@@ -4,9 +4,12 @@ on:
   push:
     branches:
       - work/cloudflare-cutover-writer-freeze
+      - work/cloudflare-cutover-writer-target
     paths:
       - "ops/runtime-write-freeze.json"
+      - "ops/runtime-writer-target.json"
       - "scripts/runtime-write-guard.mjs"
+      - "scripts/runtime-writer-target.mjs"
       - ".github/workflows/runtime-writer-gate.yml"
       - ".github/workflows/runtime-writer-gate-proof.yml"
 
@@ -24,6 +27,35 @@ jobs:
     steps:
       - name: Prove writer would run when gate is open
         run: echo "SIMULATED_WRITER=RUN"
+
+  target_observer:
+    needs: writer_gate
+    if: needs.writer_gate.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
+    env:
+      TARGET: ${{ needs.writer_gate.outputs.target }}
+      BASE_URL: ${{ needs.writer_gate.outputs.base_url }}
+    steps:
+      - name: Verify fixed target mapping and read-only reachability
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$TARGET" in
+            sites)
+              expected="https://vigia-alertas.csar68.chatgpt.site"
+              ;;
+            cloudflare)
+              expected="https://vigia-runtime.c-gamiz93.workers.dev"
+              ;;
+            *)
+              echo "Unexpected target: $TARGET"
+              exit 1
+              ;;
+          esac
+          test "$BASE_URL" = "$expected"
+          code="$(curl --silent --show-error --location --max-time 30             --output "$RUNNER_TEMP/target-root.html" --write-out '%{http_code}'             "$BASE_URL/")"
+          test "$code" = "200"
+          echo "RUNTIME_WRITER_TARGET_PROOF target=$TARGET base_url=$BASE_URL status=$code"
 
   frozen_observer:
     needs: writer_gate

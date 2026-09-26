@@ -24,7 +24,7 @@ jobs:
       group: vigia-oecd-recent
       cancel-in-progress: false
     env:
-      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+      VIGIA_BASE_URL: "${{ needs.writer_gate.outputs.base_url }}"
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
       - name: Refresh OECD only when the recent lane is aging

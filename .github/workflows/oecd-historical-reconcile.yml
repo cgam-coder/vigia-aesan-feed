@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 225
     env:
-      VIGIA_OECD_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/oecd/sync
+      VIGIA_OECD_SYNC_URL: "${{ needs.writer_gate.outputs.base_url }}/api/oecd/sync"
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
       - name: Continue the persisted UTC historical sweep while yielding to recent
