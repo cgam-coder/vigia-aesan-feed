@@ -1,0 +1,37 @@
+name: Runtime writer gate
+
+on:
+  workflow_call:
+    outputs:
+      allowed:
+        description: Whether production writers may run
+        value: ${{ jobs.gate.outputs.allowed }}
+      frozen:
+        description: Whether production writers are frozen
+        value: ${{ jobs.gate.outputs.frozen }}
+      reason:
+        description: Human-readable gate reason
+        value: ${{ jobs.gate.outputs.reason }}
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      allowed: ${{ steps.guard.outputs.allowed }}
+      frozen: ${{ steps.guard.outputs.frozen }}
+      reason: ${{ steps.guard.outputs.reason }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - id: guard
+        name: Evaluate runtime writer gate
+        shell: bash
+        run: node scripts/runtime-write-guard.mjs
+      - name: Report gate
+        shell: bash
+        run: |
+          echo "RUNTIME_WRITE_GATE allowed=${{ steps.guard.outputs.allowed }} frozen=${{ steps.guard.outputs.frozen }} reason=${{ steps.guard.outputs.reason }}"
