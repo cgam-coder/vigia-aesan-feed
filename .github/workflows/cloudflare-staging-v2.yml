@@ -44,7 +44,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","owner-runtime-readonly-smoke"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","owner-runtime-readonly-smoke","f1b-category-cursor-probe"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -112,6 +112,48 @@ jobs:
           }));
           NODE
               echo "OWNER_RUNTIME_READONLY_SMOKE status=PASS"
+              ;;
+            f1b-category-cursor-probe)
+              test -n "$VIGIA_SYNC_TOKEN"
+              SOURCE="https://vigia-alertas.csar68.chatgpt.site" \
+              TARGET="https://vigia-runtime.c-gamiz93.workers.dev" \
+              TOKEN="$VIGIA_SYNC_TOKEN" node --input-type=module - <<'NODE'
+          const token=process.env.TOKEN;
+          const sourceHeaders={
+            Authorization:"Bearer "+token,
+            "X-Nagame-Migration-Export":"NAGAMEALERT_OPERATIONAL_D1_EXPORT_V2",
+          };
+          const targetHeaders={
+            Authorization:"Bearer "+token,
+            "X-Nagame-Migration-Import":"NAGAMEALERT_STAGING_D1_IMPORT_V2",
+          };
+          async function get(base,path,headers){
+            const response=await fetch(base+path,{headers,signal:AbortSignal.timeout(60_000)});
+            const body=await response.json();
+            if(!response.ok) throw new Error(path+" HTTP "+response.status+" "+(body?.error??""));
+            return body;
+          }
+          const params=new URLSearchParams({
+            mode:"page",table:"alert_categories",limit:"100",cursor:JSON.stringify([217581])
+          });
+          const [sourceBody,targetBody]=await Promise.all([
+            get(process.env.SOURCE,"/api/admin/migration-export?"+params,sourceHeaders),
+            get(process.env.TARGET,"/api/admin/migration-import?"+params,targetHeaders),
+          ]);
+          const s=sourceBody?.export, t=targetBody?.import;
+          const meta=(p)=>({
+            returned:p?.returned,hasMore:p?.hasMore,sha256:p?.sha256,
+            cursor:p?.cursor,lastCursor:p?.lastCursor,nextCursor:p?.nextCursor,
+            firstId:p?.rows?.[0]?.id??null,lastId:p?.rows?.at?.(-1)?.id??null
+          });
+          console.log("F1B_CATEGORY_CURSOR_PROBE "+JSON.stringify({
+            source:meta(s),target:meta(t),
+            same:s?.returned===t?.returned&&s?.hasMore===t?.hasMore&&
+              JSON.stringify(s?.lastCursor)===JSON.stringify(t?.lastCursor)&&
+              JSON.stringify(s?.nextCursor)===JSON.stringify(t?.nextCursor)&&
+              s?.sha256===t?.sha256
+          }));
+          NODE
               ;;
             d1-info)
               test "$CF_D1" = "nagamealert-staging-db"
