@@ -14,13 +14,16 @@ jobs:
   writer_gate:
     uses: ./.github/workflows/runtime-writer-gate.yml
 
+  runtime_target:
+    uses: ./.github/workflows/runtime-writer-target.yml
+
   reconcile:
-    needs: writer_gate
+    needs: [writer_gate, runtime_target]
     if: needs.writer_gate.outputs.allowed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 225
     env:
-      VIGIA_OECD_SYNC_URL: https://vigia-alertas.csar68.chatgpt.site/api/oecd/sync
+      VIGIA_OECD_SYNC_URL: ${{ format('{0}/api/oecd/sync', needs.runtime_target.outputs.base_url) }}
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
       - name: Continue the persisted UTC historical sweep while yielding to recent

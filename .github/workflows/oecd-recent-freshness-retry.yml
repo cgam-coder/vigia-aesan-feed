@@ -16,8 +16,11 @@ jobs:
   writer_gate:
     uses: ./.github/workflows/runtime-writer-gate.yml
 
+  runtime_target:
+    uses: ./.github/workflows/runtime-writer-target.yml
+
   retry-recent-if-stale:
-    needs: writer_gate
+    needs: [writer_gate, runtime_target]
     if: needs.writer_gate.outputs.allowed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -25,7 +28,7 @@ jobs:
       group: vigia-oecd-recent
       cancel-in-progress: false
     env:
-      VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+      VIGIA_BASE_URL: ${{ needs.runtime_target.outputs.base_url }}
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
       - name: Refresh OECD only when the recent lane is aging

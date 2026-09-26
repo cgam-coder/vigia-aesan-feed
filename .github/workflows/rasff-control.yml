@@ -24,8 +24,11 @@ jobs:
   writer_gate:
     uses: ./.github/workflows/runtime-writer-gate.yml
 
+  runtime_target:
+    uses: ./.github/workflows/runtime-writer-target.yml
+
   recent:
-    needs: writer_gate
+    needs: [writer_gate, runtime_target]
     if: needs.writer_gate.outputs.allowed == 'true' && (github.event_name == 'schedule' && github.event.schedule == '9,39 * * * *' || github.event_name == 'workflow_dispatch' && inputs.lane == 'recent')
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -38,7 +41,7 @@ jobs:
           persist-credentials: false
       - name: Synchronize recent RASFF notifications with bounded lease recovery
         env:
-          VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+          VIGIA_BASE_URL: ${{ needs.runtime_target.outputs.base_url }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           set -euo pipefail
@@ -46,7 +49,7 @@ jobs:
           node scripts/rasff-control.mjs recent
 
   reconcile:
-    needs: writer_gate
+    needs: [writer_gate, runtime_target]
     if: needs.writer_gate.outputs.allowed == 'true' && (github.event_name == 'push' || github.event_name == 'schedule' && github.event.schedule == '17 * * * *' || github.event_name == 'workflow_dispatch' && inputs.lane == 'reconcile')
     runs-on: ubuntu-latest
     timeout-minutes: 360
@@ -59,7 +62,7 @@ jobs:
           persist-credentials: false
       - name: Continue reconcile while yielding deterministically to recent
         env:
-          VIGIA_BASE_URL: https://vigia-alertas.csar68.chatgpt.site
+          VIGIA_BASE_URL: ${{ needs.runtime_target.outputs.base_url }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           set -euo pipefail

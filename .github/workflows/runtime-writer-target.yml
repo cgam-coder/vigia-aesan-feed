@@ -1,0 +1,41 @@
+name: Runtime writer target
+
+on:
+  workflow_call:
+    outputs:
+      active:
+        description: Active production writer runtime
+        value: ${{ jobs.target.outputs.active }}
+      base_url:
+        description: Active production writer base URL
+        value: ${{ jobs.target.outputs.base_url }}
+      cloudflare_ready:
+        description: Whether Cloudflare target is certified ready for writers
+        value: ${{ jobs.target.outputs.cloudflare_ready }}
+      reason:
+        description: Target selection reason
+        value: ${{ jobs.target.outputs.reason }}
+
+permissions:
+  contents: read
+
+jobs:
+  target:
+    runs-on: ubuntu-latest
+    outputs:
+      active: ${{ steps.select.outputs.active }}
+      base_url: ${{ steps.select.outputs.base_url }}
+      cloudflare_ready: ${{ steps.select.outputs.cloudflare_ready }}
+      reason: ${{ steps.select.outputs.reason }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - id: select
+        name: Select runtime writer target
+        shell: bash
+        run: node scripts/runtime-write-target.mjs
+      - name: Report target
+        shell: bash
+        run: |
+          echo "RUNTIME_WRITE_TARGET active=${{ steps.select.outputs.active }} cloudflareReady=${{ steps.select.outputs.cloudflare_ready }} baseUrl=${{ steps.select.outputs.base_url }} reason=${{ steps.select.outputs.reason }}"
