@@ -1,0 +1,202 @@
+name: Runtime writer freeze certification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ops/runtime-write-freeze.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  writer_gate:
+    uses: ./.github/workflows/runtime-writer-gate.yml
+
+  runtime_target:
+    uses: ./.github/workflows/runtime-writer-target.yml
+
+  open_observer:
+    needs: writer_gate
+    if: needs.writer_gate.outputs.frozen != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm no freeze certification is required
+        run: echo "RUNTIME_WRITE_FREEZE_CERT=NOT_REQUIRED"
+
+  certify:
+    needs: [writer_gate, runtime_target]
+    if: needs.writer_gate.outputs.frozen == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+      SOURCE_BASE: ${{ needs.runtime_target.outputs.base_url }}
+      ACTIVE_TARGET: ${{ needs.runtime_target.outputs.active }}
+      ACTIONS_TOKEN: ${{ github.token }}
+      FREEZE_SHA: ${{ github.sha }}
+      CURRENT_RUN_ID: ${{ github.run_id }}
+      GITHUB_REPOSITORY_NAME: ${{ github.repository }}
+    steps:
+      - name: Require frozen Sites source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$ACTIVE_TARGET" = "sites"
+          test "$SOURCE_BASE" = "https://vigia-alertas.csar68.chatgpt.site"
+          test -n "$VIGIA_SYNC_TOKEN"
+
+      - name: Wait for pre-freeze writer workflow runs to drain
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module - <<'NODE'
+          const writerPaths=new Set([
+            ".github/workflows/update-feed.yml",
+            ".github/workflows/update-full-feed.yml",
+            ".github/workflows/rapna-sync.yml",
+            ".github/workflows/safety-gate-sync.yml",
+            ".github/workflows/oecd-historical-reconcile.yml",
+            ".github/workflows/oecd-recent-freshness-retry.yml",
+            ".github/workflows/rasff-control.yml",
+            ".github/workflows/freshness-watchdog.yml",
+            ".github/workflows/gh-fixes-closure-once.yml",
+          ]);
+          const statuses=["in_progress","queued","requested","waiting","pending"];
+          const repo=process.env.GITHUB_REPOSITORY_NAME;
+          const token=process.env.ACTIONS_TOKEN;
+          const freezeSha=process.env.FREEZE_SHA;
+          const currentRun=Number(process.env.CURRENT_RUN_ID);
+          if(!repo||!token||!freezeSha||!Number.isSafeInteger(currentRun)) throw new Error("missing Actions context");
+          const headers={
+            Authorization:"Bearer "+token,
+            Accept:"application/vnd.github+json",
+            "X-GitHub-Api-Version":"2022-11-28",
+            "User-Agent":"NagameAlert-Cutover-Freeze-Cert/1.0",
+          };
+          const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
+
+          async function listStatus(status){
+            const rows=[];
+            for(let page=1;page<=10;page++){
+              const url=new URL("https://api.github.com/repos/"+repo+"/actions/runs");
+              url.searchParams.set("status",status);
+              url.searchParams.set("per_page","100");
+              url.searchParams.set("page",String(page));
+              const response=await fetch(url,{headers,signal:AbortSignal.timeout(30_000)});
+              if(response.status!==200) throw new Error("Actions run listing failed HTTP "+response.status);
+              const body=await response.json();
+              const pageRows=Array.isArray(body?.workflow_runs)?body.workflow_runs:[];
+              rows.push(...pageRows);
+              if(pageRows.length<100) break;
+              if(page===10) throw new Error("Actions run listing exceeded bounded pagination");
+            }
+            return rows;
+          }
+
+          for(let attempt=1;attempt<=60;attempt++){
+            const batches=await Promise.all(statuses.map(listStatus));
+            const active=batches.flat().filter((run)=>
+              writerPaths.has(run.path) &&
+              Number(run.id)!==currentRun &&
+              run.head_sha!==freezeSha
+            );
+            const unique=[...new Map(active.map((run)=>[run.id,run])).values()];
+            if(unique.length===0){
+              console.log("RUNTIME_WRITE_FREEZE_RUN_DRAIN "+JSON.stringify({status:"PASS",attempt,active:0,freezeSha}));
+              process.exit(0);
+            }
+            const safe=unique.map((run)=>({
+              id:run.id,name:run.name,status:run.status,path:run.path,headSha:run.head_sha
+            }));
+            console.log("RUNTIME_WRITE_FREEZE_RUN_WAIT "+JSON.stringify({attempt,active:safe}));
+            if(attempt===60) throw new Error("Pre-freeze writer runs did not drain within the bounded window");
+            await sleep(15_000);
+          }
+          NODE
+
+      - name: Certify source D1 has no active write leases
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module - <<'NODE'
+          const base=process.env.SOURCE_BASE;
+          const token=process.env.VIGIA_SYNC_TOKEN;
+          const headers={
+            Authorization:"Bearer "+token,
+            "X-Nagame-Migration-Export":"NAGAMEALERT_OPERATIONAL_D1_EXPORT_V2",
+            Accept:"application/json",
+          };
+
+          async function get(path){
+            const response=await fetch(base+path,{headers,redirect:"follow",signal:AbortSignal.timeout(60_000)});
+            let body;
+            try { body=await response.json(); } catch { body=null; }
+            if(response.status!==200) {
+              const message=typeof body?.error==="string"?body.error.slice(0,300):"HTTP "+response.status;
+              throw new Error(path+" failed: "+message);
+            }
+            return body;
+          }
+
+          const manifest=(await get("/api/admin/migration-export?mode=manifest"))?.export;
+          if(!manifest||manifest.formatVersion!==2||manifest.pagination!=="logical-keyset"||
+             manifest.ledger?.count!==13||manifest.ledger?.last!=="0012_useful_roulette.sql"||
+             manifest.ledger?.has0013!==false||typeof manifest.schema?.sha256!=="string") {
+            throw new Error("Source export manifest is not cutover-compatible");
+          }
+
+          async function allRows(table,limit=100){
+            const rows=[];
+            let cursor=null;
+            for(let page=1;page<=100;page++){
+              const params=new URLSearchParams({mode:"page",table,limit:String(limit)});
+              if(cursor!==null) params.set("cursor",JSON.stringify(cursor));
+              const payload=(await get("/api/admin/migration-export?"+params))?.export;
+              if(!payload||payload.table!==table||!Array.isArray(payload.rows)||
+                 payload.returned!==payload.rows.length||typeof payload.hasMore!=="boolean") {
+                throw new Error("Invalid export page for "+table);
+              }
+              rows.push(...payload.rows);
+              if(!payload.hasMore) return rows;
+              if(payload.nextCursor===null) throw new Error("Missing continuation cursor for "+table);
+              cursor=payload.nextCursor;
+            }
+            throw new Error("Lease certification page limit exceeded for "+table);
+          }
+
+          const locks=await allRows("source_sync_locks");
+          if(locks.length!==0) throw new Error("source_sync_locks is not empty");
+
+          const syncStates=await allRows("source_sync_state");
+          const leasedStates=syncStates.filter((row)=>
+            row.lease_owner_id!==null || row.lease_mode!==null || row.lease_expires_at!==null
+          );
+          if(leasedStates.length!==0) throw new Error("source_sync_state still contains active lease metadata");
+
+          const freshness=await allRows("source_freshness_state");
+          const activeFreshness=freshness.filter((row)=>row.active_lease===1||row.active_lease===true);
+          if(activeFreshness.length!==0) throw new Error("source_freshness_state still reports active leases");
+
+          const dimension=await allRows("dimension_rebuild_state");
+          const activeDimension=dimension.filter((row)=>
+            row.status==="running" || row.lease_owner_id!==null || row.lease_expires_at!==null
+          );
+          if(activeDimension.length!==0) throw new Error("dimension rebuild still holds an active lease");
+
+          console.log("RUNTIME_WRITE_FREEZE_SOURCE_CERT "+JSON.stringify({
+            status:"PASS",
+            schemaSha256:manifest.schema.sha256,
+            ledgerCount:manifest.ledger.count,
+            has0013:manifest.ledger.has0013,
+            sourceSyncLocks:locks.length,
+            syncStates:syncStates.length,
+            activeSyncStateLeases:leasedStates.length,
+            freshnessStates:freshness.length,
+            activeFreshnessLeases:activeFreshness.length,
+            dimensionStates:dimension.length,
+            activeDimensionLeases:activeDimension.length
+          }));
+          NODE
