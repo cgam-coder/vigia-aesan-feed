@@ -44,7 +44,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset,"f1b-import-canary"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -220,6 +220,103 @@ jobs:
             extraTables:m.extraTables,
             tables:m.tables
           }));
+          NODE
+              ;;
+            f1b-import-canary)
+              test -n "$VIGIA_SYNC_TOKEN"
+              base="https://vigia-runtime.c-gamiz93.workers.dev"
+              common_auth=(
+                --header "Authorization: Bearer $VIGIA_SYNC_TOKEN"
+                --header "X-Nagame-Migration-Import: NAGAMEALERT_STAGING_D1_IMPORT_V2"
+              )
+              node - "$RUNNER_TEMP/f1b-canary-page.json" "$NONCE" <<'NODE'
+          const fs=require("fs");
+          const crypto=require("crypto");
+          const out=process.argv[2];
+          const nonce=process.argv[3];
+          const row={
+            id:"f1b-canary:"+nonce,
+            reference:"F1B-CANARY",
+            source:"AESAN",
+            type:"Alimentaria",
+            priority:"Media",
+            title:"F1B staging import canary",
+            product:"Canary",
+            brand:"",
+            product_class:"Sin clasificar",
+            product_key:"canary",
+            brand_key:"",
+            provider:"",
+            provider_key:"",
+            provider_role:"",
+            provider_evidence:"",
+            hazard:"Canary",
+            origin:"No indicado",
+            scope:"No indicado",
+            action:"No action",
+            lots:"[]",
+            image_url:null,
+            url:"https://example.invalid/f1b-canary",
+            published_at:"2026-09-26T00:00:00.000Z",
+            detected_at:"2026-09-26T00:00:00.000Z",
+            updated_at:"2026-09-26T00:00:00.000Z",
+            content_hash:"f1b-canary-"+nonce,
+            version_count:1,
+            is_update:0,
+            canonical_json:"{}"
+          };
+          const stable=(value)=>{
+            if(Array.isArray(value)) return value.map(stable);
+            if(value&&typeof value==="object") return Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[k,stable(v)]));
+            return value;
+          };
+          const canonical=JSON.stringify(stable(row));
+          const sha256=crypto.createHash("sha256").update(canonical).digest("hex");
+          fs.writeFileSync(out,JSON.stringify({
+            table:"alerts",cursor:null,returned:1,hasMore:false,
+            lastCursor:[row.id],nextCursor:null,sha256,rows:[row]
+          }));
+          NODE
+              code="$(curl --silent --show-error --location --request POST --max-time 60 \
+                "${common_auth[@]}" --header "Content-Type: application/json" \
+                --data-binary "@$RUNNER_TEMP/f1b-canary-page.json" \
+                --output "$RUNNER_TEMP/f1b-canary-apply.json" --write-out '%{http_code}' \
+                "$base/api/admin/migration-import?mode=page")"
+              test "$code" = "200"
+              node - "$RUNNER_TEMP/f1b-canary-apply.json" <<'NODE'
+          const fs=require("fs");
+          const body=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
+          if(body?.import?.status!=="page-applied"||body?.import?.table!=="alerts"||body?.import?.rows!==1||body?.import?.hasMore!==false) throw new Error("canary apply failed");
+          console.log("F1B_IMPORT_CANARY_APPLY "+JSON.stringify(body.import));
+          NODE
+              code="$(curl --silent --show-error --location --max-time 60 \
+                "${common_auth[@]}" \
+                --output "$RUNNER_TEMP/f1b-canary-read.json" --write-out '%{http_code}' \
+                "$base/api/admin/migration-import?mode=page&table=alerts&limit=10")"
+              test "$code" = "200"
+              EXPECTED_ID="f1b-canary:$NONCE" node - "$RUNNER_TEMP/f1b-canary-read.json" <<'NODE'
+          const fs=require("fs");
+          const page=JSON.parse(fs.readFileSync(process.argv[2],"utf8"))?.import;
+          if(!page||page.returned!==1||page.hasMore!==false||page.rows?.[0]?.id!==process.env.EXPECTED_ID) throw new Error("canary readback failed");
+          console.log("F1B_IMPORT_CANARY_READ "+JSON.stringify({returned:page.returned,hasMore:page.hasMore,id:page.rows[0].id,sha256:page.sha256}));
+          NODE
+              code="$(curl --silent --show-error --location --request POST --max-time 120 \
+                "${common_auth[@]}" \
+                --header "X-Nagame-Migration-Reset: RESET-STAGING-F1B-V2" \
+                --output "$RUNNER_TEMP/f1b-canary-reset.json" --write-out '%{http_code}' \
+                "$base/api/admin/migration-import?mode=reset")"
+              test "$code" = "200"
+              code="$(curl --silent --show-error --location --max-time 60 \
+                "${common_auth[@]}" \
+                --output "$RUNNER_TEMP/f1b-canary-final.json" --write-out '%{http_code}' \
+                "$base/api/admin/migration-import?mode=manifest")"
+              test "$code" = "200"
+              node - "$RUNNER_TEMP/f1b-canary-final.json" <<'NODE'
+          const fs=require("fs");
+          const m=JSON.parse(fs.readFileSync(process.argv[2],"utf8"))?.import;
+          if(!m||Object.values(m.tables??{}).some(v=>v!==0)||m.ledger?.count!==13||m.ledger?.has0013!==false) throw new Error("canary cleanup failed");
+          if(!Array.isArray(m.importState)||m.importState.length!==17||m.importState.some(r=>Number(r.completed)!==0||Number(r.rows_imported)!==0)) throw new Error("canary checkpoint cleanup failed");
+          console.log("F1B_IMPORT_CANARY_CLEAN "+JSON.stringify({ledgerCount:m.ledger.count,has0013:m.ledger.has0013,stateRows:m.importState.length}));
           NODE
               ;;
           esac
