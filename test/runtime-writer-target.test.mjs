@@ -16,16 +16,15 @@ const workflows = [
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("runtime writer target defaults to Sites and Cloudflare is not yet ready", () => {
+test("runtime writer target configuration preserves the versioned routing contract", () => {
   const config = JSON.parse(read("ops/runtime-write-target.json"));
-  assert.deepEqual(config, {
-    schemaVersion:1,
-    active:"sites",
-    sitesBaseUrl:"https://vigia-alertas.csar68.chatgpt.site",
-    cloudflareBaseUrl:"https://vigia-runtime.c-gamiz93.workers.dev",
-    cloudflareReady:false,
-    reason:null,
-  });
+  assert.equal(config.schemaVersion, 1);
+  assert.ok(["sites", "cloudflare"].includes(config.active));
+  assert.equal(config.sitesBaseUrl, "https://vigia-alertas.csar68.chatgpt.site");
+  assert.equal(config.cloudflareBaseUrl, "https://vigia-runtime.c-gamiz93.workers.dev");
+  assert.equal(typeof config.cloudflareReady, "boolean");
+  assert.ok(config.reason === null || (typeof config.reason === "string" && config.reason.length <= 200));
+  if (config.active === "cloudflare") assert.equal(config.cloudflareReady, true);
 });
 
 test("target evaluator is fail-closed and pins both allowed origins", () => {
