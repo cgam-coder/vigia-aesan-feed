@@ -44,7 +44,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -136,6 +136,40 @@ jobs:
               probe_url root "$base/" 200
               probe_url es "$base/es/" 200
               probe_url terminal "$base/api/terminal/alerts?period=7d&pageSize=1" 200
+              ;;
+            f1b-import-manifest)
+              test -n "$VIGIA_SYNC_TOKEN"
+              base="https://vigia-runtime.c-gamiz93.workers.dev"
+              code="$(curl --silent --show-error --location --max-time 60 \
+                --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
+                --header "X-Nagame-Migration-Import: NAGAMEALERT_STAGING_D1_IMPORT_V2" \
+                --output "$RUNNER_TEMP/f1b-import-manifest.json" --write-out '%{http_code}' \
+                "$base/api/admin/migration-import?mode=manifest")"
+              test "$code" = "200"
+              node - "$RUNNER_TEMP/f1b-import-manifest.json" <<'NODE'
+          const fs=require("fs");
+          const body=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
+          const m=body?.import;
+          if(!m||m.formatVersion!==2||m.pagination!=="logical-keyset"||m.staging!==true) throw new Error("invalid F1B staging manifest");
+          if(m.scope!=="operational-post-retention"||m.pre2020ArchiveIncluded!==false) throw new Error("invalid F1B staging scope");
+          if(m.ledger?.count!==13||m.ledger?.first!=="0000_massive_goliath.sql"||
+             m.ledger?.last!=="0012_useful_roulette.sql"||m.ledger?.has0013!==false) throw new Error("invalid F1B staging ledger");
+          if(typeof m.schema?.sha256!=="string"||!/^[a-f0-9]{64}$/.test(m.schema.sha256)) throw new Error("invalid F1B staging schema digest");
+          const safe={
+            formatVersion:m.formatVersion,
+            pagination:m.pagination,
+            staging:m.staging,
+            scope:m.scope,
+            pre2020ArchiveIncluded:m.pre2020ArchiveIncluded,
+            ledger:{count:m.ledger.count,first:m.ledger.first,last:m.ledger.last,has0013:m.ledger.has0013},
+            schema:m.schema,
+            tables:m.tables,
+            extraTables:m.extraTables,
+            importStateRows:Array.isArray(m.importState)?m.importState.length:null,
+            sqlite:m.sqlite,
+          };
+          console.log("F1B_IMPORT_MANIFEST "+JSON.stringify(safe));
+          NODE
               ;;
           esac
           echo "CLOUDFLARE_STAGING_V2 operation=$OPERATION nonce=$NONCE status=PASS"
