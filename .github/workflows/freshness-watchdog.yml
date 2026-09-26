@@ -20,13 +20,16 @@ jobs:
   writer_gate:
     uses: ./.github/workflows/runtime-writer-gate.yml
 
+  runtime_target:
+    uses: ./.github/workflows/runtime-writer-target.yml
+
   parity:
-    needs: writer_gate
+    needs: [writer_gate, runtime_target]
     if: needs.writer_gate.outputs.allowed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
-      VIGIA_FRESHNESS_URL: https://vigia-alertas.csar68.chatgpt.site/api/freshness
+      VIGIA_FRESHNESS_URL: ${{ format('{0}/api/freshness', needs.runtime_target.outputs.base_url) }}
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
       - name: Audit official parity and run bounded recovery
