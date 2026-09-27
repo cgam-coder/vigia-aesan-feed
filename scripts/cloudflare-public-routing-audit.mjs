@@ -142,6 +142,94 @@ const assetProbe = async (base, label) => {
 await assetProbe("https://nagamealert.com","public");
 await assetProbe("https://vigia-runtime.c-gamiz93.workers.dev","worker");
 
+const publicClosureProbe = async () => {
+  const base = "https://nagamealert.com";
+
+  const manual = async (label, url) => {
+    const response = await fetch(url, {
+      redirect:"manual",
+      signal:AbortSignal.timeout(60_000),
+    });
+    console.log("PUBLIC_REDIRECT " + JSON.stringify({
+      label,
+      status:response.status,
+      location:response.headers.get("location"),
+    }));
+    return response;
+  };
+
+  await manual("apex-root", base + "/");
+  await manual("www-root", "https://www.nagamealert.com/");
+
+  const probePage = async (locale) => {
+    const response = await fetch(base + "/" + locale + "/", {
+      redirect:"follow",
+      signal:AbortSignal.timeout(60_000),
+    });
+    const html = await response.text();
+    const canonical = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)?.[1]
+      ?? html.match(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["']canonical["']/i)?.[1]
+      ?? null;
+    const hreflangs=[...new Set([...html.matchAll(/hreflang=["']([^"']+)["']/gi)].map((m)=>m[1]))].sort();
+    console.log("PUBLIC_PAGE_SEO " + JSON.stringify({
+      locale,
+      status:response.status,
+      finalUrl:response.url,
+      canonical,
+      hreflangs,
+      hasNoindex:/<meta[^>]+name=["']robots["'][^>]+content=["'][^"']*noindex/i.test(html),
+      bytes:html.length,
+    }));
+  };
+
+  await probePage("es");
+  await probePage("en");
+
+  const apiResponse = await fetch(base + "/api/v2/alerts?pageSize=1", {
+    redirect:"follow",
+    signal:AbortSignal.timeout(60_000),
+  });
+  const apiBody = await apiResponse.json();
+  console.log("PUBLIC_API " + JSON.stringify({
+    status:apiResponse.status,
+    apiVersion:apiBody?.apiVersion??null,
+    schemaVersion:apiBody?.schemaVersion??null,
+    items:Array.isArray(apiBody?.items)?apiBody.items.length:null,
+    hasNextCursor:Boolean(apiBody?.nextCursor),
+  }));
+
+  const robotsResponse = await fetch(base + "/robots.txt", {
+    redirect:"follow",
+    signal:AbortSignal.timeout(60_000),
+  });
+  const robots = await robotsResponse.text();
+  console.log("PUBLIC_ROBOTS " + JSON.stringify({
+    status:robotsResponse.status,
+    allowsRoot:/Allow:\s*\//i.test(robots),
+    disallowsApi:/Disallow:\s*\/api\//i.test(robots),
+    disallowsAll:/Disallow:\s*\/\s*(?:\r?\n|$)/i.test(robots),
+    hasCanonicalSitemap:robots.includes("https://nagamealert.com/sitemap.xml"),
+    hasCanonicalHost:robots.includes("Host: https://nagamealert.com"),
+    hasWorkersDev:robots.includes("workers.dev"),
+  }));
+
+  const sitemapResponse = await fetch(base + "/sitemap.xml", {
+    redirect:"follow",
+    signal:AbortSignal.timeout(60_000),
+  });
+  const sitemap = await sitemapResponse.text();
+  console.log("PUBLIC_SITEMAP " + JSON.stringify({
+    status:sitemapResponse.status,
+    contentType:sitemapResponse.headers.get("content-type"),
+    bytes:sitemap.length,
+    hasCanonicalOrigin:sitemap.includes("https://nagamealert.com"),
+    hasWorkersDev:sitemap.includes("workers.dev"),
+    sitemapEntries:(sitemap.match(/<sitemap>/g)||[]).length,
+    urlEntries:(sitemap.match(/<url>/g)||[]).length,
+  }));
+};
+await publicClosureProbe();
+
 
 
 let cloudflareApiStatus = "unavailable";
