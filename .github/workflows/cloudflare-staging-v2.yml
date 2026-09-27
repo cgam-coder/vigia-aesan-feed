@@ -250,8 +250,37 @@ jobs:
               test "$(git hash-object "$work/migrations/0013_chubby_morph.sql")" = "0545e042f230d2dde24e4668a48c86fb4c056c89"
               echo "P4_MIGRATION_IDENTITY sha256=96d7737b5f8b4d3c0ebf4cf067e7451e24f622fdcca80dffaf330d7d05a14eed blob=0545e042f230d2dde24e4668a48c86fb4c056c89"
 
+              # Resolve and pin the physical owner D1 identity before creating temporary Wrangler config.
+              d1_info="$(wrangler d1 info "$CF_D1" --json)"
+              D1_INFO="$d1_info" WORK="$work" node --input-type=module - <<'NODE'
+          import { writeFileSync } from "node:fs";
+          import { join } from "node:path";
+          const raw=JSON.parse(process.env.D1_INFO||"{}");
+          let row=Array.isArray(raw)?raw[0]:(raw?.result??raw);
+          if(Array.isArray(row)) row=row[0];
+          const id=row?.uuid??row?.id??row?.database_id??null;
+          const expected="55596003-1b90-4f66-aad8-decb21205f13";
+          if(id!==expected) throw new Error("owner D1 identity mismatch");
+          const config={
+            name:"nagamealert-p4-migration-control",
+            compatibility_date:"2026-09-27",
+            d1_databases:[{
+              binding:"DB",
+              database_name:"nagamealert-staging-db",
+              database_id:expected,
+              migrations_dir:"migrations",
+              migrations_table:"d1_migrations"
+            }]
+          };
+          writeFileSync(join(process.env.WORK,"wrangler.jsonc"),JSON.stringify(config,null,2)+"\n");
+          console.log("P4_D1_IDENTITY "+JSON.stringify({name:"nagamealert-staging-db",databaseId:expected}));
+          NODE
+
+              # Read-only migration discovery must succeed before the write.
+              wrangler d1 migrations list DB --remote --config "$work/wrangler.jsonc"
+
               # Apply exactly once via Wrangler migration tooling.
-              wrangler d1 migrations apply "$CF_D1" --remote --cwd "$work"
+              wrangler d1 migrations apply DB --remote --config "$work/wrangler.jsonc"
 
               # Mandatory post-audit.
               post_ledger="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT id,name FROM d1_migrations ORDER BY id ASC" --json)"
