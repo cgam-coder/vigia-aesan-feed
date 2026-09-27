@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -148,6 +148,147 @@ jobs:
           }));
           NODE
               echo "OWNER_RUNTIME_READONLY_SMOKE status=PASS"
+              ;;
+            preview-secret-bootstrap-smoke)
+              test "$CF_WORKER" = "vigia-runtime"
+              preview_name="work-f3b-worker-previews-base"
+              preview_url="https://work-f3b-worker-previews-base-vigia-runtime.c-gamiz93.workers.dev"
+              preview_d1="nagamealert-preview-db"
+
+              prod_before="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              preview_state="$(wrangler d1 execute "$preview_d1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan, SUM(CASE WHEN source<>'AESAN' THEN 1 ELSE 0 END) AS non_aesan, SUM(CASE WHEN source='AESAN' AND json_extract(canonical_json, '$.sourceRecord.aesanAlertClassification.status')='known' AND json_extract(canonical_json, '$.sourceRecord.aesanAlertClassification.code')='general_population' THEN 1 ELSE 0 END) AS general_population, SUM(CASE WHEN source='AESAN' AND json_extract(canonical_json, '$.sourceRecord.aesanAlertClassification.status')='known' AND json_extract(canonical_json, '$.sourceRecord.aesanAlertClassification.code')='allergy_intolerance_adverse' THEN 1 ELSE 0 END) AS allergy, SUM(CASE WHEN source='AESAN' AND json_extract(canonical_json, '$.sourceRecord.aesanAlertClassification.status')='known' AND json_extract(canonical_json, '$.sourceRecord.aesanAlertClassification.code')='food_supplements' THEN 1 ELSE 0 END) AS supplements, SUM(CASE WHEN source='AESAN' AND json_extract(canonical_json, '$.sourceRecord.aesanAlertClassification.status')='unknown' THEN 1 ELSE 0 END) AS unknown_count, SUM(CASE WHEN source='AESAN' AND json_extract(canonical_json, '$.sourceRecord.aesanAlertClassification.status')='conflict' THEN 1 ELSE 0 END) AS conflict_count, SUM(CASE WHEN reference='PREVIEW/CONFLICT' THEN 1 ELSE 0 END) AS conflict_fixture FROM alerts" --json)"
+              PROD_BEFORE="$prod_before" PREVIEW_STATE="$preview_state" node --input-type=module - <<'NODE'
+          const rows=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])??[];
+          const prod=rows(process.env.PROD_BEFORE)[0]??{};
+          const preview=rows(process.env.PREVIEW_STATE)[0]??{};
+          const n=(v)=>Number(v??0);
+          if(!Number.isSafeInteger(n(prod.total))||n(prod.total)<=129) throw new Error("production corpus unexpectedly small");
+          if(n(preview.total)!==129||n(preview.aesan)!==129||n(preview.non_aesan)!==0) throw new Error("preview corpus identity mismatch");
+          if(n(preview.general_population)!==59||n(preview.allergy)!==54||n(preview.supplements)!==14||n(preview.unknown_count)!==1||n(preview.conflict_count)!==1||n(preview.conflict_fixture)!==1) {
+            throw new Error("preview taxonomy fixture mismatch: "+JSON.stringify(preview));
+          }
+          console.log("PREVIEW_SECRET_PREFLIGHT "+JSON.stringify({
+            production:{total:n(prod.total),aesan:n(prod.aesan)},
+            preview:{total:n(preview.total),aesan:n(preview.aesan),nonAesan:n(preview.non_aesan),
+              general:n(preview.general_population),allergy:n(preview.allergy),supplements:n(preview.supplements),
+              unknown:n(preview.unknown_count),conflict:n(preview.conflict_count),conflictFixture:n(preview.conflict_fixture)}
+          }));
+          NODE
+
+              cursor_secret="$(openssl rand -hex 32)"
+              test "${#cursor_secret}" -eq 64
+              printf '%s' "$cursor_secret" | wrangler preview base-config secret put VIGIA_QUERY_CURSOR_SECRET --worker-name "$CF_WORKER" > "$RUNNER_TEMP/preview-base-secret-put.log"
+              printf '%s' "$cursor_secret" | wrangler preview secret put VIGIA_QUERY_CURSOR_SECRET --name "$preview_name" --worker-name "$CF_WORKER" --message "F3-B Preview cursor secret bootstrap $NONCE" > "$RUNNER_TEMP/preview-secret-put.log"
+              unset cursor_secret
+
+              base_secrets="$(wrangler preview base-config secret list --worker-name "$CF_WORKER" --json)"
+              preview_secrets="$(wrangler preview secret list --name "$preview_name" --worker-name "$CF_WORKER" --json)"
+              BASE_SECRETS="$base_secrets" PREVIEW_SECRETS="$preview_secrets" node --input-type=module - <<'NODE'
+          const names=(raw)=>{
+            const value=JSON.parse(raw||"[]");
+            const rows=Array.isArray(value)?value:(Array.isArray(value?.result)?value.result:[]);
+            return rows.map((row)=>String(row?.name??row?.key??"")).filter(Boolean).sort();
+          };
+          const base=names(process.env.BASE_SECRETS);
+          const preview=names(process.env.PREVIEW_SECRETS);
+          if(!base.includes("VIGIA_QUERY_CURSOR_SECRET")) throw new Error("Preview Base cursor secret absent");
+          if(!preview.includes("VIGIA_QUERY_CURSOR_SECRET")) throw new Error("Preview cursor secret absent");
+          console.log("PREVIEW_SECRET_NAMES "+JSON.stringify({base,preview}));
+          NODE
+
+              robots_code="$(curl --silent --show-error --max-time 60 --output "$RUNNER_TEMP/preview-robots.txt" --write-out '%{http_code}' "$preview_url/robots.txt")"
+              test "$robots_code" = "200"
+              ROBOTS="$(tr -d '\r' < "$RUNNER_TEMP/preview-robots.txt")" node --input-type=module - <<'NODE'
+          const body=process.env.ROBOTS??"";
+          if(body.trim()!=="User-agent: *\nDisallow: /") throw new Error("preview robots contract mismatch: "+JSON.stringify(body));
+          console.log("PREVIEW_ROBOTS status=PASS");
+          NODE
+
+              sitemap_code="$(curl --silent --show-error --max-time 60 --output "$RUNNER_TEMP/preview-sitemap.txt" --write-out '%{http_code}' "$preview_url/sitemap.xml")"
+              test "$sitemap_code" = "404"
+              echo "PREVIEW_SITEMAP status=404"
+
+              api_code="$(curl --silent --show-error --max-time 90 --output "$RUNNER_TEMP/preview-all.json" --write-out '%{http_code}' "$preview_url/api/terminal/alerts?period=all&country=ALL&pageSize=50")"
+              test "$api_code" = "200"
+              cursor="$(node --input-type=module - "$RUNNER_TEMP/preview-all.json" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.argv[2],"utf8"));
+          const sources=body?.facets?.sources??{};
+          if(body?.total!==129||body?.facets?.total!==129) throw new Error("preview API total mismatch");
+          if(sources.AESAN!==129||sources.RAPNA!==0||sources.RASFF!==0||sources["SAFETY GATE"]!==0||sources.OECD!==0) throw new Error("preview API source isolation mismatch");
+          if(body?.pagination?.pageSize!==50||body?.pagination?.returned!==50||body?.pagination?.hasMore!==true||typeof body?.pagination?.nextCursor!=="string"||!body.pagination.nextCursor) {
+            throw new Error("preview pagination first page mismatch");
+          }
+          console.error("PREVIEW_API_ALL "+JSON.stringify({total:body.total,sources,pagination:{pageSize:body.pagination.pageSize,returned:body.pagination.returned,hasMore:body.pagination.hasMore}}));
+          process.stdout.write(body.pagination.nextCursor);
+          NODE
+              )"
+              test -n "$cursor"
+
+              second_code="$(curl --silent --show-error --get --max-time 90 --output "$RUNNER_TEMP/preview-page2.json" --write-out '%{http_code}' \
+                --data-urlencode "period=all" --data-urlencode "country=ALL" --data-urlencode "pageSize=50" --data-urlencode "cursor=$cursor" \
+                "$preview_url/api/terminal/alerts")"
+              test "$second_code" = "200"
+              node --input-type=module - "$RUNNER_TEMP/preview-page2.json" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.argv[2],"utf8"));
+          if(body?.total!==129||body?.pagination?.returned!==50||body?.pagination?.hasMore!==true) throw new Error("preview pagination second page mismatch");
+          console.log("PREVIEW_PAGINATION_PAGE2 "+JSON.stringify({returned:body.pagination.returned,hasMore:body.pagination.hasMore}));
+          NODE
+
+              for ref in "ES2026/266" "ES2026/382" "PREVIEW/CONFLICT"; do
+                safe="$(printf '%s' "$ref" | tr '/:' '__')"
+                code="$(curl --silent --show-error --get --max-time 90 --output "$RUNNER_TEMP/preview-case-$safe.json" --write-out '%{http_code}' \
+                  --data-urlencode "q=$ref" --data-urlencode "period=all" --data-urlencode "country=ALL" \
+                  --data-urlencode "source=AESAN" --data-urlencode "pageSize=50" \
+                  "$preview_url/api/terminal/alerts")"
+                test "$code" = "200"
+                REF="$ref" node --input-type=module - "$RUNNER_TEMP/preview-case-$safe.json" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.argv[2],"utf8"));
+          const ref=process.env.REF;
+          const item=(body?.items??[]).find((candidate)=>candidate?.reference===ref);
+          if(!item) throw new Error("preview case missing: "+ref);
+          if(ref==="ES2026/266"){
+            if(item.aesanAlertType!=="allergy_intolerance_adverse") throw new Error("ES2026/266 taxonomy mismatch");
+            if(!/complement|supplement/iu.test(String(item.productClass??""))) throw new Error("ES2026/266 productClass mismatch: "+String(item.productClass??""));
+          }
+          if((ref==="ES2026/382"||ref==="PREVIEW/CONFLICT") && Object.prototype.hasOwnProperty.call(item,"aesanAlertType")) {
+            throw new Error(ref+" must not expose a known taxonomy badge");
+          }
+          console.log("PREVIEW_CASE "+JSON.stringify({reference:ref,aesanAlertType:item.aesanAlertType??null,productClass:item.productClass??null}));
+          NODE
+              done
+
+              for taxonomy in general_population allergy_intolerance_adverse food_supplements; do
+                case "$taxonomy" in
+                  general_population) expected=59 ;;
+                  allergy_intolerance_adverse) expected=54 ;;
+                  food_supplements) expected=14 ;;
+                esac
+                code="$(curl --silent --show-error --get --max-time 90 --output "$RUNNER_TEMP/preview-taxonomy-$taxonomy.json" --write-out '%{http_code}' \
+                  --data-urlencode "period=all" --data-urlencode "country=ALL" --data-urlencode "source=AESAN" \
+                  --data-urlencode "aesanType=$taxonomy" --data-urlencode "pageSize=50" \
+                  "$preview_url/api/terminal/alerts")"
+                test "$code" = "200"
+                EXPECTED="$expected" TAXONOMY="$taxonomy" node --input-type=module - "$RUNNER_TEMP/preview-taxonomy-$taxonomy.json" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.argv[2],"utf8"));
+          if(body?.total!==Number(process.env.EXPECTED)||body?.query?.aesanType!==process.env.TAXONOMY) throw new Error("taxonomy filter mismatch: "+process.env.TAXONOMY);
+          if((body?.items??[]).some((item)=>item?.aesanAlertType!==process.env.TAXONOMY)) throw new Error("taxonomy result contamination: "+process.env.TAXONOMY);
+          console.log("PREVIEW_TAXONOMY "+JSON.stringify({taxonomy:process.env.TAXONOMY,total:body.total}));
+          NODE
+              done
+
+              prod_after="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              PROD_BEFORE="$prod_before" PROD_AFTER="$prod_after" node --input-type=module - <<'NODE'
+          const row=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])?.[0]??{};
+          const before=row(process.env.PROD_BEFORE);
+          const after=row(process.env.PROD_AFTER);
+          if(Number(before.total)!==Number(after.total)||Number(before.aesan)!==Number(after.aesan)) throw new Error("production D1 changed during Preview certification");
+          console.log("PREVIEW_PRODUCTION_D1_UNCHANGED "+JSON.stringify({total:Number(after.total),aesan:Number(after.aesan)}));
+          NODE
+              echo "PREVIEW_SECRET_BOOTSTRAP_SMOKE preview=$preview_name url=$preview_url status=PASS"
               ;;
             preview-d1-bootstrap-aesan)
               prod_name="nagamealert-staging-db"
