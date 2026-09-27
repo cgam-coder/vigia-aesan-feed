@@ -255,8 +255,66 @@ jobs:
             const raw=JSON.parse(readFileSync(join(process.env.WORK,file),"utf8"));
             return (Array.isArray(raw)?raw:[]).flatMap(x=>x.results??[]);
           };
-          const alerts=readRows("alerts.json");
+          const object=(value)=>value && typeof value==="object" && !Array.isArray(value) ? value : {};
+          const array=(value)=>Array.isArray(value) ? value : [];
+          const validHash=/^[0-9a-f]{64}$/u;
+          const compactList=(value,maxItems,maxBytes)=>{
+            const source=array(value).slice(0,maxItems);
+            const out=[];
+            let bytes=2;
+            for(const item of source){
+              const encoded=JSON.stringify(item);
+              const next=new TextEncoder().encode(encoded).byteLength + (out.length?1:0);
+              if(bytes+next>maxBytes) break;
+              out.push(item);
+              bytes+=next;
+            }
+            return out;
+          };
+          const compactCanonical=(row)=>{
+            let canonical;
+            try { canonical=JSON.parse(String(row.canonical_json??"{}")); }
+            catch { throw new Error("invalid AESAN canonical_json in preview source: "+row.reference); }
+            const sourceRecord=object(canonical.sourceRecord);
+            const classification=sourceRecord.aesanAlertClassification;
+            if(!classification || typeof classification!=="object" || Array.isArray(classification)) {
+              throw new Error("missing AESAN classification in preview source: "+row.reference);
+            }
+            const hashCandidates=[sourceRecord.sourceRecordHash,row.content_hash].map((x)=>typeof x==="string"?x.toLowerCase():"");
+            const sourceRecordHash=hashCandidates.find((x)=>validHash.test(x)) ?? "0".repeat(64);
+            const officialTitle=typeof sourceRecord.officialTitle==="string" && sourceRecord.officialTitle.trim()
+              ? sourceRecord.officialTitle.trim() : String(row.title||row.reference||"AESAN");
+            const identity={...object(canonical.identity),source:"AESAN",internalId:String(row.id)};
+            const compact={
+              identity,
+              headline:Object.keys(object(canonical.headline)).length ? canonical.headline : { title:String(row.title||row.reference||"AESAN") },
+              dates:Object.keys(object(canonical.dates)).length ? canonical.dates : { publishedAt:row.published_at??null },
+              product:Object.keys(object(canonical.product)).length ? canonical.product : { name:String(row.product||"") },
+              operators:array(canonical.operators).slice(0,16),
+              geography:Object.keys(object(canonical.geography)).length ? canonical.geography : {},
+              risk:Object.keys(object(canonical.risk)).length ? canonical.risk : {},
+              resources:compactList(canonical.resources,16,12_000),
+              sourceRecord:{
+                sourceRecordSchemaVersion:2,
+                sourceRecordHash,
+                officialTitle,
+                publishedFields:compactList(sourceRecord.publishedFields,8,10_000),
+                materialParagraphs:compactList(sourceRecord.materialParagraphs,2,8_000),
+                resources:compactList(sourceRecord.resources,8,8_000),
+                officialDates:compactList(sourceRecord.officialDates,4,4_000),
+                aesanAlertClassification:classification,
+              },
+            };
+            const encoded=JSON.stringify(compact);
+            const size=new TextEncoder().encode(encoded).byteLength;
+            if(size>48_000) throw new Error("compacted canonical fixture still too large: "+row.reference+" "+size);
+            return {...row,canonical_json:encoded};
+          };
+
+          const alerts=readRows("alerts.json").map(compactCanonical);
           if(alerts.length<50) throw new Error("preview fixture AESAN snapshot unexpectedly small: "+alerts.length);
+          const maxCanonicalBytes=Math.max(...alerts.map((row)=>new TextEncoder().encode(String(row.canonical_json)).byteLength));
+          console.log("PREVIEW_CANONICAL_COMPACTION "+JSON.stringify({alerts:alerts.length,maxCanonicalBytes}));
           const ids=new Set(alerts.map(r=>String(r.id)));
           const onlyIds=(rows)=>rows.filter(r=>ids.has(String(r.alert_id)));
 
@@ -275,8 +333,8 @@ jobs:
           const migrations=readRows("migrations.json");
           if(migrations.length!==14||String(migrations.at(-1)?.name)!=="0013_chubby_morph.sql") throw new Error("production ledger is not at 0013");
 
-          const template=alerts.find(r=>String(r.reference)==="ES2026/266")??alerts[0];
-          if(!template) throw new Error("no AESAN template available for conflict fixture");
+          const template=alerts.find(r=>String(r.reference)==="ES2026/266");
+          if(!template) throw new Error("mandatory ES2026/266 template unavailable for conflict fixture");
           const conflictId="preview:aesan:taxonomy-conflict";
           const conflictRef="PREVIEW/CONFLICT";
           const conflict={...template};
@@ -294,19 +352,40 @@ jobs:
           delete conflict.aesan_taxonomy_code;
           try{
             const canonical=JSON.parse(String(conflict.canonical_json??"{}"));
-            canonical.identity={...(canonical.identity??{}),internalId:conflictId};
-            canonical.headline={...(canonical.headline??{}),title:conflict.title};
-            canonical.sourceRecord={...(canonical.sourceRecord??{}),
+            canonical.identity={...object(canonical.identity),internalId:conflictId,source:"AESAN"};
+            canonical.headline={...object(canonical.headline),title:conflict.title};
+            const sourceRecord=object(canonical.sourceRecord);
+            const current=object(sourceRecord.aesanAlertClassification);
+            const publications=array(current.publications).map((publication)=>({
+              ...object(publication),
+              matches:array(object(publication).matches).map((match)=>({...object(match)})),
+            }));
+            if(!publications.length) throw new Error("template classification has no publications");
+            const generalMatch={
+              code:"general_population",
+              sourceTypeId:"b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+              officialLabel:"Alertas alimentarias de interés para toda la población",
+            };
+            const first=publications[0];
+            const existing=array(first.matches);
+            if(!existing.some((match)=>object(match).code==="general_population")) existing.push(generalMatch);
+            first.matches=existing
+              .filter((match,index,self)=>self.findIndex((other)=>object(other).code===object(match).code)===index)
+              .sort((left,right)=>String(object(left).code).localeCompare(String(object(right).code),"en"));
+            canonical.sourceRecord={
+              ...sourceRecord,
               aesanAlertClassification:{
-                ...(canonical.sourceRecord?.aesanAlertClassification??{}),
+                schemaVersion:1,
                 status:"conflict",
                 code:null,
-                previewFixture:true,
+                sourceTypeId:null,
+                officialLabel:null,
+                publications,
               }
             };
             conflict.canonical_json=JSON.stringify(canonical);
-          }catch{
-            throw new Error("failed to build conflict canonical fixture");
+          }catch(error){
+            throw new Error("failed to build valid conflict canonical fixture: "+String(error));
           }
           alerts.push(conflict);
 
@@ -332,7 +411,10 @@ jobs:
             for(const row of rows){
               const cols=Object.keys(row).filter(k=>!excluded.has(k));
               if(!cols.length) continue;
-              out+=`INSERT OR REPLACE INTO "${table}" (${cols.map(c=>`"${c.replaceAll('"','""')}"`).join(",")}) VALUES (${cols.map(c=>lit(row[c])).join(",")});\n`;
+              const statement=`INSERT OR REPLACE INTO "${table}" (${cols.map(c=>`"${c.replaceAll('"','""')}"`).join(",")}) VALUES (${cols.map(c=>lit(row[c])).join(",")});\n`;
+              const statementBytes=new TextEncoder().encode(statement).byteLength;
+              if(statementBytes>80_000) throw new Error("preview fixture statement too large before D1: "+table+" "+statementBytes);
+              out+=statement;
             }
             return out;
           };
