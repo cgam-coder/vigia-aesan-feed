@@ -44,7 +44,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -162,6 +162,16 @@ jobs:
             runningInRegion:row.running_in_region??null,
           }));
           NODE
+              ;;
+            postcutover-drop-import-state)
+              test "$CF_D1" = "nagamealert-staging-db"
+              before="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS n FROM sqlite_schema WHERE type='table' AND name='cf_f1b_import_state'" --json)"
+              BEFORE="$before" node -e 'const v=JSON.parse(process.env.BEFORE||"[]"); const rows=(Array.isArray(v)?v:[]).flatMap(x=>x.results??[]); if(Number(rows[0]?.n)!==1) throw new Error("cf_f1b_import_state must exist before cleanup");'
+              wrangler d1 execute "$CF_D1" --remote --command "DROP TABLE cf_f1b_import_state" --yes --json >/dev/null
+              after="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT name FROM sqlite_schema WHERE type='table' AND name LIKE 'cf_%' ORDER BY name ASC" --json)"
+              AFTER="$after" node -e 'const v=JSON.parse(process.env.AFTER||"[]"); const rows=(Array.isArray(v)?v:[]).flatMap(x=>x.results??[]); if(rows.length!==0) throw new Error("temporary cf_* tables remain: "+JSON.stringify(rows));'
+              ledger="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT id,name FROM d1_migrations ORDER BY id ASC" --json)"
+              LEDGER="$ledger" node -e 'const v=JSON.parse(process.env.LEDGER||"[]"); const rows=(Array.isArray(v)?v:[]).flatMap(x=>x.results??[]); const names=rows.map(r=>String(r.name)); if(rows.length!==13||names[0]!=="0000_massive_goliath.sql"||names.at(-1)!=="0012_useful_roulette.sql"||names.some(n=>n.startsWith("0013_"))) throw new Error("migration ledger changed during cleanup"); console.log("POSTCUTOVER_D1_CLEANUP "+JSON.stringify({removed:"cf_f1b_import_state",ledgerCount:rows.length,last:names.at(-1),has0013:false}));'
               ;;
             d1-canary-read)
               test "$CF_D1" = "nagamealert-staging-db"
