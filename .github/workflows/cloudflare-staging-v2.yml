@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","f3b-production-certification","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -106,6 +106,208 @@ jobs:
           NODE
               done
               echo "OWNER_RUNTIME_POST_PREFLIGHT_ALL status=PASS"
+              ;;
+            f3b-production-certification)
+              test "$CF_WORKER" = "vigia-runtime"
+              prod_url="https://nagamealert.com"
+              expected_main="744dd2d9fba511fa320f4926b40d700e999412d9"
+
+              prod_before="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              ledger_before="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT id,name FROM d1_migrations ORDER BY id DESC LIMIT 1" --json)"
+              PROD_BEFORE="$prod_before" LEDGER_BEFORE="$ledger_before" node --input-type=module - <<'NODE'
+          const row=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])?.[0]??{};
+          const prod=row(process.env.PROD_BEFORE), ledger=row(process.env.LEDGER_BEFORE);
+          const total=Number(prod.total), aesan=Number(prod.aesan);
+          if(!Number.isSafeInteger(total)||total<=1000) throw new Error("production alert corpus unexpectedly small");
+          if(!Number.isSafeInteger(aesan)||aesan<100) throw new Error("production AESAN corpus unexpectedly small");
+          if(String(ledger.name)!=="0013_chubby_morph.sql") throw new Error("production migration ledger is not at 0013");
+          console.log("F3B_PROD_D1_PREFLIGHT "+JSON.stringify({total,aesan,ledger:{id:Number(ledger.id),name:String(ledger.name)}}));
+          NODE
+
+              wrangler versions list --name "$CF_WORKER" --json > "$RUNNER_TEMP/f3b-versions.json"
+              wrangler deployments list --name "$CF_WORKER" --json > "$RUNNER_TEMP/f3b-deployments.json"
+              VERSIONS="$RUNNER_TEMP/f3b-versions.json" DEPLOYMENTS="$RUNNER_TEMP/f3b-deployments.json" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const parse=(path)=>JSON.parse(readFileSync(path,"utf8"));
+          const array=(value)=>{
+            if(Array.isArray(value)) return value;
+            for(const key of ["items","result","versions","deployments"]){
+              if(Array.isArray(value?.[key])) return value[key];
+            }
+            return [];
+          };
+          const compact=(row)=>({
+            id:row?.id??row?.version_id??row?.deployment_id??null,
+            created:row?.created_on??row?.created_at??row?.created??null,
+            source:row?.source??row?.annotations?.["workers/message"]??row?.metadata?.source??null,
+            number:row?.number??null,
+            versions:Array.isArray(row?.versions)?row.versions.map((v)=>({
+              id:v?.version_id??v?.id??null,
+              percentage:v?.percentage??null,
+            })):null,
+          });
+          const versions=array(parse(process.env.VERSIONS)).slice(0,3).map(compact);
+          const deployments=array(parse(process.env.DEPLOYMENTS)).slice(0,3).map(compact);
+          if(!versions.length) throw new Error("Cloudflare versions list returned no versions");
+          if(!deployments.length) throw new Error("Cloudflare deployments list returned no deployments");
+          console.log("F3B_PROD_CLOUDFLARE_STATE "+JSON.stringify({versions,deployments}));
+          NODE
+
+              for path in / /es/ /es/alertas /en/alerts; do
+                code="$(curl --silent --show-error --location --max-time 60 --output "$RUNNER_TEMP/prod-page.html" --write-out '%{http_code}' "$prod_url$path")"
+                test "$code" = "200"
+                test -s "$RUNNER_TEMP/prod-page.html"
+                echo "F3B_PROD_HTTP path=$path status=$code bytes=$(wc -c < "$RUNNER_TEMP/prod-page.html")"
+              done
+
+              for host in nagamealert.es www.nagamealert.es www.nagamealert.com; do
+                headers="$RUNNER_TEMP/redirect-$(echo "$host" | tr '.' '_').headers"
+                code="$(curl --silent --show-error --max-time 60 --dump-header "$headers" --output /dev/null --write-out '%{http_code}' "https://$host/es/alertas")"
+                test "$code" = "308"
+                location="$(awk 'BEGIN{IGNORECASE=1} /^location:/{sub(/\r$/,""); sub(/^[^:]+:[[:space:]]*/,""); print; exit}' "$headers")"
+                case "$location" in
+                  https://nagamealert.com/*) ;;
+                  *) echo "unexpected redirect location: $location" >&2; exit 1 ;;
+                esac
+                echo "F3B_PROD_REDIRECT host=$host status=$code location=$location"
+              done
+
+              robots_code="$(curl --silent --show-error --max-time 60 --output "$RUNNER_TEMP/robots.txt" --write-out '%{http_code}' "$prod_url/robots.txt")"
+              test "$robots_code" = "200"
+              grep -Fq "Allow: /" "$RUNNER_TEMP/robots.txt"
+              grep -Fq "Disallow: /api/" "$RUNNER_TEMP/robots.txt"
+              grep -Fq "Disallow: /privado/" "$RUNNER_TEMP/robots.txt"
+              grep -Fq "Sitemap: https://nagamealert.com/sitemap.xml" "$RUNNER_TEMP/robots.txt"
+              if grep -Fxq "Disallow: /" "$RUNNER_TEMP/robots.txt"; then
+                echo "production robots unexpectedly blocks all" >&2
+                exit 1
+              fi
+              echo "F3B_PROD_ROBOTS status=PASS"
+
+              sitemap_code="$(curl --silent --show-error --max-time 90 --output "$RUNNER_TEMP/sitemap.xml" --write-out '%{http_code}' "$prod_url/sitemap.xml")"
+              test "$sitemap_code" = "200"
+              grep -Eq '<sitemapindex|<urlset' "$RUNNER_TEMP/sitemap.xml"
+              grep -Fq "https://nagamealert.com/" "$RUNNER_TEMP/sitemap.xml"
+              echo "F3B_PROD_SITEMAP status=PASS bytes=$(wc -c < "$RUNNER_TEMP/sitemap.xml")"
+
+              curl --silent --show-error --get --fail-with-body --max-time 90 \
+                --data-urlencode "period=all" --data-urlencode "country=ALL" \
+                --data-urlencode "source=AESAN" --data-urlencode "pageSize=50" \
+                "$prod_url/api/terminal/alerts" > "$RUNNER_TEMP/prod-aesan-all.json"
+              ALL="$RUNNER_TEMP/prod-aesan-all.json" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const b=JSON.parse(readFileSync(process.env.ALL,"utf8"));
+          const a=b?.facets?.aesan;
+          if(!a) throw new Error("production AESAN facets absent");
+          if(b?.total!==b?.facets?.sources?.AESAN||b?.total!==a.all) throw new Error("production AESAN totals inconsistent");
+          const sum=Number(a.general_population)+Number(a.allergy_intolerance_adverse)+Number(a.food_supplements)+Number(a.unknown)+Number(a.conflict);
+          if(sum!==Number(a.all)) throw new Error("production AESAN taxonomy facet partition mismatch");
+          if(b?.pagination?.pageSize!==50||b?.pagination?.returned!==Math.min(50,b.total)) throw new Error("production pagination contract mismatch");
+          console.log("F3B_PROD_API_ALL "+JSON.stringify({total:b.total,aesan:a,pagination:{pageSize:b.pagination.pageSize,returned:b.pagination.returned,hasMore:b.pagination.hasMore}}));
+          NODE
+
+              for taxonomy in general_population allergy_intolerance_adverse food_supplements; do
+                curl --silent --show-error --get --fail-with-body --max-time 90 \
+                  --data-urlencode "period=all" --data-urlencode "country=ALL" \
+                  --data-urlencode "source=AESAN" --data-urlencode "aesanType=$taxonomy" \
+                  --data-urlencode "pageSize=50" "$prod_url/api/terminal/alerts" > "$RUNNER_TEMP/prod-$taxonomy.json"
+                TAXONOMY="$taxonomy" ALL="$RUNNER_TEMP/prod-aesan-all.json" FILE="$RUNNER_TEMP/prod-$taxonomy.json" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const all=JSON.parse(readFileSync(process.env.ALL,"utf8"));
+          const b=JSON.parse(readFileSync(process.env.FILE,"utf8"));
+          const expected=Number(all?.facets?.aesan?.[process.env.TAXONOMY]);
+          if(b?.total!==expected||b?.query?.aesanType!==process.env.TAXONOMY) throw new Error("production category total mismatch "+process.env.TAXONOMY);
+          if((b?.items??[]).some((item)=>item?.aesanAlertType!==process.env.TAXONOMY)) throw new Error("production category contamination "+process.env.TAXONOMY);
+          console.log("F3B_PROD_API_CATEGORY "+JSON.stringify({taxonomy:process.env.TAXONOMY,total:b.total,returned:b.pagination?.returned}));
+          NODE
+              done
+
+              for bad in \
+                "period=all&source=RASFF&aesanType=general_population" \
+                "period=all&aesanType=general_population" \
+                "period=all&source=AESAN&aesanType=not_a_real_type"; do
+                code="$(curl --silent --show-error --get --max-time 60 --output "$RUNNER_TEMP/prod-invalid.json" --write-out '%{http_code}' "$prod_url/api/terminal/alerts?$bad")"
+                test "$code" = "400"
+              done
+              echo "F3B_PROD_API_INVALID_CONTRACT status=PASS"
+
+              for ref in "ES2026/266" "ES2026/382" "PREVIEW/CONFLICT"; do
+                safe="$(printf '%s' "$ref" | tr '/:' '__')"
+                curl --silent --show-error --get --fail-with-body --max-time 90 \
+                  --data-urlencode "q=$ref" --data-urlencode "period=all" \
+                  --data-urlencode "country=ALL" --data-urlencode "source=AESAN" \
+                  --data-urlencode "pageSize=50" "$prod_url/api/terminal/alerts" > "$RUNNER_TEMP/prod-case-$safe.json"
+                REF="$ref" FILE="$RUNNER_TEMP/prod-case-$safe.json" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const b=JSON.parse(readFileSync(process.env.FILE,"utf8"));
+          const ref=process.env.REF;
+          if(ref==="PREVIEW/CONFLICT"){
+            if(Number(b?.total)!==0||(b?.items??[]).length!==0) throw new Error("Preview-only conflict fixture leaked into production");
+            console.log("F3B_PROD_PREVIEW_FIXTURE_LEAK_GUARD status=PASS");
+          } else {
+            const item=(b?.items??[]).find((candidate)=>candidate?.reference===ref);
+            if(!item) throw new Error("mandatory production case missing: "+ref);
+            if(ref==="ES2026/266"){
+              if(item.aesanAlertType!=="allergy_intolerance_adverse") throw new Error("ES2026/266 taxonomy mismatch");
+              if(!/complement|supplement/iu.test(String(item.productClass??""))) throw new Error("ES2026/266 productClass mismatch");
+            }
+            if(ref==="ES2026/382"&&Object.prototype.hasOwnProperty.call(item,"aesanAlertType")){
+              throw new Error("ES2026/382 must not expose a known taxonomy code");
+            }
+            console.log("F3B_PROD_CASE "+JSON.stringify({reference:ref,aesanAlertType:item.aesanAlertType??null,productClass:item.productClass??null}));
+          }
+          NODE
+              done
+
+              browser_dir="$RUNNER_TEMP/f3b-prod-browser"
+              rm -rf "$browser_dir"
+              mkdir -p "$browser_dir"
+              cp "$GITHUB_WORKSPACE/ops/f3b-production-smoke.mjs" "$browser_dir/smoke.mjs"
+              cd "$browser_dir"
+              npm init -y >/dev/null 2>&1
+              npm install --no-audit --no-fund --silent puppeteer-core@24.24.1
+              chrome="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+              test -n "$chrome"
+              echo "F3B_PROD_BROWSER chrome=$(basename "$chrome")"
+              PROD_URL="$prod_url" CHROME="$chrome" node smoke.mjs
+              cd "$GITHUB_WORKSPACE"
+
+              test -n "$VIGIA_SYNC_TOKEN"
+              owner="https://vigia-runtime.c-gamiz93.workers.dev"
+              for endpoint in aesan rapna safety-gate oecd rasff; do
+                code="$(curl --silent --show-error --location --max-time 60 \
+                  --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
+                  --output "$RUNNER_TEMP/prod-$endpoint-observe.json" --write-out '%{http_code}' \
+                  "$owner/api/$endpoint/sync?observe=1")"
+                test "$code" = "200"
+              done
+              freshness_code="$(curl --silent --show-error --location --max-time 60 \
+                --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
+                --output "$RUNNER_TEMP/prod-freshness.json" --write-out '%{http_code}' \
+                "$owner/api/freshness?observe=1")"
+              test "$freshness_code" = "200"
+              FRESHNESS="$RUNNER_TEMP/prod-freshness.json" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.env.FRESHNESS,"utf8"));
+          if(!Array.isArray(body?.states)) throw new Error("invalid production freshness body");
+          console.log("F3B_PROD_OBSERVE "+JSON.stringify({sources:body.states.map((row)=>row.source).filter(Boolean).sort()}));
+          NODE
+
+              prod_after="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              ledger_after="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT id,name FROM d1_migrations ORDER BY id DESC LIMIT 1" --json)"
+              PROD_BEFORE="$prod_before" PROD_AFTER="$prod_after" LEDGER_AFTER="$ledger_after" node --input-type=module - <<'NODE'
+          const row=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])?.[0]??{};
+          const before=row(process.env.PROD_BEFORE), after=row(process.env.PROD_AFTER), ledger=row(process.env.LEDGER_AFTER);
+          if(String(ledger.name)!=="0013_chubby_morph.sql") throw new Error("production migration ledger changed during certification");
+          const summary={
+            before:{total:Number(before.total),aesan:Number(before.aesan)},
+            after:{total:Number(after.total),aesan:Number(after.aesan)},
+            delta:{total:Number(after.total)-Number(before.total),aesan:Number(after.aesan)-Number(before.aesan)},
+            ledger:{id:Number(ledger.id),name:String(ledger.name)}
+          };
+          console.log("F3B_PROD_D1_POST "+JSON.stringify(summary));
+          NODE
+              echo "F3B_PRODUCTION_CERTIFICATION main=$expected_main url=$prod_url status=PASS"
               ;;
             owner-runtime-readonly-smoke)
               test -n "$VIGIA_SYNC_TOKEN"
