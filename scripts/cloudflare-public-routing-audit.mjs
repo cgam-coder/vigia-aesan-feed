@@ -116,6 +116,32 @@ const seoProbe = async () => {
 };
 await seoProbe();
 
+const assetProbe = async (base, label) => {
+  const response = await fetch(base + "/es/", { redirect:"follow", signal:AbortSignal.timeout(60_000) });
+  const html = await response.text();
+  const hrefs = [...html.matchAll(/<link[^>]+rel=["']stylesheet["'][^>]+href=["']([^"']+)["']/gi)]
+    .map((m)=>m[1])
+    .concat([...html.matchAll(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["']stylesheet["']/gi)].map((m)=>m[1]));
+  const unique=[...new Set(hrefs)];
+  console.log("ASSET_LINKS "+JSON.stringify({label,count:unique.length,hrefs:unique}));
+  for(const href of unique){
+    const url=new URL(href, response.url).toString();
+    try{
+      const r=await fetch(url,{redirect:"follow",signal:AbortSignal.timeout(60_000)});
+      const body=await r.arrayBuffer();
+      console.log("ASSET_PROBE "+JSON.stringify({
+        label,href,url,status:r.status,contentType:r.headers.get("content-type"),bytes:body.byteLength,finalUrl:r.url
+      }));
+    }catch(error){
+      console.log("ASSET_PROBE "+JSON.stringify({
+        label,href,url,status:null,error:error instanceof Error?error.message.slice(0,300):String(error).slice(0,300)
+      }));
+    }
+  }
+};
+await assetProbe("https://nagamealert.com","public");
+await assetProbe("https://vigia-runtime.c-gamiz93.workers.dev","worker");
+
 
 
 let cloudflareApiStatus = "unavailable";
