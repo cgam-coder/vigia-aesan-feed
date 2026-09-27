@@ -173,10 +173,12 @@ jobs:
           if(prod.name!=="nagamealert-staging-db"||id(prod)!==process.env.PROD_ID) throw new Error("production D1 identity mismatch");
           if(preview.name!=="nagamealert-preview-db"||id(preview)!==process.env.PREVIEW_ID) throw new Error("preview D1 identity mismatch");
           const previewTables=Number(preview.num_tables??0);
-          if(!Number.isSafeInteger(previewTables)||previewTables!==0) throw new Error("preview D1 is not empty before bootstrap");
+          if(!Number.isSafeInteger(previewTables)||![0,18].includes(previewTables)) {
+            throw new Error("preview D1 is neither empty nor exact-schema state");
+          }
           console.log("PREVIEW_BOOTSTRAP_PRECHECK "+JSON.stringify({
             production:{name:prod.name,databaseId:id(prod)},
-            preview:{name:preview.name,databaseId:id(preview),numTables:previewTables}
+            preview:{name:preview.name,databaseId:id(preview),numTables:previewTables,state:previewTables===0?"empty":"schema-present"}
           }));
           NODE
 
@@ -197,7 +199,28 @@ jobs:
           console.log("PREVIEW_SCHEMA_CAPTURE "+JSON.stringify({ddlObjects:rows.length,tables:names.length,requiredTables:required.length}));
           NODE
 
-              wrangler d1 execute "$preview_name" --remote --file="$work/schema.sql" --yes >/dev/null
+              preview_count_json="$(wrangler d1 execute "$preview_name" --remote --command "SELECT COUNT(*) AS n FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'cf_%' AND name NOT LIKE '_cf_%'" --json)"
+              preview_count="$(PREVIEW_COUNT_JSON="$preview_count_json" node --input-type=module - <<'NODE'
+          const raw=JSON.parse(process.env.PREVIEW_COUNT_JSON||"[]");
+          const rows=(Array.isArray(raw)?raw:[]).flatMap(x=>x.results??[]);
+          const n=Number(rows[0]?.n??-1);
+          if(!Number.isSafeInteger(n)) throw new Error("invalid preview schema count");
+          console.log(n);
+          NODE
+              )"
+              case "$preview_count" in
+                0)
+                  wrangler d1 execute "$preview_name" --remote --file="$work/schema.sql" --yes >/dev/null
+                  echo "PREVIEW_SCHEMA_APPLIED"
+                  ;;
+                18)
+                  echo "PREVIEW_SCHEMA_REUSED"
+                  ;;
+                *)
+                  echo "Unexpected preview schema table count: $preview_count" >&2
+                  exit 1
+                  ;;
+              esac
 
               prod_tables="$(wrangler d1 execute "$prod_name" --remote --command "SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'cf_%' AND name NOT LIKE '_cf_%' ORDER BY name" --json)"
               preview_tables="$(wrangler d1 execute "$preview_name" --remote --command "SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'cf_%' AND name NOT LIKE '_cf_%' ORDER BY name" --json)"
@@ -208,6 +231,10 @@ jobs:
           if(JSON.stringify(a)!==JSON.stringify(b)) throw new Error("preview schema table set mismatch");
           console.log("PREVIEW_SCHEMA_PARITY "+JSON.stringify({tables:a.length}));
           NODE
+
+              # Dedicated preview only: make bootstrap repeatable after partial fixture failures.
+              wrangler d1 execute "$preview_name" --remote --command "DELETE FROM alert_aliases; DELETE FROM alert_categories; DELETE FROM alert_hazards; DELETE FROM alert_geographies; DELETE FROM alert_dimension_state; DELETE FROM alerts; DELETE FROM source_sync_state; DELETE FROM source_freshness_state; DELETE FROM d1_migrations;" --yes >/dev/null
+              echo "PREVIEW_FIXTURE_TABLES_RESET"
 
               # Pin the real AESAN snapshot first. Related rows are filtered again in the fixture builder by these IDs.
               wrangler d1 execute "$prod_name" --remote --command "SELECT * FROM alerts WHERE source='AESAN' ORDER BY id" --json > "$work/alerts.json"
@@ -305,12 +332,12 @@ jobs:
             for(const row of rows){
               const cols=Object.keys(row).filter(k=>!excluded.has(k));
               if(!cols.length) continue;
-              out+=`INSERT INTO "${table}" (${cols.map(c=>`"${c.replaceAll('"','""')}"`).join(",")}) VALUES (${cols.map(c=>lit(row[c])).join(",")});\n`;
+              out+=`INSERT OR REPLACE INTO "${table}" (${cols.map(c=>`"${c.replaceAll('"','""')}"`).join(",")}) VALUES (${cols.map(c=>lit(row[c])).join(",")});\n`;
             }
             return out;
           };
 
-          let sql="PRAGMA foreign_keys=OFF;\nBEGIN TRANSACTION;\n";
+          let sql="";
           sql+=insertRows("d1_migrations",migrations);
           sql+=insertRows("alerts",alerts,{exclude:["aesan_taxonomy_status","aesan_taxonomy_code"]});
           sql+=insertRows("alert_dimension_state",dimension);
@@ -320,7 +347,6 @@ jobs:
           sql+=insertRows("alert_hazards",hazards);
           sql+=insertRows("source_sync_state",syncState);
           sql+=insertRows("source_freshness_state",freshnessState);
-          sql+="COMMIT;\nPRAGMA foreign_keys=ON;\n";
           writeFileSync(join(process.env.WORK,"fixtures.sql"),sql);
 
           console.log("PREVIEW_FIXTURE_BUILD "+JSON.stringify({
