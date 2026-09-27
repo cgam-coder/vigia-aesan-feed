@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -172,6 +172,97 @@ jobs:
             version:row.version??null,
             runningInRegion:row.running_in_region??null,
           }));
+          NODE
+              ;;
+            p4-owner-stage2b-country-benchmark)
+              test "$CF_D1" = "nagamealert-staging-db"
+              out="$RUNNER_TEMP/p4-stage2b-country.ndjson"
+              : > "$out"
+
+              country_tail="SELECT CASE WHEN ag.code_scheme = 'EU_COUNTRY' AND ag.geography_code = 'XI' THEN ag.geography_code ELSE ag.country_code END AS code, COUNT(DISTINCT ag.alert_id) AS alertCount FROM __FROM__ INNER JOIN alert_geographies ag ON ag.alert_id = alerts.id WHERE ag.role = 'notifying' AND ag.status = 'mapped' AND ((ag.admin_level = 'country' AND ag.code_scheme = 'ISO_3166_1_ALPHA2') OR (ag.admin_level = 'subdivision' AND ag.code_scheme = 'ISO_3166_2') OR (ag.admin_level = 'territory' AND ag.code_scheme = 'EU_COUNTRY' AND ag.geography_code = 'XI')) GROUP BY code HAVING code <> '' AND COUNT(DISTINCT ag.alert_id) > 0 ORDER BY code"
+
+              run_variant(){
+                local type="$1"
+                local expected="$2"
+                local variant="$3"
+                local sql
+                case "$variant" in
+                  json_materialized)
+                    sql="WITH filtered_alerts AS MATERIALIZED (SELECT alerts.id, alerts.source FROM alerts LEFT JOIN alert_dimension_state ds ON ds.alert_id = alerts.id WHERE alerts.source = 'AESAN' AND json_extract(alerts.canonical_json, '$.sourceRecord.aesanAlertClassification.status') = 'known' AND json_extract(alerts.canonical_json, '$.sourceRecord.aesanAlertClassification.code') = '$type' AND alerts.source = 'AESAN') ${country_tail/__FROM__/filtered_alerts alerts}"
+                    ;;
+                  generated_materialized)
+                    sql="WITH filtered_alerts AS MATERIALIZED (SELECT alerts.id, alerts.source FROM alerts LEFT JOIN alert_dimension_state ds ON ds.alert_id = alerts.id WHERE alerts.source = 'AESAN' AND alerts.aesan_taxonomy_status = 'known' AND alerts.aesan_taxonomy_code = '$type' AND alerts.source = 'AESAN') ${country_tail/__FROM__/filtered_alerts alerts}"
+                    ;;
+                  direct_indexed)
+                    sql="SELECT CASE WHEN ag.code_scheme = 'EU_COUNTRY' AND ag.geography_code = 'XI' THEN ag.geography_code ELSE ag.country_code END AS code, COUNT(DISTINCT ag.alert_id) AS alertCount FROM alerts INDEXED BY alerts_aesan_taxonomy_known_code_id_idx INNER JOIN alert_geographies ag ON ag.alert_id = alerts.id WHERE alerts.source = 'AESAN' AND alerts.aesan_taxonomy_status = 'known' AND alerts.aesan_taxonomy_code = '$type' AND ag.role = 'notifying' AND ag.status = 'mapped' AND ((ag.admin_level = 'country' AND ag.code_scheme = 'ISO_3166_1_ALPHA2') OR (ag.admin_level = 'subdivision' AND ag.code_scheme = 'ISO_3166_2') OR (ag.admin_level = 'territory' AND ag.code_scheme = 'EU_COUNTRY' AND ag.geography_code = 'XI')) GROUP BY code HAVING code <> '' AND COUNT(DISTINCT ag.alert_id) > 0 ORDER BY code"
+                    ;;
+                  seeded_materialized)
+                    sql="WITH taxonomy_ids AS MATERIALIZED (SELECT alerts.id, alerts.source FROM alerts INDEXED BY alerts_aesan_taxonomy_known_code_id_idx WHERE alerts.source = 'AESAN' AND alerts.aesan_taxonomy_status = 'known' AND alerts.aesan_taxonomy_code = '$type') SELECT CASE WHEN ag.code_scheme = 'EU_COUNTRY' AND ag.geography_code = 'XI' THEN ag.geography_code ELSE ag.country_code END AS code, COUNT(DISTINCT ag.alert_id) AS alertCount FROM taxonomy_ids alerts INNER JOIN alert_geographies ag ON ag.alert_id = alerts.id WHERE ag.role = 'notifying' AND ag.status = 'mapped' AND ((ag.admin_level = 'country' AND ag.code_scheme = 'ISO_3166_1_ALPHA2') OR (ag.admin_level = 'subdivision' AND ag.code_scheme = 'ISO_3166_2') OR (ag.admin_level = 'territory' AND ag.code_scheme = 'EU_COUNTRY' AND ag.geography_code = 'XI')) GROUP BY code HAVING code <> '' AND COUNT(DISTINCT ag.alert_id) > 0 ORDER BY code"
+                    ;;
+                  *)
+                    echo "unknown variant $variant" >&2
+                    return 1
+                    ;;
+                esac
+
+                local result plan
+                result="$(wrangler d1 execute "$CF_D1" --remote --command "$sql" --json)"
+                plan="$(wrangler d1 execute "$CF_D1" --remote --command "EXPLAIN QUERY PLAN $sql" --json)"
+                TYPE="$type" EXPECTED="$expected" VARIANT="$variant" RESULT="$result" PLAN="$plan" OUT="$out" node --input-type=module - <<'NODE'
+          import { appendFileSync } from "node:fs";
+          const one=(raw)=>{const v=JSON.parse(raw||"[]"); return Array.isArray(v)?v[0]:v;};
+          const result=one(process.env.RESULT)??{};
+          const rows=Array.isArray(result.results)?result.results:[];
+          const safeRows=rows.map(r=>({code:String(r.code??""),alertCount:Number(r.alertCount??0)}));
+          const expected=Number(process.env.EXPECTED);
+          if(safeRows.length!==1||safeRows[0].code!=="ES"||safeRows[0].alertCount!==expected) {
+            throw new Error("Stage2B semantic mismatch "+JSON.stringify({type:process.env.TYPE,variant:process.env.VARIANT,rows:safeRows,expected}));
+          }
+          const p=one(process.env.PLAN)??{};
+          const plan=(Array.isArray(p.results)?p.results:[]).map(r=>String(r.detail??""));
+          const row={
+            type:process.env.TYPE,
+            variant:process.env.VARIANT,
+            result:safeRows,
+            rowsRead:Number(result.meta?.rows_read??result.meta?.rowsRead??-1),
+            duration:Number(result.meta?.duration??-1),
+            plan,
+            usesTaxonomyIndex:plan.some(x=>x.includes("alerts_aesan_taxonomy_known_code_id_idx")),
+          };
+          console.log("P4_STAGE2B_COUNTRY "+JSON.stringify(row));
+          appendFileSync(process.env.OUT,JSON.stringify(row)+"\n");
+          NODE
+              }
+
+              for spec in "general_population 35" "allergy_intolerance_adverse 44" "food_supplements 6"; do
+                set -- $spec
+                type="$1"; expected="$2"
+                for variant in json_materialized generated_materialized direct_indexed seeded_materialized; do
+                  run_variant "$type" "$expected" "$variant"
+                done
+              done
+
+              OUT="$out" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const rows=readFileSync(process.env.OUT,"utf8").trim().split("\n").filter(Boolean).map(JSON.parse);
+          if(rows.length!==12) throw new Error("Stage2B benchmark count mismatch");
+          const byType=Object.groupBy(rows,r=>r.type);
+          const summary={};
+          for(const [type,items] of Object.entries(byType)){
+            const baseline=items.find(x=>x.variant==="json_materialized");
+            if(!baseline) throw new Error("missing baseline "+type);
+            summary[type]=items.map(x=>({
+              variant:x.variant,
+              rowsRead:x.rowsRead,
+              duration:x.duration,
+              usesTaxonomyIndex:x.usesTaxonomyIndex,
+              rowsReadReductionPct:baseline.rowsRead>0
+                ? Number(((1-x.rowsRead/baseline.rowsRead)*100).toFixed(2))
+                : null,
+              plan:x.plan,
+            }));
+          }
+          console.log("P4_STAGE2B_COUNTRY_SUMMARY "+JSON.stringify(summary));
           NODE
               ;;
             p4-owner-stage2-country-diagnose)
