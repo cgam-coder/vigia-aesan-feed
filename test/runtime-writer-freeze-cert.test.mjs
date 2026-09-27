@@ -31,8 +31,15 @@ test("freeze certification waits only for pre-freeze production writers", () => 
   assert.match(workflow, /15_000/u);
 });
 
-test("freeze certification requires Sites and page-only V2 source export", () => {
-  assert.match(workflow, /test "\$ACTIVE_TARGET" = "sites"/u);
+test("freeze certification supports owner Cloudflare and legacy Sites evidence paths", () => {
+  assert.match(workflow, /case "\$ACTIVE_TARGET" in/u);
+  assert.match(workflow, /cloudflare\)/u);
+  assert.match(workflow, /https:\/\/vigia-runtime\.c-gamiz93\.workers\.dev/u);
+  assert.match(workflow, /nagamealert-staging-db/u);
+  assert.match(workflow, /CLOUDFLARE_API_TOKEN/u);
+  assert.match(workflow, /owner-d1-unexpired-lease-semantics/u);
+  assert.match(workflow, /wrangler d1 execute/u);
+  assert.match(workflow, /sites\)/u);
   assert.match(workflow, /https:\/\/vigia-alertas\.csar68\.chatgpt\.site/u);
   assert.match(workflow, /NAGAMEALERT_OPERATIONAL_D1_EXPORT_V2/u);
   assert.match(workflow, /mode:"page"/u);
