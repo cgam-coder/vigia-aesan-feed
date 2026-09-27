@@ -173,15 +173,8 @@ jobs:
               rc=$?
               set -e
               if [ "$rc" -eq 10 ]; then
-                create_json="$(wrangler d1 create "$preview_name" --json)"
-                CREATE_JSON="$create_json" PREVIEW_NAME="$preview_name" node --input-type=module - <<'NODE'
-          const value=JSON.parse(process.env.CREATE_JSON||"{}");
-          let row=Array.isArray(value)?value[0]:(value?.result??value);
-          if(Array.isArray(row)) row=row[0];
-          const id=row?.uuid??row?.id??row?.database_id??null;
-          if(!id||typeof id!=="string") throw new Error("preview D1 create returned no database id");
-          console.log("PREVIEW_D1_CREATED "+JSON.stringify({name:process.env.PREVIEW_NAME,databaseId:id}));
-          NODE
+                wrangler d1 create "$preview_name"
+                echo "PREVIEW_D1_CREATE_REQUESTED name=$preview_name"
               elif [ "$rc" -ne 0 ]; then
                 exit "$rc"
               fi
