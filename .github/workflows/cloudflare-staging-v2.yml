@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: cloudflare-staging-v2
@@ -44,19 +45,27 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
           if(typeof body.nonce!=="string" || !/^[A-Za-z0-9._:-]{8,120}$/.test(body.nonce)) throw new Error("invalid nonce");
-          const allowedKeys=new Set(["operation","nonce","versionId"]);
+          const allowedKeys=new Set(["operation","nonce","versionId","expectedFreezeRunId","expectedFreezeSha"]);
           if(Object.keys(body).some(k=>!allowedKeys.has(k))) throw new Error("unexpected key");
           if(body.operation==="worker-rollback"){
             if(typeof body.versionId!=="string" || !/^[0-9a-f-]{20,80}$/i.test(body.versionId)) throw new Error("invalid versionId");
           } else if("versionId" in body) throw new Error("versionId only valid for rollback");
+          if(body.operation==="p4-owner-stage1-apply-audit"){
+            if(!Number.isSafeInteger(body.expectedFreezeRunId)||body.expectedFreezeRunId<=0) throw new Error("invalid expectedFreezeRunId");
+            if(typeof body.expectedFreezeSha!=="string"||!/^[a-f0-9]{40}$/i.test(body.expectedFreezeSha)) throw new Error("invalid expectedFreezeSha");
+          } else if("expectedFreezeRunId" in body||"expectedFreezeSha" in body) {
+            throw new Error("freeze expectations only valid for P4 apply");
+          }
           console.log("OPERATION="+body.operation);
           console.log("NONCE="+body.nonce);
           if(body.versionId) console.log("VERSION_ID="+body.versionId);
+          if(body.expectedFreezeRunId) console.log("EXPECTED_FREEZE_RUN_ID="+body.expectedFreezeRunId);
+          if(body.expectedFreezeSha) console.log("EXPECTED_FREEZE_SHA="+body.expectedFreezeSha);
           NODE
           source "$RUNNER_TEMP/request.env"
           wrangler(){ npx --yes wrangler@4.135.0 "$@"; }
@@ -160,6 +169,136 @@ jobs:
             numTables,
             version:row.version??null,
             runningInRegion:row.running_in_region??null,
+          }));
+          NODE
+              ;;
+            p4-owner-stage1-apply-audit)
+              test "$CF_D1" = "nagamealert-staging-db"
+              test -n "$CLOUDFLARE_API_TOKEN"
+              test -n "$EXPECTED_FREEZE_RUN_ID"
+              test -n "$EXPECTED_FREEZE_SHA"
+              test -n "$GITHUB_TOKEN"
+
+              # Require the exact freeze certification run to be terminal green.
+              run_json="$(curl --silent --show-error --fail-with-body \
+                --header "Authorization: Bearer $GITHUB_TOKEN" \
+                --header "Accept: application/vnd.github+json" \
+                --header "X-GitHub-Api-Version: 2022-11-28" \
+                "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$EXPECTED_FREEZE_RUN_ID")"
+              RUN_JSON="$run_json" EXPECTED_SHA="$EXPECTED_FREEZE_SHA" node --input-type=module - <<'NODE'
+          const run=JSON.parse(process.env.RUN_JSON||"{}");
+          if(run.status!=="completed"||run.conclusion!=="success") throw new Error("freeze certification is not terminal success");
+          if(run.head_sha!==process.env.EXPECTED_SHA) throw new Error("freeze certification SHA mismatch");
+          console.log("P4_FREEZE_CERT "+JSON.stringify({runId:run.id,status:run.status,conclusion:run.conclusion,headSha:run.head_sha}));
+          NODE
+
+              # Require current main controls still frozen and owner target still active.
+              for file in ops/runtime-write-freeze.json ops/runtime-write-target.json; do
+                enc="$(curl --silent --show-error --fail-with-body \
+                  --header "Authorization: Bearer $GITHUB_TOKEN" \
+                  --header "Accept: application/vnd.github+json" \
+                  --header "X-GitHub-Api-Version: 2022-11-28" \
+                  "https://api.github.com/repos/$GITHUB_REPOSITORY/contents/$file?ref=main")"
+                ENC="$enc" FILE="$file" node --input-type=module - <<'NODE'
+          const payload=JSON.parse(process.env.ENC||"{}");
+          const raw=Buffer.from(String(payload.content||"").replace(/\s+/g,""),"base64").toString("utf8");
+          const value=JSON.parse(raw);
+          if(process.env.FILE.endsWith("runtime-write-freeze.json")){
+            if(value.schemaVersion!==1||value.frozen!==true) throw new Error("writers are no longer frozen");
+            console.log("P4_FREEZE_CONTROL "+JSON.stringify(value));
+          } else {
+            if(value.schemaVersion!==1||value.active!=="cloudflare"||value.cloudflareReady!==true||
+               value.cloudflareBaseUrl!=="https://vigia-runtime.c-gamiz93.workers.dev") {
+              throw new Error("owner Cloudflare writer target is not active/ready");
+            }
+            console.log("P4_TARGET_CONTROL "+JSON.stringify({active:value.active,cloudflareReady:value.cloudflareReady,cloudflareBaseUrl:value.cloudflareBaseUrl}));
+          }
+          NODE
+              done
+
+              # Recheck immutable pre-state immediately before the one write.
+              pre_ledger="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT id,name FROM d1_migrations ORDER BY id ASC" --json)"
+              pre_cols="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT name FROM pragma_table_xinfo('alerts') WHERE name IN ('aesan_taxonomy_status','aesan_taxonomy_code')" --json)"
+              pre_idx="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT name FROM pragma_index_list('alerts') WHERE name='alerts_aesan_taxonomy_known_code_id_idx'" --json)"
+              PRE_LEDGER="$pre_ledger" PRE_COLS="$pre_cols" PRE_IDX="$pre_idx" node --input-type=module - <<'NODE'
+          const rows=(raw)=>{const v=JSON.parse(raw||"[]"); return (Array.isArray(v)?v:[]).flatMap(x=>x.results??[]);};
+          const ledger=rows(process.env.PRE_LEDGER);
+          const names=ledger.map(r=>String(r.name));
+          if(ledger.length!==13||names.at(-1)!=="0012_useful_roulette.sql"||names.some(n=>n.startsWith("0013_"))) throw new Error("P4 apply pre-ledger mismatch");
+          if(rows(process.env.PRE_COLS).length!==0) throw new Error("P4 projection already exists before apply");
+          if(rows(process.env.PRE_IDX).length!==0) throw new Error("P4 index already exists before apply");
+          console.log("P4_APPLY_PRESTATE "+JSON.stringify({ledgerCount:ledger.length,last:names.at(-1),has0013:false,projection:"absent",index:"absent"}));
+          NODE
+
+              # Materialize the exact reviewed migration in an isolated temp project.
+              work="$RUNNER_TEMP/p4-owner-stage1"
+              rm -rf "$work"
+              mkdir -p "$work/migrations"
+              WORK="$work" node --input-type=module - <<'NODE'
+          import { writeFileSync } from "node:fs";
+          import { join } from "node:path";
+          const sql=[
+            "ALTER TABLE `alerts` ADD `aesan_taxonomy_status` text GENERATED ALWAYS AS (CASE WHEN source = 'AESAN' AND json_valid(canonical_json) THEN json_extract(canonical_json, '$.sourceRecord.aesanAlertClassification.status') ELSE NULL END) VIRTUAL;--> statement-breakpoint",
+            "ALTER TABLE `alerts` ADD `aesan_taxonomy_code` text GENERATED ALWAYS AS (CASE WHEN source = 'AESAN' AND json_valid(canonical_json) THEN json_extract(canonical_json, '$.sourceRecord.aesanAlertClassification.code') ELSE NULL END) VIRTUAL;--> statement-breakpoint",
+            "CREATE INDEX `alerts_aesan_taxonomy_known_code_id_idx` ON `alerts` (`aesan_taxonomy_code`,`id`) WHERE \"alerts\".\"source\" = 'AESAN' AND \"alerts\".\"aesan_taxonomy_status\" = 'known';",
+          ].join("\n");
+          writeFileSync(join(process.env.WORK,"migrations","0013_chubby_morph.sql"),sql);
+          NODE
+              test "$(sha256sum "$work/migrations/0013_chubby_morph.sql" | awk '{print $1}')" = "96d7737b5f8b4d3c0ebf4cf067e7451e24f622fdcca80dffaf330d7d05a14eed"
+              test "$(git hash-object "$work/migrations/0013_chubby_morph.sql")" = "0545e042f230d2dde24e4668a48c86fb4c056c89"
+              echo "P4_MIGRATION_IDENTITY sha256=96d7737b5f8b4d3c0ebf4cf067e7451e24f622fdcca80dffaf330d7d05a14eed blob=0545e042f230d2dde24e4668a48c86fb4c056c89"
+
+              # Apply exactly once via Wrangler migration tooling.
+              wrangler d1 migrations apply "$CF_D1" --remote --cwd "$work"
+
+              # Mandatory post-audit.
+              post_ledger="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT id,name FROM d1_migrations ORDER BY id ASC" --json)"
+              cols="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT name,hidden FROM pragma_table_xinfo('alerts') WHERE name IN ('aesan_taxonomy_status','aesan_taxonomy_code') ORDER BY name" --json)"
+              idx="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT name,partial FROM pragma_index_list('alerts') WHERE name='alerts_aesan_taxonomy_known_code_id_idx'" --json)"
+              idx_x="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT seqno,cid,name,key FROM pragma_index_xinfo('alerts_aesan_taxonomy_known_code_id_idx') ORDER BY seqno" --json)"
+              ddl="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT type,name,sql FROM sqlite_schema WHERE name='alerts_aesan_taxonomy_known_code_id_idx'" --json)"
+              parity="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN COALESCE(aesan_taxonomy_status,'<NULL>') <> COALESCE(CASE WHEN json_valid(canonical_json) THEN json_extract(canonical_json,'$.sourceRecord.aesanAlertClassification.status') ELSE NULL END,'<NULL>') OR COALESCE(aesan_taxonomy_code,'<NULL>') <> COALESCE(CASE WHEN json_valid(canonical_json) THEN json_extract(canonical_json,'$.sourceRecord.aesanAlertClassification.code') ELSE NULL END,'<NULL>') THEN 1 ELSE 0 END) AS mismatches, SUM(CASE WHEN aesan_taxonomy_status='known' AND aesan_taxonomy_code='general_population' THEN 1 ELSE 0 END) AS general_population, SUM(CASE WHEN aesan_taxonomy_status='known' AND aesan_taxonomy_code='allergy_intolerance_adverse' THEN 1 ELSE 0 END) AS allergy_intolerance_adverse, SUM(CASE WHEN aesan_taxonomy_status='known' AND aesan_taxonomy_code='food_supplements' THEN 1 ELSE 0 END) AS food_supplements, SUM(CASE WHEN aesan_taxonomy_status='unknown' THEN 1 ELSE 0 END) AS unknown_count, SUM(CASE WHEN aesan_taxonomy_status='conflict' THEN 1 ELSE 0 END) AS conflict_count FROM alerts WHERE source='AESAN'" --json)"
+              non_aesan="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS non_null FROM alerts WHERE source<>'AESAN' AND (aesan_taxonomy_status IS NOT NULL OR aesan_taxonomy_code IS NOT NULL)" --json)"
+              plan="$(wrangler d1 execute "$CF_D1" --remote --command "EXPLAIN QUERY PLAN SELECT id FROM alerts WHERE source='AESAN' AND aesan_taxonomy_status='known' AND aesan_taxonomy_code='general_population' ORDER BY id LIMIT 10" --json)"
+
+              POST_LEDGER="$post_ledger" COLS="$cols" IDX="$idx" IDX_X="$idx_x" DDL="$ddl" PARITY="$parity" NON_AESAN="$non_aesan" PLAN="$plan" node --input-type=module - <<'NODE'
+          const rows=(raw)=>{const v=JSON.parse(raw||"[]"); return (Array.isArray(v)?v:[]).flatMap(x=>x.results??[]);};
+          const ledger=rows(process.env.POST_LEDGER);
+          const names=ledger.map(r=>String(r.name));
+          if(ledger.length!==14||names.at(-1)!=="0013_chubby_morph.sql") throw new Error("P4 post-ledger mismatch");
+          const cols=rows(process.env.COLS);
+          if(cols.length!==2||cols.some(r=>Number(r.hidden)!==2)) throw new Error("P4 generated columns are not VIRTUAL");
+          const idx=rows(process.env.IDX);
+          if(idx.length!==1||Number(idx[0].partial)!==1) throw new Error("P4 index is not partial");
+          const keys=rows(process.env.IDX_X).filter(r=>Number(r.key)===1).map(r=>r.name);
+          if(JSON.stringify(keys)!==JSON.stringify(["aesan_taxonomy_code","id"])) throw new Error("P4 index key order mismatch: "+JSON.stringify(keys));
+          const ddl=rows(process.env.DDL)[0]?.sql??"";
+          if(!ddl.includes("alerts_aesan_taxonomy_known_code_id_idx")||!ddl.includes("aesan_taxonomy_status")||!ddl.includes("known")) throw new Error("P4 index DDL mismatch");
+          const p=rows(process.env.PARITY)[0]??{};
+          const safe={
+            total:Number(p.total??0),
+            mismatches:Number(p.mismatches??0),
+            general_population:Number(p.general_population??0),
+            allergy_intolerance_adverse:Number(p.allergy_intolerance_adverse??0),
+            food_supplements:Number(p.food_supplements??0),
+            unknown:Number(p.unknown_count??0),
+            conflict:Number(p.conflict_count??0),
+          };
+          if(safe.total!==128||safe.mismatches!==0||safe.general_population!==59||
+             safe.allergy_intolerance_adverse!==54||safe.food_supplements!==14||
+             safe.unknown!==1||safe.conflict!==0) {
+            throw new Error("P4 canonical/generated parity or count mismatch: "+JSON.stringify(safe));
+          }
+          const nonAesan=Number(rows(process.env.NON_AESAN)[0]?.non_null??-1);
+          if(nonAesan!==0) throw new Error("P4 non-AESAN generated projection is non-null");
+          const plan=rows(process.env.PLAN);
+          const details=plan.map(r=>String(r.detail??"")).join(" | ");
+          if(!details.includes("alerts_aesan_taxonomy_known_code_id_idx")) throw new Error("P4 planner did not use taxonomy index: "+details);
+          console.log("P4_OWNER_STAGE1_POST_AUDIT "+JSON.stringify({
+            ledgerCount:ledger.length,last:names.at(-1),
+            columns:cols,index:{partial:Number(idx[0].partial),keys},
+            parity:safe,nonAesanNonNull:nonAesan,
+            plan:details
           }));
           NODE
               ;;
