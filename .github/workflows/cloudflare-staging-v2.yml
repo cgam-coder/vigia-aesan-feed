@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -148,6 +148,62 @@ jobs:
           }));
           NODE
               echo "OWNER_RUNTIME_READONLY_SMOKE status=PASS"
+              ;;
+            preview-d1-create-or-inspect)
+              preview_name="nagamealert-preview-db"
+              list_json="$(wrangler d1 list --json)"
+              LIST_JSON="$list_json" PREVIEW_NAME="$preview_name" node --input-type=module - <<'NODE'
+          const value=JSON.parse(process.env.LIST_JSON||"[]");
+          const rows=Array.isArray(value)?value:(value?.result??[]);
+          const matches=rows.filter((row)=>row?.name===process.env.PREVIEW_NAME);
+          if(matches.length>1) throw new Error("multiple preview D1 databases with same name");
+          if(matches.length===1){
+            const row=matches[0];
+            console.log("PREVIEW_D1_FOUND "+JSON.stringify({
+              name:row.name,
+              databaseId:row.uuid??row.id??row.database_id??null,
+              createdAt:row.created_at??null
+            }));
+            process.exit(0);
+          }
+          console.log("PREVIEW_D1_ABSENT "+JSON.stringify({name:process.env.PREVIEW_NAME}));
+          process.exit(10);
+          NODE
+              rc=$?
+              if [ "$rc" -eq 10 ]; then
+                create_json="$(wrangler d1 create "$preview_name" --json)"
+                CREATE_JSON="$create_json" PREVIEW_NAME="$preview_name" node --input-type=module - <<'NODE'
+          const value=JSON.parse(process.env.CREATE_JSON||"{}");
+          let row=Array.isArray(value)?value[0]:(value?.result??value);
+          if(Array.isArray(row)) row=row[0];
+          const id=row?.uuid??row?.id??row?.database_id??null;
+          if(!id||typeof id!=="string") throw new Error("preview D1 create returned no database id");
+          console.log("PREVIEW_D1_CREATED "+JSON.stringify({name:process.env.PREVIEW_NAME,databaseId:id}));
+          NODE
+              elif [ "$rc" -ne 0 ]; then
+                exit "$rc"
+              fi
+
+              info_json="$(wrangler d1 info "$preview_name" --json)"
+              INFO_JSON="$info_json" PREVIEW_NAME="$preview_name" node --input-type=module - <<'NODE'
+          const raw=JSON.parse(process.env.INFO_JSON||"{}");
+          let row=Array.isArray(raw)?raw[0]:(raw?.result??raw);
+          if(Array.isArray(row)) row=row[0];
+          if(!row||typeof row!=="object") throw new Error("invalid preview D1 info payload");
+          const id=row.uuid??row.id??row.database_id??null;
+          const numTables=Number(row.num_tables??0);
+          const fileSize=Number(row.file_size??row.database_size??0);
+          if(row.name!==process.env.PREVIEW_NAME) throw new Error("preview D1 name mismatch");
+          if(!id||typeof id!=="string") throw new Error("preview D1 id missing");
+          if(!Number.isFinite(numTables)||numTables!==0) throw new Error("preview D1 is not empty; refusing to proceed");
+          console.log("PREVIEW_D1_READY "+JSON.stringify({
+            name:row.name,
+            databaseId:id,
+            numTables,
+            fileSizeBytes:Number.isFinite(fileSize)?fileSize:null,
+            runningInRegion:row.running_in_region??null,
+          }));
+          NODE
               ;;
             d1-info)
               test "$CF_D1" = "nagamealert-staging-db"
