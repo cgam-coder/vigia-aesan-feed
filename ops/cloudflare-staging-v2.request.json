@@ -1,4 +1,4 @@
 {
-  "operation": "probe",
-  "nonce": "control-token-worker-d1-20260927"
+  "operation": "worker-versions",
+  "nonce": "postcutover-version-ledger-20260927"
 }
