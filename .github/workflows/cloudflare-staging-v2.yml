@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -172,6 +172,120 @@ jobs:
             version:row.version??null,
             runningInRegion:row.running_in_region??null,
           }));
+          NODE
+              ;;
+            p4-owner-stage1-perf)
+              base="https://nagamealert.com"
+              out="$RUNNER_TEMP/p4-stage1-perf.ndjson"
+              : > "$out"
+
+              probe(){
+                local label="$1"
+                local type="$2"
+                local record="$3"
+                local qs="period=7d&pageSize=50&source=AESAN"
+                if [ -n "$type" ]; then qs="$qs&aesanType=$type"; fi
+                local headers="$RUNNER_TEMP/p4-$label.headers"
+                local body="$RUNNER_TEMP/p4-$label.body"
+                local code
+                code="$(curl --silent --show-error --max-time 120 \
+                  --header "X-Nagame-Perf: 1" \
+                  --header "Cache-Control: no-cache" \
+                  --dump-header "$headers" --output "$body" --write-out '%{http_code}' \
+                  "$base/api/terminal/alerts?$qs")"
+                LABEL="$label" TYPE="$type" HTTP_CODE="$code" RECORD="$record" HEADERS="$headers" BODY="$body" OUT="$out" node --input-type=module - <<'NODE'
+          import { readFileSync, appendFileSync } from "node:fs";
+          const headerText=readFileSync(process.env.HEADERS,"utf8");
+          const bodyText=readFileSync(process.env.BODY,"utf8");
+          const http=Number(process.env.HTTP_CODE);
+          if(http!==200) throw new Error("P4 perf HTTP "+http+" for "+process.env.LABEL);
+          const body=JSON.parse(bodyText);
+          const header=(name)=>{
+            const prefix=name.toLowerCase()+":";
+            const line=headerText.split(/\r?\n/u).find((row)=>row.toLowerCase().startsWith(prefix));
+            return line ? line.slice(line.indexOf(":")+1).trim() : null;
+          };
+          const serverTiming=header("server-timing")??"";
+          const timings={};
+          for(const token of serverTiming.split(",")){
+            const m=token.trim().match(/^([^;]+);dur=([0-9.]+)$/u);
+            if(m) timings[m[1]]=Number(m[2]);
+          }
+          const rowsHeader=header("x-nagame-d1-rows")??"";
+          const d1rows={};
+          for(const token of rowsHeader.split(",")){
+            const parts=token.trim().split("=");
+            if(parts.length===2 && parts[0] && /^\d+$/u.test(parts[1])) d1rows[parts[0]]=Number(parts[1]);
+          }
+          const totalRowsRead=Object.entries(d1rows).filter(([k])=>k.endsWith(".rows_read"))
+            .reduce((sum,[,v])=>sum+Number(v),0);
+          const row={
+            label:process.env.LABEL,
+            type:process.env.TYPE||null,
+            http,
+            total:Number(body?.total??-1),
+            items:Array.isArray(body?.items)?body.items.length:-1,
+            returned:Number(body?.pagination?.returned??-1),
+            timings,
+            rows:d1rows,
+            totalRowsRead,
+          };
+          console.log("P4_STAGE1_PERF "+JSON.stringify(row));
+          if(process.env.RECORD==="1") appendFileSync(process.env.OUT,JSON.stringify(row)+"\n");
+          NODE
+              }
+
+              probe WARM_A "" 0
+              probe WARM_B "general_population" 0
+              probe WARM_C "allergy_intolerance_adverse" 0
+              probe WARM_D "food_supplements" 0
+
+              i=0
+              while read -r label type; do
+                i=$((i+1))
+                probe "$(printf '%02d_%s' "$i" "$label")" "$type" 1
+              done <<'EOF'
+          A
+          B general_population
+          A
+          C allergy_intolerance_adverse
+          A
+          D food_supplements
+          A
+          B general_population
+          A
+          C allergy_intolerance_adverse
+          A
+          D food_supplements
+          EOF
+
+              OUT="$out" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const rows=readFileSync(process.env.OUT,"utf8").trim().split("\n").filter(Boolean).map(JSON.parse);
+          if(rows.length!==12) throw new Error("P4 perf sequence count mismatch");
+          const group=(letter)=>rows.filter(r=>r.label.endsWith("_"+letter));
+          const median=(values)=>{
+            const v=values.filter(Number.isFinite).toSorted((a,b)=>a-b);
+            if(!v.length) return null;
+            const m=Math.floor(v.length/2);
+            return v.length%2?v[m]:(v[m-1]+v[m])/2;
+          };
+          const summary={};
+          for(const letter of ["A","B","C","D"]){
+            const g=group(letter);
+            summary[letter]={
+              n:g.length,
+              total:[...new Set(g.map(r=>r.total))],
+              items:[...new Set(g.map(r=>r.items))],
+              countryMedianMs:median(g.map(r=>r.timings["d1-country"])),
+              routeMedianMs:median(g.map(r=>r.timings.route)),
+              totalRowsReadMedian:median(g.map(r=>r.totalRowsRead)),
+              countryMs:g.map(r=>r.timings["d1-country"]??null),
+              routeMs:g.map(r=>r.timings.route??null),
+              totalRowsRead:g.map(r=>r.totalRowsRead),
+            };
+          }
+          console.log("P4_STAGE1_PERF_SUMMARY "+JSON.stringify(summary));
           NODE
               ;;
             p4-owner-stage1-apply-audit)
