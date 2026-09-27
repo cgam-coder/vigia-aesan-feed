@@ -1,4 +1,4 @@
 {
-  "operation": "worker-status",
-  "nonce": "postcutover-active-version-20260927"
+  "operation": "postcutover-drop-import-state",
+  "nonce": "postcutover-drop-import-state-20260927"
 }
