@@ -87,6 +87,35 @@ await probe("es", "https://nagamealert.es/");
 await probe("es_www", "https://www.nagamealert.es/");
 await probe("worker", "https://vigia-runtime.c-gamiz93.workers.dev/");
 
+const seoProbe = async () => {
+  const base = "https://vigia-runtime.c-gamiz93.workers.dev";
+  const page = await fetch(base + "/es/", { redirect:"follow", signal:AbortSignal.timeout(60_000) });
+  const html = await page.text();
+  const canonical = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)?.[1]
+    ?? html.match(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["']canonical["']/i)?.[1]
+    ?? null;
+  const hreflangs = [...html.matchAll(/hreflang=["']([^"']+)["']/gi)].map((m)=>m[1]).sort();
+
+  const robotsResponse = await fetch(base + "/robots.txt", { redirect:"follow", signal:AbortSignal.timeout(60_000) });
+  const robots = await robotsResponse.text();
+  const sitemapResponse = await fetch(base + "/sitemap.xml", { redirect:"follow", signal:AbortSignal.timeout(60_000) });
+  const sitemap = await sitemapResponse.text();
+
+  console.log("WORKER_SEO " + JSON.stringify({
+    pageStatus:page.status,
+    canonical,
+    hreflangs,
+    robotsStatus:robotsResponse.status,
+    robotsAllowsPublic:/Allow:\s*\//i.test(robots),
+    robotsDisallowAll:/Disallow:\s*\/\s*(?:\r?\n|$)/i.test(robots),
+    robotsHasCanonicalHost:robots.includes("https://nagamealert.com"),
+    sitemapStatus:sitemapResponse.status,
+    sitemapHasCanonicalOrigin:sitemap.includes("https://nagamealert.com"),
+    sitemapHasWorkersDev:sitemap.includes("workers.dev"),
+  }));
+};
+await seoProbe();
+
 
 
 let cloudflareApiStatus = "unavailable";
