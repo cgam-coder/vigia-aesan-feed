@@ -12,8 +12,9 @@ if (
 ) throw new Error("invalid audit request");
 
 const token = process.env.CLOUDFLARE_API_TOKEN;
-const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-if (!token || !accountId) throw new Error("missing Cloudflare credentials");
+let accountId = process.env.CLOUDFLARE_ACCOUNT_ID || null;
+if (!token) throw new Error("missing Cloudflare API token");
+const discoveredAccountIds = new Set();
 
 const headers = {
   Authorization: `Bearer ${token}`,
@@ -87,6 +88,7 @@ for (const zoneName of ["nagamealert.com", "nagamealert.es"]) {
 
   if (zones.length === 1) {
     const zoneId = zones[0].id;
+    if (typeof zones[0]?.account?.id === "string") discoveredAccountIds.add(zones[0].account.id);
     const recordResult = await cfGet(`/zones/${zoneId}/dns_records?per_page=100`);
     const wanted = new Set([zoneName, `www.${zoneName}`]);
     const records = (Array.isArray(recordResult.result) ? recordResult.result : [])
@@ -107,15 +109,20 @@ for (const zoneName of ["nagamealert.com", "nagamealert.es"]) {
   }
 }
 
-const domainResult = await cfGet(`/accounts/${accountId}/workers/domains`);
-const domains = (Array.isArray(domainResult.result) ? domainResult.result : [])
-  .map((row) => ({
-    hostname: row.hostname ?? null,
-    service: row.service ?? null,
-    environment: row.environment ?? null,
-    zoneName: row.zone_name ?? null,
-  }));
-console.log("CF_WORKER_DOMAINS " + JSON.stringify({ domains }));
+if (!accountId && discoveredAccountIds.size === 1) accountId = [...discoveredAccountIds][0];
+if (accountId) {
+  const domainResult = await cfGet(`/accounts/${accountId}/workers/domains`);
+  const domains = (Array.isArray(domainResult.result) ? domainResult.result : [])
+    .map((row) => ({
+      hostname: row.hostname ?? null,
+      service: row.service ?? null,
+      environment: row.environment ?? null,
+      zoneName: row.zone_name ?? null,
+    }));
+  console.log("CF_WORKER_DOMAINS " + JSON.stringify({ domains }));
+} else {
+  console.log("CF_WORKER_DOMAINS " + JSON.stringify({ unavailable:"account-id-not-resolved" }));
+}
 
 for (const host of ["nagamealert.com", "www.nagamealert.com", "nagamealert.es", "www.nagamealert.es"]) {
   const [a, aaaa, cname, ns] = await Promise.all([
