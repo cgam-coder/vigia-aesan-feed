@@ -183,7 +183,7 @@ jobs:
                 local label="$1"
                 local type="$2"
                 local record="$3"
-                local qs="period=7d&pageSize=50&source=AESAN"
+                local qs="period=all&pageSize=50&source=AESAN"
                 if [ -n "$type" ]; then qs="$qs&aesanType=$type"; fi
                 local headers="$RUNNER_TEMP/p4-$label.headers"
                 local body="$RUNNER_TEMP/p4-$label.body"
