@@ -44,7 +44,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -161,6 +161,30 @@ jobs:
             version:row.version??null,
             runningInRegion:row.running_in_region??null,
           }));
+          NODE
+              ;;
+            p4-owner-lease-state)
+              test "$CF_D1" = "nagamealert-staging-db"
+              locks="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT source,mode,owner_id,expires_at FROM source_sync_locks ORDER BY source" --json)"
+              states="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT source,mode,status,lease_owner_id,lease_mode,lease_expires_at FROM source_sync_state WHERE lease_owner_id IS NOT NULL OR lease_mode IS NOT NULL OR lease_expires_at IS NOT NULL ORDER BY source,mode" --json)"
+              freshness="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT source,active_lease,updated_at FROM source_freshness_state WHERE active_lease = 1 OR active_lease = 'true' ORDER BY source" --json)"
+              dimension="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT source,status,lease_owner_id,lease_expires_at FROM dimension_rebuild_state WHERE lease_owner_id IS NOT NULL OR lease_expires_at IS NOT NULL OR status='running' ORDER BY source" --json)"
+              LOCKS="$locks" STATES="$states" FRESHNESS="$freshness" DIMENSION="$dimension" node --input-type=module - <<'NODE'
+          const rows=(raw)=>{const v=JSON.parse(raw||"[]"); return (Array.isArray(v)?v:[]).flatMap(x=>x.results??[]);};
+          const now=Date.now();
+          const future=(value)=>typeof value==="string" && Number.isFinite(Date.parse(value)) && Date.parse(value)>now;
+          const locks=rows(process.env.LOCKS);
+          const states=rows(process.env.STATES);
+          const freshness=rows(process.env.FRESHNESS);
+          const dimension=rows(process.env.DIMENSION);
+          const out={
+            checkedAt:new Date(now).toISOString(),
+            locks:locks.map(r=>({...r,unexpired:future(r.expires_at)})),
+            syncStates:states.map(r=>({...r,unexpired:future(r.lease_expires_at)})),
+            freshness,
+            dimension:dimension.map(r=>({...r,unexpired:future(r.lease_expires_at)})),
+          };
+          console.log("P4_OWNER_LEASE_STATE "+JSON.stringify(out));
           NODE
               ;;
             p4-owner-stage1-preflight)
