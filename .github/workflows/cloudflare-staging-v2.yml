@@ -165,6 +165,7 @@ jobs:
           const numTables=Number.isSafeInteger(rawNumTables)&&rawNumTables>=0?rawNumTables:null;
           console.log("D1_INFO "+JSON.stringify({
             name:row.name??null,
+            databaseId:row.uuid??row.id??row.database_id??null,
             fileSizeBytes:fileSize,
             fileSizeGiB:Number((fileSize/1024/1024/1024).toFixed(4)),
             numTables,
