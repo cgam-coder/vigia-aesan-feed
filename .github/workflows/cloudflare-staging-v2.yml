@@ -152,6 +152,7 @@ jobs:
             preview-d1-create-or-inspect)
               preview_name="nagamealert-preview-db"
               list_json="$(wrangler d1 list --json)"
+              set +e
               LIST_JSON="$list_json" PREVIEW_NAME="$preview_name" node --input-type=module - <<'NODE'
           const value=JSON.parse(process.env.LIST_JSON||"[]");
           const rows=Array.isArray(value)?value:(value?.result??[]);
@@ -170,6 +171,7 @@ jobs:
           process.exit(10);
           NODE
               rc=$?
+              set -e
               if [ "$rc" -eq 10 ]; then
                 create_json="$(wrangler d1 create "$preview_name" --json)"
                 CREATE_JSON="$create_json" PREVIEW_NAME="$preview_name" node --input-type=module - <<'NODE'
