@@ -1,4 +1,4 @@
 {
-  "operation": "worker-versions",
-  "nonce": "postcutover-version-ledger-20260927"
+  "operation": "worker-status",
+  "nonce": "postcutover-active-version-20260927"
 }
