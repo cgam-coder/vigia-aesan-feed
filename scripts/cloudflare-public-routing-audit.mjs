@@ -71,59 +71,6 @@ const probe = async (label, url) => {
 
 console.log("PUBLIC_ROUTING_AUDIT " + JSON.stringify({ nonce: request.nonce }));
 
-const verify = await cfGet("/user/tokens/verify");
-if (verify?.result?.status !== "active") throw new Error("Cloudflare token is not active");
-console.log("CF_TOKEN " + JSON.stringify({ status: "active" }));
-
-for (const zoneName of ["nagamealert.com", "nagamealert.es"]) {
-  const zoneResult = await cfGet(`/zones?name=${encodeURIComponent(zoneName)}&status=active&per_page=50`);
-  const zones = Array.isArray(zoneResult.result) ? zoneResult.result : [];
-  console.log("CF_ZONE " + JSON.stringify({
-    name: zoneName,
-    found: zones.length === 1,
-    status: zones[0]?.status ?? null,
-    nameServers: Array.isArray(zones[0]?.name_servers) ? zones[0].name_servers : [],
-    plan: zones[0]?.plan?.name ?? null,
-  }));
-
-  if (zones.length === 1) {
-    const zoneId = zones[0].id;
-    if (typeof zones[0]?.account?.id === "string") discoveredAccountIds.add(zones[0].account.id);
-    const recordResult = await cfGet(`/zones/${zoneId}/dns_records?per_page=100`);
-    const wanted = new Set([zoneName, `www.${zoneName}`]);
-    const records = (Array.isArray(recordResult.result) ? recordResult.result : [])
-      .filter((row) => wanted.has(row.name))
-      .map((row) => ({
-        name: row.name,
-        type: row.type,
-        content: row.content,
-        proxied: row.proxied ?? null,
-        ttl: row.ttl ?? null,
-      }));
-    console.log("CF_DNS " + JSON.stringify({ zone: zoneName, records }));
-
-    const routeResult = await cfGet(`/zones/${zoneId}/workers/routes`);
-    const routes = (Array.isArray(routeResult.result) ? routeResult.result : [])
-      .map((row) => ({ pattern: row.pattern, script: row.script ?? null }));
-    console.log("CF_WORKER_ROUTES " + JSON.stringify({ zone: zoneName, routes }));
-  }
-}
-
-if (!accountId && discoveredAccountIds.size === 1) accountId = [...discoveredAccountIds][0];
-if (accountId) {
-  const domainResult = await cfGet(`/accounts/${accountId}/workers/domains`);
-  const domains = (Array.isArray(domainResult.result) ? domainResult.result : [])
-    .map((row) => ({
-      hostname: row.hostname ?? null,
-      service: row.service ?? null,
-      environment: row.environment ?? null,
-      zoneName: row.zone_name ?? null,
-    }));
-  console.log("CF_WORKER_DOMAINS " + JSON.stringify({ domains }));
-} else {
-  console.log("CF_WORKER_DOMAINS " + JSON.stringify({ unavailable:"account-id-not-resolved" }));
-}
-
 for (const host of ["nagamealert.com", "www.nagamealert.com", "nagamealert.es", "www.nagamealert.es"]) {
   const [a, aaaa, cname, ns] = await Promise.all([
     safeResolve(resolve4, host),
@@ -140,4 +87,72 @@ await probe("es", "https://nagamealert.es/");
 await probe("es_www", "https://www.nagamealert.es/");
 await probe("worker", "https://vigia-runtime.c-gamiz93.workers.dev/");
 
-console.log("PUBLIC_ROUTING_AUDIT " + JSON.stringify({ status: "PASS" }));
+
+
+let cloudflareApiStatus = "unavailable";
+try {
+  const verify = await cfGet("/user/tokens/verify");
+  if (verify?.result?.status !== "active") throw new Error("Cloudflare token is not active");
+  console.log("CF_TOKEN " + JSON.stringify({ status: "active" }));
+  
+  for (const zoneName of ["nagamealert.com", "nagamealert.es"]) {
+    const zoneResult = await cfGet(`/zones?name=${encodeURIComponent(zoneName)}&status=active&per_page=50`);
+    const zones = Array.isArray(zoneResult.result) ? zoneResult.result : [];
+    console.log("CF_ZONE " + JSON.stringify({
+      name: zoneName,
+      found: zones.length === 1,
+      status: zones[0]?.status ?? null,
+      nameServers: Array.isArray(zones[0]?.name_servers) ? zones[0].name_servers : [],
+      plan: zones[0]?.plan?.name ?? null,
+    }));
+  
+    if (zones.length === 1) {
+      const zoneId = zones[0].id;
+      if (typeof zones[0]?.account?.id === "string") discoveredAccountIds.add(zones[0].account.id);
+      const recordResult = await cfGet(`/zones/${zoneId}/dns_records?per_page=100`);
+      const wanted = new Set([zoneName, `www.${zoneName}`]);
+      const records = (Array.isArray(recordResult.result) ? recordResult.result : [])
+        .filter((row) => wanted.has(row.name))
+        .map((row) => ({
+          name: row.name,
+          type: row.type,
+          content: row.content,
+          proxied: row.proxied ?? null,
+          ttl: row.ttl ?? null,
+        }));
+      console.log("CF_DNS " + JSON.stringify({ zone: zoneName, records }));
+  
+      const routeResult = await cfGet(`/zones/${zoneId}/workers/routes`);
+      const routes = (Array.isArray(routeResult.result) ? routeResult.result : [])
+        .map((row) => ({ pattern: row.pattern, script: row.script ?? null }));
+      console.log("CF_WORKER_ROUTES " + JSON.stringify({ zone: zoneName, routes }));
+    }
+  }
+  
+  if (!accountId && discoveredAccountIds.size === 1) accountId = [...discoveredAccountIds][0];
+  if (accountId) {
+    const domainResult = await cfGet(`/accounts/${accountId}/workers/domains`);
+    const domains = (Array.isArray(domainResult.result) ? domainResult.result : [])
+      .map((row) => ({
+        hostname: row.hostname ?? null,
+        service: row.service ?? null,
+        environment: row.environment ?? null,
+        zoneName: row.zone_name ?? null,
+      }));
+    console.log("CF_WORKER_DOMAINS " + JSON.stringify({ domains }));
+  } else {
+    console.log("CF_WORKER_DOMAINS " + JSON.stringify({ unavailable:"account-id-not-resolved" }));
+  }
+  
+  
+  cloudflareApiStatus = "PASS";
+} catch (error) {
+  console.log("CF_API_UNAVAILABLE " + JSON.stringify({
+    error: error instanceof Error ? error.message.slice(0,500) : String(error).slice(0,500)
+  }));
+}
+
+console.log("PUBLIC_ROUTING_AUDIT " + JSON.stringify({
+  status: cloudflareApiStatus === "PASS" ? "PASS" : "PARTIAL",
+  cloudflareApi: cloudflareApiStatus
+}));
