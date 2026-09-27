@@ -44,7 +44,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -161,6 +161,40 @@ jobs:
             version:row.version??null,
             runningInRegion:row.running_in_region??null,
           }));
+          NODE
+              ;;
+            p4-owner-stage1-preflight)
+              test "$CF_D1" = "nagamealert-staging-db"
+              ledger="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT id,name FROM d1_migrations ORDER BY id ASC" --json)"
+              cols="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT name,hidden FROM pragma_table_xinfo('alerts') WHERE name IN ('aesan_taxonomy_status','aesan_taxonomy_code') ORDER BY name" --json)"
+              idx="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT name,partial FROM pragma_index_list('alerts') WHERE name='alerts_aesan_taxonomy_known_code_id_idx'" --json)"
+              corpus="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN json_valid(canonical_json) AND json_extract(canonical_json,'$.sourceRecord.aesanAlertClassification.status')='known' AND json_extract(canonical_json,'$.sourceRecord.aesanAlertClassification.code')='general_population' THEN 1 ELSE 0 END) AS general_population, SUM(CASE WHEN json_valid(canonical_json) AND json_extract(canonical_json,'$.sourceRecord.aesanAlertClassification.status')='known' AND json_extract(canonical_json,'$.sourceRecord.aesanAlertClassification.code')='allergy_intolerance_adverse' THEN 1 ELSE 0 END) AS allergy_intolerance_adverse, SUM(CASE WHEN json_valid(canonical_json) AND json_extract(canonical_json,'$.sourceRecord.aesanAlertClassification.status')='known' AND json_extract(canonical_json,'$.sourceRecord.aesanAlertClassification.code')='information_to_consumers' THEN 1 ELSE 0 END) AS information_to_consumers, SUM(CASE WHEN json_valid(canonical_json) AND json_extract(canonical_json,'$.sourceRecord.aesanAlertClassification.status')='unknown' THEN 1 ELSE 0 END) AS unknown_count, SUM(CASE WHEN json_valid(canonical_json) AND json_extract(canonical_json,'$.sourceRecord.aesanAlertClassification.status')='conflict' THEN 1 ELSE 0 END) AS conflict_count FROM alerts WHERE source='AESAN'" --json)"
+              LEDGER="$ledger" COLS="$cols" IDX="$idx" CORPUS="$corpus" node - <<'NODE'
+          const rows=(raw)=>{const v=JSON.parse(raw||"[]"); return (Array.isArray(v)?v:[]).flatMap(x=>x.results??[]);};
+          const ledger=rows(process.env.LEDGER);
+          const names=ledger.map(r=>String(r.name));
+          if(ledger.length!==13||names[0]!=="0000_massive_goliath.sql"||names.at(-1)!=="0012_useful_roulette.sql"||names.some(n=>n.startsWith("0013_"))) throw new Error("P4 preflight ledger mismatch");
+          const cols=rows(process.env.COLS);
+          if(cols.length!==0) throw new Error("P4 projection already present");
+          const idx=rows(process.env.IDX);
+          if(idx.length!==0) throw new Error("P4 index already present");
+          const corpus=rows(process.env.CORPUS)[0]??{};
+          const safe={
+            ledgerCount:ledger.length,
+            last:names.at(-1),
+            has0013:false,
+            projection:"absent",
+            index:"absent",
+            corpus:{
+              total:Number(corpus.total??0),
+              general_population:Number(corpus.general_population??0),
+              allergy_intolerance_adverse:Number(corpus.allergy_intolerance_adverse??0),
+              information_to_consumers:Number(corpus.information_to_consumers??0),
+              unknown:Number(corpus.unknown_count??0),
+              conflict:Number(corpus.conflict_count??0),
+            }
+          };
+          console.log("P4_OWNER_STAGE1_PREFLIGHT "+JSON.stringify(safe));
           NODE
               ;;
             postcutover-drop-import-state)
