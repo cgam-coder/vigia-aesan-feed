@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -171,6 +171,35 @@ jobs:
             numTables,
             version:row.version??null,
             runningInRegion:row.running_in_region??null,
+          }));
+          NODE
+              ;;
+            p4-owner-stage2-country-diagnose)
+              test "$CF_D1" = "nagamealert-staging-db"
+
+              generated="WITH filtered_alerts AS MATERIALIZED (SELECT alerts.id, alerts.source FROM alerts LEFT JOIN alert_dimension_state ds ON ds.alert_id = alerts.id WHERE alerts.source = 'AESAN' AND alerts.aesan_taxonomy_status = 'known' AND alerts.aesan_taxonomy_code = 'general_population' AND alerts.source = 'AESAN') SELECT CASE WHEN ag.code_scheme = 'EU_COUNTRY' AND ag.geography_code = 'XI' THEN ag.geography_code ELSE ag.country_code END AS code, COUNT(DISTINCT ag.alert_id) AS alertCount FROM filtered_alerts alerts INNER JOIN alert_geographies ag ON ag.alert_id = alerts.id WHERE ag.role = 'notifying' AND ag.status = 'mapped' AND ((ag.admin_level = 'country' AND ag.code_scheme = 'ISO_3166_1_ALPHA2') OR (ag.admin_level = 'subdivision' AND ag.code_scheme = 'ISO_3166_2') OR (ag.admin_level = 'territory' AND ag.code_scheme = 'EU_COUNTRY' AND ag.geography_code = 'XI')) GROUP BY code HAVING code <> '' AND COUNT(DISTINCT ag.alert_id) > 0 ORDER BY code"
+              jsonsql="WITH filtered_alerts AS MATERIALIZED (SELECT alerts.id, alerts.source FROM alerts LEFT JOIN alert_dimension_state ds ON ds.alert_id = alerts.id WHERE alerts.source = 'AESAN' AND json_extract(alerts.canonical_json, '$.sourceRecord.aesanAlertClassification.status') = 'known' AND json_extract(alerts.canonical_json, '$.sourceRecord.aesanAlertClassification.code') = 'general_population' AND alerts.source = 'AESAN') SELECT CASE WHEN ag.code_scheme = 'EU_COUNTRY' AND ag.geography_code = 'XI' THEN ag.geography_code ELSE ag.country_code END AS code, COUNT(DISTINCT ag.alert_id) AS alertCount FROM filtered_alerts alerts INNER JOIN alert_geographies ag ON ag.alert_id = alerts.id WHERE ag.role = 'notifying' AND ag.status = 'mapped' AND ((ag.admin_level = 'country' AND ag.code_scheme = 'ISO_3166_1_ALPHA2') OR (ag.admin_level = 'subdivision' AND ag.code_scheme = 'ISO_3166_2') OR (ag.admin_level = 'territory' AND ag.code_scheme = 'EU_COUNTRY' AND ag.geography_code = 'XI')) GROUP BY code HAVING code <> '' AND COUNT(DISTINCT ag.alert_id) > 0 ORDER BY code"
+
+              gen="$(wrangler d1 execute "$CF_D1" --remote --command "$generated" --json)"
+              jsn="$(wrangler d1 execute "$CF_D1" --remote --command "$jsonsql" --json)"
+              plan="$(wrangler d1 execute "$CF_D1" --remote --command "EXPLAIN QUERY PLAN $generated" --json)"
+              simple="$(wrangler d1 execute "$CF_D1" --remote --command "EXPLAIN QUERY PLAN SELECT id FROM alerts WHERE source='AESAN' AND aesan_taxonomy_status='known' AND aesan_taxonomy_code='general_population' ORDER BY id LIMIT 10" --json)"
+              GEN="$gen" JSN="$jsn" PLAN="$plan" SIMPLE="$simple" node --input-type=module - <<'NODE'
+          const one=(raw)=>{const v=JSON.parse(raw||"[]"); return Array.isArray(v)?v[0]:v;};
+          const safe=(raw)=>{
+            const x=one(raw)??{};
+            return {
+              results:Array.isArray(x.results)?x.results:[],
+              rowsRead:Number(x.meta?.rows_read??x.meta?.rowsRead??-1),
+              duration:Number(x.meta?.duration??-1),
+            };
+          };
+          const plan=(raw)=>(one(raw)?.results??[]).map(r=>String(r.detail??""));
+          console.log("P4_STAGE2_COUNTRY_DIAG "+JSON.stringify({
+            generated:safe(process.env.GEN),
+            json:safe(process.env.JSN),
+            generatedPlan:plan(process.env.PLAN),
+            simplePlan:plan(process.env.SIMPLE),
           }));
           NODE
               ;;
