@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -148,6 +148,88 @@ jobs:
           }));
           NODE
               echo "OWNER_RUNTIME_READONLY_SMOKE status=PASS"
+              ;;
+            f3b-b1-browser-matrix)
+              test "$CF_WORKER" = "vigia-runtime"
+              b1_url="https://work-f3b-taxonomy-b1-preview-vigia-runtime.c-gamiz93.workers.dev"
+              b1_commit="3a2608ccc5052cef68bc5baab3b81a8c1f4a822f"
+              preview_d1="nagamealert-preview-db"
+
+              prod_before="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              preview_before="$(wrangler d1 execute "$preview_d1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan, SUM(CASE WHEN source<>'AESAN' THEN 1 ELSE 0 END) AS non_aesan FROM alerts" --json)"
+              PROD_BEFORE="$prod_before" PREVIEW_BEFORE="$preview_before" node --input-type=module - <<'NODE'
+          const row=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])?.[0]??{};
+          const prod=row(process.env.PROD_BEFORE), preview=row(process.env.PREVIEW_BEFORE);
+          if(Number(prod.total)!==84786||Number(prod.aesan)!==128) throw new Error("production baseline drift before B1");
+          if(Number(preview.total)!==129||Number(preview.aesan)!==129||Number(preview.non_aesan)!==0) throw new Error("Preview D1 isolation drift before B1");
+          console.log("B1_D1_PREFLIGHT "+JSON.stringify({production:{total:Number(prod.total),aesan:Number(prod.aesan)},preview:{total:Number(preview.total),aesan:Number(preview.aesan),nonAesan:Number(preview.non_aesan)}}));
+          NODE
+
+              curl --silent --show-error --get --fail-with-body --max-time 90 \
+                --data-urlencode "period=all" --data-urlencode "country=ALL" \
+                --data-urlencode "source=AESAN" --data-urlencode "pageSize=50" \
+                "$b1_url/api/terminal/alerts" > "$RUNNER_TEMP/b1-all.json"
+              B1_ALL="$RUNNER_TEMP/b1-all.json" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const b=JSON.parse(readFileSync(process.env.B1_ALL,"utf8"));
+          const expected={all:129,general_population:59,allergy_intolerance_adverse:54,food_supplements:14,unknown:1,conflict:1};
+          if(b?.total!==129||b?.facets?.total!==129||b?.facets?.sources?.AESAN!==129) throw new Error("B1 all totals mismatch");
+          for(const [key,value] of Object.entries(expected)) if(b?.facets?.aesan?.[key]!==value) throw new Error("B1 facet mismatch "+key);
+          if(b?.query?.aesanType!==null||b?.pagination?.pageSize!==50||b?.pagination?.returned!==50||b?.pagination?.hasMore!==true||!b?.pagination?.nextCursor) throw new Error("B1 all pagination/query mismatch");
+          console.log("B1_API_ALL "+JSON.stringify({total:b.total,aesan:b.facets.aesan,pagination:{pageSize:b.pagination.pageSize,returned:b.pagination.returned,hasMore:b.pagination.hasMore}}));
+          NODE
+
+              for taxonomy in general_population allergy_intolerance_adverse food_supplements; do
+                case "$taxonomy" in
+                  general_population) expected=59 ;;
+                  allergy_intolerance_adverse) expected=54 ;;
+                  food_supplements) expected=14 ;;
+                esac
+                curl --silent --show-error --get --fail-with-body --max-time 90 \
+                  --data-urlencode "period=all" --data-urlencode "country=ALL" \
+                  --data-urlencode "source=AESAN" --data-urlencode "aesanType=$taxonomy" \
+                  --data-urlencode "pageSize=50" "$b1_url/api/terminal/alerts" > "$RUNNER_TEMP/b1-$taxonomy.json"
+                EXPECTED="$expected" TAXONOMY="$taxonomy" FILE="$RUNNER_TEMP/b1-$taxonomy.json" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const b=JSON.parse(readFileSync(process.env.FILE,"utf8"));
+          if(b?.total!==Number(process.env.EXPECTED)||b?.query?.aesanType!==process.env.TAXONOMY) throw new Error("B1 category total mismatch "+process.env.TAXONOMY);
+          if((b?.items??[]).some((item)=>item?.aesanAlertType!==process.env.TAXONOMY)) throw new Error("B1 category contamination "+process.env.TAXONOMY);
+          console.log("B1_API_CATEGORY "+JSON.stringify({taxonomy:process.env.TAXONOMY,total:b.total,returned:b.pagination?.returned}));
+          NODE
+              done
+
+              for bad in \
+                "period=all&source=RASFF&aesanType=general_population" \
+                "period=all&aesanType=general_population" \
+                "period=all&source=AESAN&aesanType=not_a_real_type"; do
+                code="$(curl --silent --show-error --get --max-time 60 --output "$RUNNER_TEMP/b1-invalid.json" --write-out '%{http_code}' "$b1_url/api/terminal/alerts?$bad")"
+                test "$code" = "400"
+              done
+              echo "B1_API_INVALID_CONTRACT status=PASS"
+
+              browser_dir="$RUNNER_TEMP/f3b-b1-browser"
+              rm -rf "$browser_dir"
+              mkdir -p "$browser_dir"
+              cp "$GITHUB_WORKSPACE/ops/f3b-b1-browser-matrix.mjs" "$browser_dir/matrix.mjs"
+              cd "$browser_dir"
+              npm init -y >/dev/null 2>&1
+              npm install --no-audit --no-fund --silent puppeteer-core@24.24.1
+              chrome="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+              test -n "$chrome"
+              echo "B1_BROWSER chrome=$(basename "$chrome")"
+              B1_URL="$b1_url" CHROME="$chrome" node matrix.mjs
+
+              cd "$GITHUB_WORKSPACE"
+              prod_after="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              preview_after="$(wrangler d1 execute "$preview_d1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan, SUM(CASE WHEN source<>'AESAN' THEN 1 ELSE 0 END) AS non_aesan FROM alerts" --json)"
+              PROD_BEFORE="$prod_before" PROD_AFTER="$prod_after" PREVIEW_AFTER="$preview_after" node --input-type=module - <<'NODE'
+          const row=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])?.[0]??{};
+          const before=row(process.env.PROD_BEFORE), after=row(process.env.PROD_AFTER), preview=row(process.env.PREVIEW_AFTER);
+          if(Number(before.total)!==Number(after.total)||Number(before.aesan)!==Number(after.aesan)) throw new Error("production D1 changed during B1");
+          if(Number(preview.total)!==129||Number(preview.aesan)!==129||Number(preview.non_aesan)!==0) throw new Error("Preview D1 changed during B1");
+          console.log("B1_D1_POST "+JSON.stringify({production:{total:Number(after.total),aesan:Number(after.aesan)},preview:{total:Number(preview.total),aesan:Number(preview.aesan),nonAesan:Number(preview.non_aesan)}}));
+          NODE
+              echo "F3B_B1_BROWSER_MATRIX commit=$b1_commit url=$b1_url status=PASS"
               ;;
             preview-secret-bootstrap-smoke)
               test "$CF_WORKER" = "vigia-runtime"
