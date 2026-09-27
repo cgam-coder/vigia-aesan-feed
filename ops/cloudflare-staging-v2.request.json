@@ -1,6 +1,4 @@
 {
-  "operation": "p4-owner-stage1-apply-audit",
-  "nonce": "p4-owner-stage1-apply-audit-20260927",
-  "expectedFreezeRunId": 36338470682,
-  "expectedFreezeSha": "ffa8d362d7e02bf4cfa271c23631751fdca2ccd2"
+  "operation": "p4-owner-stage1-preflight",
+  "nonce": "p4-owner-stage1-preflight-after-apply-fail-20260927"
 }
