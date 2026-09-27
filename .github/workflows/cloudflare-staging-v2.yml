@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -173,6 +173,48 @@ jobs:
             runningInRegion:row.running_in_region??null,
           }));
           NODE
+              ;;
+            p4-owner-taxonomy-semantic-snapshot)
+              base="https://nagamealert.com"
+              probe(){
+                local label="$1"
+                local query="$2"
+                local expected="$3"
+                local body="$RUNNER_TEMP/p4-semantic-$label.json"
+                local code
+                code="$(curl --silent --show-error --max-time 120 --output "$body" --write-out '%{http_code}' "$base/api/terminal/alerts?$query")"
+                LABEL="$label" CODE="$code" EXPECTED="$expected" BODY="$body" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const code=Number(process.env.CODE);
+          const expected=Number(process.env.EXPECTED);
+          if(code!==expected) throw new Error(process.env.LABEL+" HTTP "+code+" expected "+expected);
+          const body=JSON.parse(readFileSync(process.env.BODY,"utf8"));
+          const snapshot={
+            label:process.env.LABEL,
+            http:code,
+            total:Number(body?.total??-1),
+            refs:Array.isArray(body?.items)?body.items.map((x)=>x.reference).filter(Boolean):[],
+            countries:Array.isArray(body?.countries)?body.countries.map((x)=>({code:x.code,alertCount:Number(x.alertCount)})):[],
+            aesan:body?.facets?.aesan??null,
+            error:body?.error??null,
+          };
+          console.log("P4_TAXONOMY_SNAPSHOT "+JSON.stringify(snapshot));
+          NODE
+              }
+
+              probe A "period=all&pageSize=50&source=AESAN" 200
+              probe B "period=all&pageSize=50&source=AESAN&aesanType=general_population" 200
+              probe C "period=all&pageSize=50&source=AESAN&aesanType=allergy_intolerance_adverse" 200
+              probe D "period=all&pageSize=50&source=AESAN&aesanType=food_supplements" 200
+              probe ES266_ALL "period=all&pageSize=50&source=AESAN&q=ES2026%2F266" 200
+              probe ES266_GENERAL "period=all&pageSize=50&source=AESAN&aesanType=general_population&q=ES2026%2F266" 200
+              probe ES266_ALLERGY "period=all&pageSize=50&source=AESAN&aesanType=allergy_intolerance_adverse&q=ES2026%2F266" 200
+              probe ES266_SUPP "period=all&pageSize=50&source=AESAN&aesanType=food_supplements&q=ES2026%2F266" 200
+              probe ES382_ALL "period=all&pageSize=50&source=AESAN&q=ES2026%2F382" 200
+              probe ES382_GENERAL "period=all&pageSize=50&source=AESAN&aesanType=general_population&q=ES2026%2F382" 200
+              probe ES382_ALLERGY "period=all&pageSize=50&source=AESAN&aesanType=allergy_intolerance_adverse&q=ES2026%2F382" 200
+              probe ES382_SUPP "period=all&pageSize=50&source=AESAN&aesanType=food_supplements&q=ES2026%2F382" 200
+              probe INVALID "period=all&pageSize=50&source=AESAN&aesanType=bogus" 400
               ;;
             p4-owner-stage1-perf)
               base="https://nagamealert.com"
