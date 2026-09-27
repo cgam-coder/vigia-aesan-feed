@@ -181,7 +181,7 @@ jobs:
           NODE
 
               # Capture exact operational schema without using the blocking D1 export path.
-              wrangler d1 execute "$prod_name" --remote --command "SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'cf_%' ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'index' THEN 1 WHEN 'trigger' THEN 2 ELSE 3 END, name" --json > "$work/schema.json"
+              wrangler d1 execute "$prod_name" --remote --command "SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'cf_%' AND name NOT LIKE '_cf_%' ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'index' THEN 1 WHEN 'trigger' THEN 2 ELSE 3 END, name" --json > "$work/schema.json"
               WORK="$work" node --input-type=module - <<'NODE'
           import { readFileSync, writeFileSync } from "node:fs";
           import { join } from "node:path";
@@ -199,8 +199,8 @@ jobs:
 
               wrangler d1 execute "$preview_name" --remote --file="$work/schema.sql" --yes >/dev/null
 
-              prod_tables="$(wrangler d1 execute "$prod_name" --remote --command "SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'cf_%' ORDER BY name" --json)"
-              preview_tables="$(wrangler d1 execute "$preview_name" --remote --command "SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'cf_%' ORDER BY name" --json)"
+              prod_tables="$(wrangler d1 execute "$prod_name" --remote --command "SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'cf_%' AND name NOT LIKE '_cf_%' ORDER BY name" --json)"
+              preview_tables="$(wrangler d1 execute "$preview_name" --remote --command "SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'cf_%' AND name NOT LIKE '_cf_%' ORDER BY name" --json)"
               PROD_TABLES="$prod_tables" PREVIEW_TABLES="$preview_tables" node --input-type=module - <<'NODE'
           const rows=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])??[];
           const a=rows(process.env.PROD_TABLES).map(r=>r.name);
