@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -304,6 +304,60 @@ jobs:
           console.log("TERMINAL_HYDRATION_JSON "+JSON.stringify({ids:101,rowsRead:hydration.rowsRead,duration:hydration.duration,resultRows:hydration.resultRows,explain}));
           NODE
               echo "TERMINAL_DEFAULT_GEO_HYDRATION_BENCHMARK status=PASS"
+              ;;
+            terminal-perf-candidate-preview-cert)
+              test "$CF_WORKER" = "vigia-runtime"
+              candidate_url="https://work-terminal-perf-current-query-plan-vigia-runtime.c-gamiz93.workers.dev"
+              preview_d1="nagamealert-preview-db"
+
+              prod_before="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              preview_before="$(wrangler d1 execute "$preview_d1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan, SUM(CASE WHEN source<>'AESAN' THEN 1 ELSE 0 END) AS non_aesan FROM alerts" --json)"
+              PROD_BEFORE="$prod_before" PREVIEW_BEFORE="$preview_before" node --input-type=module - <<'NODE'
+          const row=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])?.[0]??{};
+          const prod=row(process.env.PROD_BEFORE), preview=row(process.env.PREVIEW_BEFORE);
+          if(Number(prod.total)!==84786||Number(prod.aesan)!==128) throw new Error("production D1 baseline drift");
+          if(Number(preview.total)!==129||Number(preview.aesan)!==129||Number(preview.non_aesan)!==0) throw new Error("Preview D1 isolation drift");
+          console.log("PERF_F1_D1_PREFLIGHT "+JSON.stringify({
+            production:{total:Number(prod.total),aesan:Number(prod.aesan)},
+            preview:{total:Number(preview.total),aesan:Number(preview.aesan),nonAesan:Number(preview.non_aesan)}
+          }));
+          NODE
+
+              robots_code="$(curl --silent --show-error --max-time 60 --output "$RUNNER_TEMP/perf-f1-robots.txt" --write-out '%{http_code}' "$candidate_url/robots.txt")"
+              test "$robots_code" = "200"
+              grep -Fxq "User-agent: *" "$RUNNER_TEMP/perf-f1-robots.txt"
+              grep -Fxq "Disallow: /" "$RUNNER_TEMP/perf-f1-robots.txt"
+              sitemap_code="$(curl --silent --show-error --max-time 60 --output "$RUNNER_TEMP/perf-f1-sitemap.txt" --write-out '%{http_code}' "$candidate_url/sitemap.xml")"
+              test "$sitemap_code" = "404"
+              echo "PERF_F1_PREVIEW_INDEXABILITY status=PASS"
+
+              node ops/terminal-perf-candidate-preview-cert.mjs
+
+              browser_dir="$RUNNER_TEMP/perf-f1-browser"
+              rm -rf "$browser_dir"
+              mkdir -p "$browser_dir"
+              cp "$GITHUB_WORKSPACE/ops/f3b-b1-browser-matrix.mjs" "$browser_dir/matrix.mjs"
+              cd "$browser_dir"
+              npm init -y >/dev/null 2>&1
+              npm install --no-audit --no-fund --silent puppeteer-core@24.24.1
+              chrome="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+              test -n "$chrome"
+              B1_URL="$candidate_url" CHROME="$chrome" node matrix.mjs
+              cd "$GITHUB_WORKSPACE"
+
+              prod_after="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              preview_after="$(wrangler d1 execute "$preview_d1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan, SUM(CASE WHEN source<>'AESAN' THEN 1 ELSE 0 END) AS non_aesan FROM alerts" --json)"
+              PROD_BEFORE="$prod_before" PROD_AFTER="$prod_after" PREVIEW_AFTER="$preview_after" node --input-type=module - <<'NODE'
+          const row=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])?.[0]??{};
+          const before=row(process.env.PROD_BEFORE), after=row(process.env.PROD_AFTER), preview=row(process.env.PREVIEW_AFTER);
+          if(Number(before.total)!==Number(after.total)||Number(before.aesan)!==Number(after.aesan)) throw new Error("production D1 changed during PERF-F1 certification");
+          if(Number(preview.total)!==129||Number(preview.aesan)!==129||Number(preview.non_aesan)!==0) throw new Error("Preview D1 changed during PERF-F1 certification");
+          console.log("PERF_F1_D1_POST "+JSON.stringify({
+            production:{total:Number(after.total),aesan:Number(after.aesan)},
+            preview:{total:Number(preview.total),aesan:Number(preview.aesan),nonAesan:Number(preview.non_aesan)}
+          }));
+          NODE
+              echo "TERMINAL_PERF_CANDIDATE_PREVIEW_CERT commit=85b2097aa894ac25bf0bf1bbaa0eb3cf7d50b3a0 status=PASS"
               ;;
             terminal-list-plan-benchmark)
               test "$CF_WORKER" = "vigia-runtime"
