@@ -1,4 +1,4 @@
-name: Temporary SEO brand production diagnostic
+name: Temporary SEO brand production smoke
 
 on:
   push:
@@ -14,23 +14,67 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Diagnose production root-home metadata
+      - name: Validate production root-home SEO contract
         shell: bash
         run: |
           set -euo pipefail
           base="https://nagamealert.com"
-          for path in / /es /es/ /en /en/ /sitemaps/static-es.xml /robots.txt; do
-            echo "===== $path ====="
-            code="$(curl -sS --max-time 30 -o /tmp/body -D /tmp/headers -w '%{http_code}' "$base$path")"
-            echo "status=$code"
-            grep -iE '^(location|x-robots-tag|content-type|cf-ray|date):' /tmp/headers || true
-            if [[ "$path" == "/" || "$path" == "/en/" ]]; then
-              echo "-- metadata --"
-              grep -oE '<title>[^<]+</title>|<meta[^>]+(?:robots|googlebot)[^>]*>|<link[^>]+(?:canonical|alternate)[^>]*>|"@type":"WebSite"|"alternateName":\[[^]]+\]|"url":"https://nagamealert.com/"' /tmp/body | head -40 || true
-            elif [[ "$path" == "/sitemaps/static-es.xml" ]]; then
-              grep -o '<loc>[^<]*</loc>' /tmp/body | head -20 || true
-            else
-              head -10 /tmp/body || true
-            fi
-          done
-          echo "diagnostic complete"
+
+          request() {
+            local path="$1"
+            curl -sS --max-time 30 -o /tmp/body -D /tmp/headers -w '%{http_code}' "$base$path"
+          }
+
+          expect_status() {
+            local path="$1" expected="$2"
+            local code
+            code="$(request "$path")"
+            echo "$path => $code"
+            test "$code" = "$expected"
+          }
+
+          expect_redirect() {
+            local path="$1" expected="$2"
+            expect_status "$path" 308
+            local location
+            location="$(awk 'BEGIN{IGNORECASE=1} /^location:/{sub(/\r$/,""); print $2}' /tmp/headers)"
+            echo "$path location=$location"
+            test "$location" = "$base$expected" || test "$location" = "$expected"
+          }
+
+          expect_status "/" 200
+          ! grep -qi '^x-robots-tag:.*noindex' /tmp/headers
+          ! grep -qiE '<meta[^>]+(?:name="robots"|name="googlebot")[^>]+content="[^"]*noindex|<meta[^>]+content="[^"]*noindex[^>]+(?:name="robots"|name="googlebot")' /tmp/body
+          canonical="$(grep -oiE '<link[^>]*rel="canonical"[^>]*>' /tmp/body | head -1)"
+          echo "root canonical=$canonical"
+          echo "$canonical" | grep -Fqi 'href="https://nagamealert.com/"'
+          grep -oiE '<link[^>]*rel="alternate"[^>]*>' /tmp/body | grep -Fqi 'hrefLang="es" href="https://nagamealert.com/"'
+          grep -oiE '<link[^>]*rel="alternate"[^>]*>' /tmp/body | grep -Fqi 'hrefLang="en" href="https://nagamealert.com/en/"'
+          grep -oiE '<link[^>]*rel="alternate"[^>]*>' /tmp/body | grep -Fqi 'hrefLang="x-default" href="https://nagamealert.com/"'
+          test "$(grep -o '"@type":"WebSite"' /tmp/body | wc -l)" -eq 1
+          grep -Fq '"name":"NagameAlert"' /tmp/body
+          grep -Fq '"alternateName":["Nagame Alert","nagamealert.com"]' /tmp/body
+          grep -Fq '"url":"https://nagamealert.com/"' /tmp/body
+          grep -Fq 'NagameAlert | Alertas y notificaciones oficiales' /tmp/body
+
+          expect_redirect "/es" "/"
+          expect_redirect "/es/" "/"
+          expect_redirect "/es/?utm_source=linkedin" "/?utm_source=linkedin"
+
+          expect_redirect "/en" "/en/"
+          expect_status "/en/" 200
+          ! grep -qi '^x-robots-tag:.*noindex' /tmp/headers
+          canonical="$(grep -oiE '<link[^>]*rel="canonical"[^>]*>' /tmp/body | head -1)"
+          echo "en canonical=$canonical"
+          echo "$canonical" | grep -Fqi 'href="https://nagamealert.com/en/"'
+          test "$(grep -o '"@type":"WebSite"' /tmp/body | wc -l)" -eq 0
+          grep -Fq 'NagameAlert | Official alerts and notifications' /tmp/body
+
+          expect_status "/sitemaps/static-es.xml" 200
+          grep -Fq '<loc>https://nagamealert.com/</loc>' /tmp/body
+          ! grep -Fq '<loc>https://nagamealert.com/es/</loc>' /tmp/body
+
+          expect_status "/robots.txt" 200
+          grep -Fq 'Sitemap: https://nagamealert.com/sitemap.xml' /tmp/body
+
+          echo "SEO-BRAND production smoke PASS"
