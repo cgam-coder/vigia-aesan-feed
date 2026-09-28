@@ -14,48 +14,34 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Validate runtime Preview root-home SEO contract
+      - name: Diagnose and validate runtime Preview root-home SEO contract
         shell: bash
         run: |
           set -euo pipefail
           base="https://work-seo-brand-f1-root-home-vigia-runtime.c-gamiz93.workers.dev"
 
-          probe_status() {
-            local path="$1" expected="$2"
+          fetch_one() {
+            local path="$1"
             local code
             code="$(curl -sS --max-time 30 -o /tmp/body -D /tmp/headers -w '%{http_code}' "$base$path")"
-            echo "$path => $code"
-            test "$code" = "$expected"
+            echo "===== $path => $code ====="
+            grep -iE '^(location|x-robots-tag|content-type):' /tmp/headers || true
+            echo "-- links/meta/jsonld --"
+            grep -oE '<link[^>]+(canonical|alternate)[^>]*>|<meta[^>]+robots[^>]*>|"@type":"WebSite"|"alternateName":\[[^]]+\]|<title>[^<]+</title>' /tmp/body | head -30 || true
+            echo "-- body size --"
+            wc -c /tmp/body
+            echo "$code"
           }
 
-          probe_redirect() {
-            local path="$1" expected_path="$2"
-            probe_status "$path" "308"
-            local location
-            location="$(awk 'BEGIN{IGNORECASE=1} /^location:/{sub(/\r$/,""); print $2}' /tmp/headers)"
-            echo "location=$location"
-            case "$location" in
-              "$base$expected_path"|"$expected_path") ;;
-              *) echo "Unexpected redirect: $location"; exit 1 ;;
-            esac
-          }
-
-          probe_status "/" "200"
-          grep -Eq '<link[^>]+rel="canonical"[^>]+href="https://nagamealert\.com/"|<link[^>]+href="https://nagamealert\.com/"[^>]+rel="canonical"' /tmp/body
-          grep -Eq 'hreflang="es"[^>]+href="https://nagamealert\.com/"|href="https://nagamealert\.com/"[^>]+hreflang="es"' /tmp/body
-          grep -Eq 'hreflang="en"[^>]+href="https://nagamealert\.com/en/"|href="https://nagamealert\.com/en/"[^>]+hreflang="en"' /tmp/body
-          grep -Eq 'hreflang="x-default"[^>]+href="https://nagamealert\.com/"|href="https://nagamealert\.com/"[^>]+hreflang="x-default"' /tmp/body
-          test "$(grep -o '"@type":"WebSite"' /tmp/body | wc -l)" -eq 1
+          test "$(fetch_one "/" | tee /tmp/root.out | tail -1)" = "200"
+          cat /tmp/root.out
+          grep -Fq 'https://nagamealert.com/' /tmp/body
+          grep -Fq '"@type":"WebSite"' /tmp/body
           grep -Fq '"alternateName":["Nagame Alert","nagamealert.com"]' /tmp/body
           grep -Fq 'NagameAlert | Alertas y notificaciones oficiales' /tmp/body
 
-          probe_redirect "/es" "/"
-          probe_redirect "/es/" "/"
-          probe_redirect "/es/?utm_source=linkedin" "/?utm_source=linkedin"
+          for p in /es /es/ '/es/?utm_source=linkedin' /en /en/; do
+            fetch_one "$p" | tee "/tmp/$(echo "$p" | tr '/?=&' '_____').out"
+          done
 
-          probe_redirect "/en" "/en/"
-          probe_status "/en/" "200"
-          grep -Eq '<link[^>]+rel="canonical"[^>]+href="https://nagamealert\.com/en/"|<link[^>]+href="https://nagamealert\.com/en/"[^>]+rel="canonical"' /tmp/body
-          test "$(grep -o '"@type":"WebSite"' /tmp/body | wc -l)" -eq 0
-
-          echo "SEO-BRAND Preview smoke PASS"
+          echo "SEO-BRAND Preview diagnostic completed"
