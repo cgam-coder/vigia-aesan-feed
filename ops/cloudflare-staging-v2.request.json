@@ -1,4 +1,4 @@
 {
-  "operation": "terminal-perf-production-cert-current",
-  "nonce": "terminal-perf-f1-production-cert-20260928"
+  "operation": "terminal-perf-baseline-current",
+  "nonce": "perf-f1-postmerge-matrix-20260928"
 }
