@@ -1,0 +1,95 @@
+name: Temporary SEO-GEO-F1 exclusion audit
+
+on:
+  push:
+    branches: [ops/seo-geo-f1-exclusion-audit]
+    paths:
+      - ".github/workflows/seo-geo-f1-exclusion-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Identify sitemap exclusions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const ORIGIN="https://nagamealert.com";
+          const TARGETS=["RASFF","OECD"];
+          const SEG={RASFF:"rasff",OECD:"oecd"};
+          const PLACEHOLDERS=new Set(["","-","n/a","no indicado","no indicada","no especificado","sin clasificar","sin titulo","publicacion sin titulo","consultar publicacion oficial","desconocido","unknown"]);
+          const norm=(v="")=>String(v).trim().normalize("NFKD").replace(/[\u0300-\u036f]/gu,"").toLocaleLowerCase("es");
+          const meaningful=(v)=>Boolean(v && !PLACEHOLDERS.has(norm(v)));
+          const stable=(id)=>Buffer.from(id,"utf8").toString("base64url");
+          const slug=(title)=>norm(title).replace(/[’']/gu,"").replace(/[^a-z0-9]+/gu,"-").replace(/^-+|-+$/gu,"").slice(0,96).replace(/-+$/gu,"")||"alerta";
+          const read=async(url,json=false)=>{
+            const r=await fetch(url,{headers:{"user-agent":"NagameAlert-SEO-GEO-F1-Exclusion-Audit/1.0","cache-control":"no-cache"},signal:AbortSignal.timeout(45_000)});
+            if(!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+            return json?r.json():r.text();
+          };
+          const xmlValues=(xml,tag)=>[...xml.matchAll(new RegExp(`<${tag}>([^<]+)</${tag}>`,"gu"))].map(m=>m[1].replaceAll("&amp;","&"));
+
+          const root=await read(`${ORIGIN}/sitemap.xml`);
+          const children=xmlValues(root,"loc");
+          const report={checkedAt:new Date().toISOString(),sources:{}};
+
+          for(const source of TARGETS){
+            const sitemapKeys=new Set();
+            const shards=children.filter(u=>u.includes(`/alerts-es-${SEG[source]}-`));
+            for(const shard of shards){
+              const xml=await read(shard);
+              for(const loc of xmlValues(xml,"loc")){
+                const m=loc.match(/\/es\/alerta\/[^/]+\/([^/]+)\//u);
+                if(m) sitemapKeys.add(m[1]);
+              }
+            }
+
+            const all=[];
+            let cursor=null;
+            let pages=0;
+            do{
+              const url=new URL(`${ORIGIN}/api/terminal/alerts`);
+              url.searchParams.set("period","all");
+              url.searchParams.set("country","ALL");
+              url.searchParams.set("source",source);
+              url.searchParams.set("pageSize","100");
+              if(cursor) url.searchParams.set("cursor",cursor);
+              const j=await read(url.toString(),true);
+              all.push(...(j.items??[]));
+              cursor=j.pagination?.nextCursor??j.nextCursor??null;
+              pages++;
+              if(pages>1000) throw new Error("pagination runaway");
+            }while(cursor);
+
+            const excluded=all.filter(a=>!sitemapKeys.has(stable(a.id))).map(a=>{
+              const signals={
+                product:meaningful(a.product),
+                brand:meaningful(a.brand),
+                hazard:meaningful(a.hazard),
+                action:meaningful(a.action),
+                geography:Boolean(a.hasMapGeography)||meaningful(a.origin),
+                lots:Array.isArray(a.lots)&&a.lots.some(meaningful),
+                scope:meaningful(a.scope),
+                productClass:meaningful(a.productClass),
+              };
+              return {
+                id:a.id,reference:a.reference,title:a.title,publishedAt:a.publishedAt,url:a.url,
+                product:a.product,brand:a.brand,hazard:a.hazard,action:a.action,origin:a.origin,scope:a.scope,
+                productClass:a.productClass,lots:a.lots,hasMapGeography:a.hasMapGeography,
+                meaningfulTitle:meaningful(a.title)||(source==="RASFF"&&meaningful(a.reference)),
+                meaningfulReference:meaningful(a.reference),
+                validPublishedAt:Boolean(a.publishedAt&&Number.isFinite(Date.parse(a.publishedAt))),
+                substantiveSignalCount:Object.values(signals).filter(Boolean).length,
+                signals,
+                expectedPath:`/es/alerta/${SEG[source]}/${stable(a.id)}/${slug(a.title)}`,
+              };
+            });
+            report.sources[source]={terminalCount:all.length,sitemapCount:sitemapKeys.size,pages,excluded};
+          }
+          console.log(JSON.stringify(report,null,2));
+          NODE
