@@ -27,12 +27,6 @@ export const FLOATING_ACTION_EXCEPTIONS = Object.freeze([
 ]);
 
 export const KNOWN_DEBT = Object.freeze([
-  {
-    id: "PUB-DEBT-04",
-    scope: "platform-protection",
-    statement: "Main protection and administrative Actions controls are outside this code-only contract.",
-    removalGate: "Verify settings and apply only an owner-approved publisher-compatible configuration.",
-  },
 ]);
 
 function debt(file, action, ref, maxOccurrences, rationale) {
