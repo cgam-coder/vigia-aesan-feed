@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","terminal-default-geo-hydration-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","terminal-default-geo-hydration-benchmark","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -184,6 +184,11 @@ jobs:
           console.log("TERMINAL_HYDRATION_JSON "+JSON.stringify({ids:101,rowsRead:hydration.rowsRead,duration:hydration.duration,resultRows:hydration.resultRows,explain}));
           NODE
               echo "TERMINAL_DEFAULT_GEO_HYDRATION_BENCHMARK status=PASS"
+              ;;
+            terminal-list-plan-benchmark)
+              test "$CF_WORKER" = "vigia-runtime"
+              node ops/terminal-list-plan-benchmark.mjs
+              echo "TERMINAL_LIST_PLAN_BENCHMARK status=PASS"
               ;;
             terminal-geo-plan-benchmark)
               test "$CF_WORKER" = "vigia-runtime"
