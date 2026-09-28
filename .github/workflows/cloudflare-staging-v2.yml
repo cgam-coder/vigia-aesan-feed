@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -106,6 +106,155 @@ jobs:
           NODE
               done
               echo "OWNER_RUNTIME_POST_PREFLIGHT_ALL status=PASS"
+              ;;
+            terminal-geo-plan-benchmark)
+              test "$CF_WORKER" = "vigia-runtime"
+              cutoff="2026-09-21T04:22:30.000Z"
+              results="$RUNNER_TEMP/terminal-geo-plan.ndjson"
+              : > "$results"
+
+              run_variant(){
+                local name="$1"
+                local sql="$2"
+                local file="$RUNNER_TEMP/geo-$name.json"
+                wrangler d1 execute "$CF_D1" --remote --command "$sql" --json > "$file"
+                NAME="$name" FILE="$file" node --input-type=module - <<'NODE' | tee -a "$results"
+          import { createHash } from "node:crypto";
+          import { readFileSync } from "node:fs";
+          const raw=JSON.parse(readFileSync(process.env.FILE,"utf8"));
+          const blocks=Array.isArray(raw)?raw:[raw];
+          const rows=blocks.flatMap((block)=>block?.results??[]);
+          const metas=blocks.map((block)=>block?.meta??{});
+          const rowsRead=metas.reduce((sum,meta)=>sum+Number(meta.rows_read??0),0);
+          const rowsWritten=metas.reduce((sum,meta)=>sum+Number(meta.rows_written??0),0);
+          const duration=metas.reduce((sum,meta)=>sum+Number(meta.duration??0),0);
+          if(rowsWritten!==0) throw new Error("benchmark wrote rows");
+          const stable=(value)=>Array.isArray(value)?value.map(stable):value&&typeof value==="object"
+            ? Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[k,stable(v)])):value;
+          const digest=createHash("sha256").update(JSON.stringify(stable(rows))).digest("hex");
+          const result={name:process.env.NAME,rowsRead,rowsWritten,duration,resultRows:rows.length,digest,rows};
+          console.log(JSON.stringify(result));
+          NODE
+              }
+
+              country_query(){
+                local source="$1"
+                local join="$2"
+                cat <<SQL
+WITH filtered_alerts AS MATERIALIZED (
+  SELECT alerts.id, alerts.source
+  FROM alerts LEFT JOIN alert_dimension_state ds ON ds.alert_id = alerts.id
+  WHERE alerts.published_at >= '$cutoff' AND alerts.source = '$source'
+)
+SELECT CASE WHEN ag.code_scheme = 'EU_COUNTRY' AND ag.geography_code = 'XI'
+  THEN ag.geography_code ELSE ag.country_code END AS code,
+  COUNT(DISTINCT ag.alert_id) AS alertCount
+FROM filtered_alerts alerts
+$join
+WHERE ag.role = 'notifying' AND ag.status = 'mapped'
+  AND ((ag.admin_level = 'country' AND ag.code_scheme = 'ISO_3166_1_ALPHA2')
+    OR (ag.admin_level = 'subdivision' AND ag.code_scheme = 'ISO_3166_2')
+    OR (ag.admin_level = 'territory' AND ag.code_scheme = 'EU_COUNTRY' AND ag.geography_code = 'XI'))
+GROUP BY code HAVING code <> '' AND COUNT(DISTINCT ag.alert_id) > 0 ORDER BY code
+SQL
+              }
+
+              map_query(){
+                local source="$1"
+                local join="$2"
+                cat <<SQL
+WITH filtered_alerts AS MATERIALIZED (
+  SELECT alerts.id, alerts.source
+  FROM alerts LEFT JOIN alert_dimension_state ds ON ds.alert_id = alerts.id
+  WHERE alerts.published_at >= '$cutoff' AND alerts.source = '$source'
+)
+SELECT mg.geography_code AS geographyCode, mg.country_code AS countryCode,
+  mg.admin_level AS adminLevel, alerts.source, COUNT(DISTINCT alerts.id) AS alertCount
+FROM filtered_alerts alerts
+$join
+WHERE mg.status = 'mapped' AND mg.role = 'notifying'
+  AND mg.admin_level = 'country' AND mg.code_scheme = 'ISO_3166_1_ALPHA2'
+GROUP BY mg.geography_code, mg.country_code, mg.admin_level, alerts.source
+ORDER BY mg.geography_code, alerts.source
+SQL
+              }
+
+              represented_query(){
+                local source="$1"
+                local join="$2"
+                cat <<SQL
+WITH filtered_alerts AS MATERIALIZED (
+  SELECT alerts.id, alerts.source
+  FROM alerts LEFT JOIN alert_dimension_state ds ON ds.alert_id = alerts.id
+  WHERE alerts.published_at >= '$cutoff' AND alerts.source = '$source'
+)
+SELECT COUNT(DISTINCT alerts.id) AS represented
+FROM filtered_alerts alerts
+$join
+WHERE mg.status = 'mapped' AND mg.role = 'notifying'
+  AND mg.admin_level = 'country' AND mg.code_scheme = 'ISO_3166_1_ALPHA2'
+SQL
+              }
+
+              for source in RASFF "SAFETY GATE" AESAN; do
+                safe="$(printf '%s' "$source" | tr ' ' '-' | tr '[:upper:]' '[:lower:]')"
+
+                current_country="INNER JOIN alert_geographies ag ON ag.alert_id = alerts.id"
+                indexed_country="INNER JOIN alert_geographies ag INDEXED BY alert_geographies_alert_role_idx ON ag.alert_id = alerts.id"
+                cross_country="CROSS JOIN alert_geographies ag INDEXED BY alert_geographies_alert_role_idx ON ag.alert_id = alerts.id"
+
+                run_variant "$safe-country-current" "$(country_query "$source" "$current_country")"
+                run_variant "$safe-country-indexed" "$(country_query "$source" "$indexed_country")"
+                run_variant "$safe-country-cross-indexed" "$(country_query "$source" "$cross_country")"
+
+                current_map="INNER JOIN alert_geographies mg ON mg.alert_id = alerts.id"
+                indexed_map="INNER JOIN alert_geographies mg INDEXED BY alert_geographies_alert_role_idx ON mg.alert_id = alerts.id"
+                cross_map="CROSS JOIN alert_geographies mg INDEXED BY alert_geographies_alert_role_idx ON mg.alert_id = alerts.id"
+
+                run_variant "$safe-map-current" "$(map_query "$source" "$current_map")"
+                run_variant "$safe-map-cross-indexed" "$(map_query "$source" "$cross_map")"
+                run_variant "$safe-represented-current" "$(represented_query "$source" "$current_map")"
+                run_variant "$safe-represented-cross-indexed" "$(represented_query "$source" "$cross_map")"
+              done
+
+              RESULTS="$results" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const rows=readFileSync(process.env.RESULTS,"utf8").trim().split("\n").filter(Boolean).map(JSON.parse);
+          const groups=new Map();
+          for(const row of rows){
+            const base=row.name.replace(/-(?:current|indexed|cross-indexed)$/,"");
+            const group=groups.get(base)??[];
+            group.push(row);
+            groups.set(base,group);
+          }
+          for(const [base,group] of groups){
+            const current=group.find((row)=>row.name.endsWith("-current"));
+            if(!current) continue;
+            for(const row of group){
+              if(row.digest!==current.digest) throw new Error("semantic mismatch "+base+": "+current.name+" vs "+row.name);
+            }
+            console.log("TERMINAL_GEO_PLAN "+JSON.stringify({
+              query:base,
+              variants:Object.fromEntries(group.map((row)=>[row.name.replace(base+"-",""),{
+                rowsRead:row.rowsRead,duration:row.duration,resultRows:row.resultRows,digest:row.digest
+              }]))
+            }));
+          }
+          NODE
+
+              explain_current="$(country_query "RASFF" "INNER JOIN alert_geographies ag ON ag.alert_id = alerts.id")"
+              explain_cross="$(country_query "RASFF" "CROSS JOIN alert_geographies ag INDEXED BY alert_geographies_alert_role_idx ON ag.alert_id = alerts.id")"
+              wrangler d1 execute "$CF_D1" --remote --command "EXPLAIN QUERY PLAN $explain_current" --json > "$RUNNER_TEMP/explain-current.json"
+              wrangler d1 execute "$CF_D1" --remote --command "EXPLAIN QUERY PLAN $explain_cross" --json > "$RUNNER_TEMP/explain-cross.json"
+              CURRENT="$RUNNER_TEMP/explain-current.json" CROSS="$RUNNER_TEMP/explain-cross.json" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const rows=(path)=>{
+            const raw=JSON.parse(readFileSync(path,"utf8"));
+            return (Array.isArray(raw)?raw:[raw]).flatMap((block)=>block?.results??[]).map((row)=>row.detail);
+          };
+          console.log("TERMINAL_GEO_EXPLAIN "+JSON.stringify({current:rows(process.env.CURRENT),crossIndexed:rows(process.env.CROSS)}));
+          NODE
+              echo "TERMINAL_GEO_PLAN_BENCHMARK status=PASS"
               ;;
             terminal-perf-baseline-current)
               test "$CF_WORKER" = "vigia-runtime"
