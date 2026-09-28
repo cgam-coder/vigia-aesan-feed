@@ -163,6 +163,24 @@ test("OECD historical reconcile cannot expand token scope back to a job", () => 
   assertViolation(mutated, "OECD_HISTORICAL_SECRET_SCOPE");
 });
 
+test("OECD recent freshness retry keeps its token step-scoped", () => {
+  const source = repositoryWorkflows.get("oecd-recent-freshness-retry.yml");
+  assert.equal((source.match(/VIGIA_SYNC_TOKEN:\s*\$\{\{\s*secrets\.VIGIA_SYNC_TOKEN\s*\}\}/gu) ?? []).length, 1);
+  assert.match(source, /^          VIGIA_SYNC_TOKEN:/mu);
+});
+
+test("OECD recent freshness retry cannot expand token scope back to a job", () => {
+  const mutated = cloneWorkflows();
+  mutated.set(
+    "oecd-recent-freshness-retry.yml",
+    mutated.get("oecd-recent-freshness-retry.yml").replace(
+      "    steps:\n",
+      "    env:\n      VIGIA_SYNC_TOKEN: $" + "{{ secrets.VIGIA_SYNC_TOKEN }}\n    steps:\n",
+    ),
+  );
+  assertViolation(mutated, "OECD_RECENT_RETRY_SECRET_SCOPE");
+});
+
 test("a production secret added to public SEO fails", () => {
   const mutated = cloneWorkflows();
   mutated.set(
