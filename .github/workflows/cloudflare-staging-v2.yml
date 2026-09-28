@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","terminal-default-geo-hydration-benchmark","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -106,6 +106,126 @@ jobs:
           NODE
               done
               echo "OWNER_RUNTIME_POST_PREFLIGHT_ALL status=PASS"
+              ;;
+            perf-v2-preview-certification)
+              test "$CF_WORKER" = "vigia-runtime"
+              candidate="https://work-cloudflare-precheck-perf-v2-current-vigia-runtime.c-gamiz93.workers.dev"
+              baseline="https://work-f3b-worker-previews-base-vigia-runtime.c-gamiz93.workers.dev"
+              preview_d1="nagamealert-preview-db"
+              candidate_commit="aa860cf04bfae058e028a570d85b56ddac17c487"
+
+              prod_before="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              preview_before="$(wrangler d1 execute "$preview_d1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan, SUM(CASE WHEN source<>'AESAN' THEN 1 ELSE 0 END) AS non_aesan FROM alerts" --json)"
+              PROD="$prod_before" PREVIEW="$preview_before" node --input-type=module - <<'NODE'
+          const row=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])?.[0]??{};
+          const prod=row(process.env.PROD), preview=row(process.env.PREVIEW);
+          if(Number(prod.total)!==84786||Number(prod.aesan)!==128) throw new Error("production baseline drift");
+          if(Number(preview.total)!==129||Number(preview.aesan)!==129||Number(preview.non_aesan)!==0) throw new Error("preview D1 isolation drift");
+          console.log("PERF_V2_PREVIEW_D1_PREFLIGHT "+JSON.stringify({production:{total:Number(prod.total),aesan:Number(prod.aesan)},preview:{total:Number(preview.total),aesan:Number(preview.aesan),nonAesan:Number(preview.non_aesan)}}));
+          NODE
+
+              compare_api(){
+                local name="$1"
+                shift
+                local a="$RUNNER_TEMP/perf-v2-$name-candidate.json"
+                local b="$RUNNER_TEMP/perf-v2-$name-baseline.json"
+                curl --silent --show-error --fail-with-body --max-time 120 --get "$@" "$candidate/api/terminal/alerts" > "$a"
+                curl --silent --show-error --fail-with-body --max-time 120 --get "$@" "$baseline/api/terminal/alerts" > "$b"
+                NAME="$name" A="$a" B="$b" node --input-type=module - <<'NODE'
+          import { createHash } from "node:crypto";
+          import { readFileSync } from "node:fs";
+          const a=JSON.parse(readFileSync(process.env.A,"utf8"));
+          const b=JSON.parse(readFileSync(process.env.B,"utf8"));
+          const canonical=(value)=>JSON.stringify(value);
+          if(canonical(a)!==canonical(b)){
+            const digest=(value)=>createHash("sha256").update(canonical(value)).digest("hex");
+            throw new Error("API semantic mismatch "+process.env.NAME+" candidate="+digest(a)+" baseline="+digest(b));
+          }
+          console.log("PERF_V2_API_EQ "+JSON.stringify({name:process.env.NAME,total:a.total,returned:a.pagination?.returned,hasMore:a.pagination?.hasMore,pageSize:a.pagination?.pageSize,aesanType:a.query?.aesanType??null}));
+          NODE
+              }
+
+              compare_api all-100 \
+                --data-urlencode "period=all" --data-urlencode "country=ALL" --data-urlencode "source=AESAN" --data-urlencode "pageSize=100"
+              compare_api general-100 \
+                --data-urlencode "period=all" --data-urlencode "country=ALL" --data-urlencode "source=AESAN" --data-urlencode "aesanType=general_population" --data-urlencode "pageSize=100"
+              compare_api allergy-50 \
+                --data-urlencode "period=all" --data-urlencode "country=ALL" --data-urlencode "source=AESAN" --data-urlencode "aesanType=allergy_intolerance_adverse" --data-urlencode "pageSize=50"
+              compare_api supplements-50 \
+                --data-urlencode "period=all" --data-urlencode "country=ALL" --data-urlencode "source=AESAN" --data-urlencode "aesanType=food_supplements" --data-urlencode "pageSize=50"
+              compare_api country-es \
+                --data-urlencode "period=all" --data-urlencode "country=ES" --data-urlencode "source=AESAN" --data-urlencode "pageSize=50"
+              compare_api search-sulfitos \
+                --data-urlencode "q=sulfitos" --data-urlencode "period=all" --data-urlencode "country=ALL" --data-urlencode "source=AESAN" --data-urlencode "pageSize=50"
+              compare_api recent-7d \
+                --data-urlencode "period=7d" --data-urlencode "country=ALL" --data-urlencode "source=AESAN" --data-urlencode "pageSize=50"
+
+              first="$RUNNER_TEMP/perf-v2-all-100-candidate.json"
+              cursor="$(FIRST="$first" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.env.FIRST,"utf8"));
+          if(body?.total!==129||body?.pagination?.returned!==100||body?.pagination?.hasMore!==true||!body?.pagination?.nextCursor) throw new Error("pageSize=100 did not exercise 101-row internal page");
+          process.stdout.write(body.pagination.nextCursor);
+          NODE
+              )"
+              compare_api page2-after-100 \
+                --data-urlencode "period=all" --data-urlencode "country=ALL" --data-urlencode "source=AESAN" --data-urlencode "pageSize=100" --data-urlencode "cursor=$cursor"
+
+              for ref in "ES2026/266" "ES2026/382" "PREVIEW/CONFLICT"; do
+                safe="$(printf '%s' "$ref" | tr '/:' '__')"
+                compare_api "case-$safe" \
+                  --data-urlencode "q=$ref" --data-urlencode "period=all" --data-urlencode "country=ALL" --data-urlencode "source=AESAN" --data-urlencode "pageSize=50"
+              done
+
+              for target in candidate baseline; do
+                if [ "$target" = candidate ]; then url="$candidate"; else url="$baseline"; fi
+                headers="$RUNNER_TEMP/perf-v2-$target.headers"
+                body="$RUNNER_TEMP/perf-v2-$target-perf.json"
+                code="$(curl --silent --show-error --get --max-time 120 --header "X-Nagame-Perf: 1" \
+                  --dump-header "$headers" --output "$body" --write-out '%{http_code}' \
+                  --data-urlencode "period=all" --data-urlencode "country=ALL" --data-urlencode "source=AESAN" --data-urlencode "pageSize=100" \
+                  "$url/api/terminal/alerts")"
+                test "$code" = "200"
+                TARGET="$target" HEADERS="$headers" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const lines=readFileSync(process.env.HEADERS,"utf8").split(/\r?\n/);
+          const line=[...lines].reverse().find((value)=>value.toLowerCase().startsWith("x-nagame-d1-rows:"));
+          if(!line) throw new Error("missing perf rows header");
+          const raw=line.slice(line.indexOf(":")+1).trim();
+          const reads={},writes={};
+          for(const token of raw.split(",")){
+            const [key,value]=token.trim().split("=");
+            const n=Number(value);
+            if(key?.endsWith(".rows_read")&&Number.isFinite(n)) reads[key.replace(/\.rows_read$/,"")]=n;
+            if(key?.endsWith(".rows_written")&&Number.isFinite(n)) writes[key.replace(/\.rows_written$/,"")]=n;
+          }
+          if(Object.values(writes).some((n)=>n!==0)) throw new Error("Preview perf write detected");
+          console.log("PERF_V2_PREVIEW_ROWS "+JSON.stringify({target:process.env.TARGET,totalRows:Object.values(reads).reduce((a,b)=>a+b,0),reads,writes}));
+          NODE
+              done
+
+              browser_dir="$RUNNER_TEMP/perf-v2-browser"
+              rm -rf "$browser_dir"
+              mkdir -p "$browser_dir"
+              cp "$GITHUB_WORKSPACE/ops/f3b-b1-browser-matrix.mjs" "$browser_dir/matrix.mjs"
+              cd "$browser_dir"
+              npm init -y >/dev/null 2>&1
+              npm install --no-audit --no-fund --silent puppeteer-core@24.24.1
+              chrome="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+              test -n "$chrome"
+              B1_URL="$candidate" CHROME="$chrome" node matrix.mjs
+              cd "$GITHUB_WORKSPACE"
+
+              prod_after="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              preview_after="$(wrangler d1 execute "$preview_d1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan, SUM(CASE WHEN source<>'AESAN' THEN 1 ELSE 0 END) AS non_aesan FROM alerts" --json)"
+              PROD_BEFORE="$prod_before" PROD_AFTER="$prod_after" PREVIEW_BEFORE="$preview_before" PREVIEW_AFTER="$preview_after" node --input-type=module - <<'NODE'
+          const row=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])?.[0]??{};
+          const pb=row(process.env.PROD_BEFORE),pa=row(process.env.PROD_AFTER),vb=row(process.env.PREVIEW_BEFORE),va=row(process.env.PREVIEW_AFTER);
+          if(Number(pb.total)!==Number(pa.total)||Number(pb.aesan)!==Number(pa.aesan)) throw new Error("production D1 changed");
+          for(const key of ["total","aesan","non_aesan"]) if(Number(vb[key])!==Number(va[key])) throw new Error("preview D1 changed: "+key);
+          console.log("PERF_V2_PREVIEW_D1_POST "+JSON.stringify({production:{total:Number(pa.total),aesan:Number(pa.aesan)},preview:{total:Number(va.total),aesan:Number(va.aesan),nonAesan:Number(va.non_aesan)}}));
+          NODE
+              echo "PERF_V2_PREVIEW_CERTIFICATION commit=$candidate_commit status=PASS"
               ;;
             terminal-default-geo-hydration-benchmark)
               test "$CF_WORKER" = "vigia-runtime"
