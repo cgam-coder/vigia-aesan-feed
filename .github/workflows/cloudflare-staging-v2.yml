@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","rasff-integrity-readonly","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -1099,6 +1099,57 @@ jobs:
           console.log("F3B_PROD_D1_POST "+JSON.stringify(summary));
           NODE
               echo "F3B_PRODUCTION_CERTIFICATION main=$expected_main url=$prod_url status=PASS"
+              ;;
+            rasff-integrity-readonly)
+              test "$CF_WORKER" = "vigia-runtime"
+              test -n "$VIGIA_SYNC_TOKEN"
+              base="https://vigia-runtime.c-gamiz93.workers.dev"
+              auth=(--header "Authorization: Bearer $VIGIA_SYNC_TOKEN")
+
+              observe_code="$(curl --silent --show-error --max-time 120 --output "$RUNNER_TEMP/rasff-observe.json" --write-out '%{http_code}' "${auth[@]}" "$base/api/rasff/sync?observe=1")"
+              audit_code="$(curl --silent --show-error --max-time 180 --output "$RUNNER_TEMP/rasff-audit.json" --write-out '%{http_code}' "${auth[@]}" "$base/api/rasff/sync?audit=1")"
+              preview_code="$(curl --silent --show-error --request POST --max-time 180 --output "$RUNNER_TEMP/rasff-version-preview.json" --write-out '%{http_code}' "${auth[@]}" "$base/api/rasff/sync?mode=preview-version-counts")"
+              preflight_code="$(curl --silent --show-error --request POST --max-time 120 --output "$RUNNER_TEMP/rasff-preflight.json" --write-out '%{http_code}' "${auth[@]}" "$base/api/rasff/sync?mode=preflight")"
+
+              test "$observe_code" = "200"
+              test "$audit_code" = "200"
+              test "$preview_code" = "200"
+              test "$preflight_code" = "200"
+
+              OBSERVE="$RUNNER_TEMP/rasff-observe.json" AUDIT="$RUNNER_TEMP/rasff-audit.json" PREVIEW="$RUNNER_TEMP/rasff-version-preview.json" PREFLIGHT="$RUNNER_TEMP/rasff-preflight.json" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const read=(path)=>JSON.parse(readFileSync(path,"utf8"));
+          const observe=read(process.env.OBSERVE);
+          const auditBody=read(process.env.AUDIT);
+          const preview=read(process.env.PREVIEW);
+          const preflight=read(process.env.PREFLIGHT);
+          const audit=auditBody?.audit;
+          if(observe?.source!=="RASFF") throw new Error("RASFF observe identity mismatch");
+          if(!audit||typeof audit!=="object") throw new Error("RASFF audit body missing");
+          if(preview?.dryRun!==true) throw new Error("RASFF version-count preview is not dry-run");
+          if(preflight?.authorized!==true||preflight?.source!=="RASFF") throw new Error("RASFF preflight contract mismatch");
+          const integrity=Object.fromEntries(Object.entries(audit.integrity??{}).filter(([,value])=>Number(value)!==0));
+          console.log("RASFF_INTEGRITY_READONLY "+JSON.stringify({
+            observe:{
+              lease:observe.lease??null,
+              recent:observe.recent??null,
+              reconcile:observe.reconcile??null,
+              backfill:observe.backfill??null,
+            },
+            audit:{
+              counts:audit.counts??null,
+              integrity,
+            },
+            versionCountPreview:{
+              checkedAt:preview.checkedAt??null,
+              dryRun:preview.dryRun,
+              remaining:Number(preview.remaining??-1),
+              mismatches:Array.isArray(preview.rows)?preview.rows:[],
+            },
+            officialIndex:preflight.officialIndex??null,
+          }));
+          NODE
+              echo "RASFF_INTEGRITY_READONLY status=PASS"
               ;;
             owner-runtime-readonly-smoke)
               test -n "$VIGIA_SYNC_TOKEN"
