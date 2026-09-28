@@ -127,6 +127,24 @@ test("Safety Gate/OECD carrier cannot expand token scope back to a job", () => {
   assertViolation(mutated, "SAFETY_OECD_SECRET_SCOPE");
 });
 
+test("five-source freshness watchdog keeps its token step-scoped", () => {
+  const source = repositoryWorkflows.get("freshness-watchdog.yml");
+  assert.equal((source.match(/VIGIA_SYNC_TOKEN:\s*\$\{\{\s*secrets\.VIGIA_SYNC_TOKEN\s*\}\}/gu) ?? []).length, 1);
+  assert.match(source, /^          VIGIA_SYNC_TOKEN:/mu);
+});
+
+test("five-source freshness watchdog cannot expand token scope back to a job", () => {
+  const mutated = cloneWorkflows();
+  mutated.set(
+    "freshness-watchdog.yml",
+    mutated.get("freshness-watchdog.yml").replace(
+      "    steps:\n",
+      "    env:\n      VIGIA_SYNC_TOKEN: $" + "{{ secrets.VIGIA_SYNC_TOKEN }}\n    steps:\n",
+    ),
+  );
+  assertViolation(mutated, "FRESHNESS_SECRET_SCOPE");
+});
+
 test("a production secret added to public SEO fails", () => {
   const mutated = cloneWorkflows();
   mutated.set(
