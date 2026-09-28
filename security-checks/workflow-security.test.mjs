@@ -14,7 +14,6 @@ test("current public workflow contract has no unreviewed security regression", (
   const result = analyzeWorkflows(repositoryWorkflows);
   assert.deepEqual(result.violations, []);
   assert.deepEqual(KNOWN_DEBT.map(({ id }) => id), [
-    "PUB-DEBT-02",
     "PUB-DEBT-03",
     "PUB-DEBT-04",
   ]);
@@ -25,6 +24,26 @@ test("current public workflow contract has no unreviewed security regression", (
   assert.ok(FLOATING_ACTION_EXCEPTIONS.every((item) => item.rationale && item.removalGate));
 });
 
+
+test("all production sync tokens are step-scoped", () => {
+  for (const source of repositoryWorkflows.values()) {
+    for (const line of source.split(/\r?\n/u).filter((line) => line.includes("VIGIA_SYNC_TOKEN:"))) {
+      assert.match(line, /^          VIGIA_SYNC_TOKEN:/u);
+    }
+  }
+});
+
+test("production sync token cannot expand back to job scope", () => {
+  const mutated = cloneWorkflows();
+  mutated.set(
+    "freshness-watchdog.yml",
+    mutated.get("freshness-watchdog.yml").replace(
+      "          VIGIA_SYNC_TOKEN:",
+      "      VIGIA_SYNC_TOKEN:",
+    ),
+  );
+  assertViolation(mutated, "PRODUCTION_TOKEN_JOB_SCOPE");
+});
 
 test("extraordinary repair remains manual-only, confirmed and step-scoped", () => {
   const source = repositoryWorkflows.get("gh-fixes-closure-once.yml");
