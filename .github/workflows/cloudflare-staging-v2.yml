@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","aesan-functional-recheck","f3b-production-certification","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -106,6 +106,130 @@ jobs:
           NODE
               done
               echo "OWNER_RUNTIME_POST_PREFLIGHT_ALL status=PASS"
+              ;;
+            terminal-perf-baseline-current)
+              test "$CF_WORKER" = "vigia-runtime"
+              prod_url="https://nagamealert.com"
+
+              prod_before="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              PROD_BEFORE="$prod_before" node --input-type=module - <<'NODE'
+          const rows=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])??[];
+          const row=rows(process.env.PROD_BEFORE)[0]??{};
+          const total=Number(row.total), aesan=Number(row.aesan);
+          if(!Number.isSafeInteger(total)||total<1000||!Number.isSafeInteger(aesan)||aesan<100) throw new Error("production corpus baseline invalid");
+          console.log("TERMINAL_PERF_D1_BEFORE "+JSON.stringify({total,aesan}));
+          NODE
+
+              probe_perf(){
+                local name="$1"
+                shift
+                local headers="$RUNNER_TEMP/perf-$name.headers"
+                local body="$RUNNER_TEMP/perf-$name.json"
+                local code
+                code="$(curl --silent --show-error --max-time 180 \
+                  --header "X-Nagame-Perf: 1" \
+                  --dump-header "$headers" --output "$body" --write-out '%{http_code}' \
+                  --get "$@" "$prod_url/api/terminal/alerts")"
+                test "$code" = "200"
+                NAME="$name" HEADERS="$headers" BODY="$body" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const rawHeaders=readFileSync(process.env.HEADERS,"utf8").split(/\r?\n/);
+          const header=(name)=>{
+            const prefix=name.toLowerCase()+":";
+            const line=[...rawHeaders].reverse().find((value)=>value.toLowerCase().startsWith(prefix));
+            return line ? line.slice(line.indexOf(":")+1).trim() : "";
+          };
+          const rowsHeader=header("x-nagame-d1-rows");
+          if(!rowsHeader) throw new Error("missing X-Nagame-D1-Rows for "+process.env.NAME);
+          const reads={};
+          const writes={};
+          for(const token of rowsHeader.split(",")){
+            const [key,value]=token.trim().split("=");
+            if(!key||value===undefined) continue;
+            const n=Number(value);
+            if(!Number.isFinite(n)) continue;
+            if(key.endsWith(".rows_read")) reads[key.replace(/\.rows_read$/,"")]=n;
+            if(key.endsWith(".rows_written")) writes[key.replace(/\.rows_written$/,"")]=n;
+          }
+          const totalRows=Object.values(reads).reduce((sum,value)=>sum+value,0);
+          if(!Object.keys(reads).length||!Number.isFinite(totalRows)) throw new Error("invalid D1 read header for "+process.env.NAME);
+          if(Object.values(writes).some((value)=>value!==0)) throw new Error("unexpected D1 writes for "+process.env.NAME+": "+JSON.stringify(writes));
+          const body=JSON.parse(readFileSync(process.env.BODY,"utf8"));
+          console.log("TERMINAL_PERF "+JSON.stringify({
+            name:process.env.NAME,
+            totalRows,
+            reads,
+            writes,
+            serverTiming:header("server-timing"),
+            total:body?.total??null,
+            returned:body?.pagination?.returned??null,
+            hasMore:body?.pagination?.hasMore??null,
+            pageSize:body?.pagination?.pageSize??null,
+            source:body?.query?.source??null,
+            period:body?.query?.period??null,
+            country:body?.query?.country??null,
+            aesanType:body?.query?.aesanType??null,
+          }));
+          NODE
+              }
+
+              probe_perf default-7d-50 \
+                --data-urlencode "period=7d" --data-urlencode "country=ALL" --data-urlencode "pageSize=50"
+
+              first="$RUNNER_TEMP/perf-default-7d-50.json"
+              cursor="$(FIRST="$first" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.env.FIRST,"utf8"));
+          if(typeof body?.pagination?.nextCursor!=="string"||!body.pagination.nextCursor) throw new Error("default 7d first page has no cursor");
+          process.stdout.write(body.pagination.nextCursor);
+          NODE
+              )"
+
+              probe_perf default-7d-page2 \
+                --data-urlencode "period=7d" --data-urlencode "country=ALL" --data-urlencode "pageSize=50" \
+                --data-urlencode "cursor=$cursor"
+
+              probe_perf default-7d-1 \
+                --data-urlencode "period=7d" --data-urlencode "country=ALL" --data-urlencode "pageSize=1"
+
+              probe_perf default-30d-50 \
+                --data-urlencode "period=30d" --data-urlencode "country=ALL" --data-urlencode "pageSize=50"
+
+              probe_perf country-es-7d-50 \
+                --data-urlencode "period=7d" --data-urlencode "country=ES" --data-urlencode "pageSize=50"
+
+              probe_perf domain-human-food-7d-50 \
+                --data-urlencode "period=7d" --data-urlencode "country=ALL" --data-urlencode "domain=human_food" \
+                --data-urlencode "pageSize=50"
+
+              for source in AESAN RAPNA RASFF "SAFETY GATE" OECD; do
+                safe="$(printf '%s' "$source" | tr ' ' '-' | tr '[:upper:]' '[:lower:]')"
+                probe_perf "source-$safe-7d-50" \
+                  --data-urlencode "period=7d" --data-urlencode "country=ALL" \
+                  --data-urlencode "source=$source" --data-urlencode "pageSize=50"
+              done
+
+              probe_perf aesan-all-50 \
+                --data-urlencode "period=all" --data-urlencode "country=ALL" \
+                --data-urlencode "source=AESAN" --data-urlencode "pageSize=50"
+
+              probe_perf aesan-all-allergy-50 \
+                --data-urlencode "period=all" --data-urlencode "country=ALL" \
+                --data-urlencode "source=AESAN" --data-urlencode "aesanType=allergy_intolerance_adverse" \
+                --data-urlencode "pageSize=50"
+
+              probe_perf aesan-search-sulfitos \
+                --data-urlencode "q=sulfitos" --data-urlencode "period=all" --data-urlencode "country=ALL" \
+                --data-urlencode "source=AESAN" --data-urlencode "pageSize=50"
+
+              prod_after="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              PROD_BEFORE="$prod_before" PROD_AFTER="$prod_after" node --input-type=module - <<'NODE'
+          const row=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])?.[0]??{};
+          const before=row(process.env.PROD_BEFORE), after=row(process.env.PROD_AFTER);
+          if(Number(before.total)!==Number(after.total)||Number(before.aesan)!==Number(after.aesan)) throw new Error("production D1 changed during performance baseline");
+          console.log("TERMINAL_PERF_D1_UNCHANGED "+JSON.stringify({total:Number(after.total),aesan:Number(after.aesan)}));
+          NODE
+              echo "TERMINAL_PERF_BASELINE_CURRENT main=744dd2d9fba511fa320f4926b40d700e999412d9 status=PASS"
               ;;
             aesan-functional-recheck)
               test "$CF_WORKER" = "vigia-runtime"
