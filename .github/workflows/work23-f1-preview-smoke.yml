@@ -1,4 +1,4 @@
-name: Temporary WORK23 rollback production smoke
+name: Temporary WORK23 rollback wait gate
 
 on:
   push:
@@ -12,17 +12,21 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 8
     steps:
-      - name: Certify removal of public Patterns surface
+      - name: Wait for and certify removal of public Patterns surface
         shell: bash
         run: |
           set -euo pipefail
           base="https://nagamealert.com"
-
-          code="$(curl -sS --max-time 30 -H 'Cache-Control: no-cache' -o /tmp/es -w '%{http_code}' "$base/es/patrones")"
-          echo "/es/patrones => $code"
-          test "$code" = "404"
+          removed=0
+          for attempt in $(seq 1 36); do
+            code="$(curl -sS --max-time 20 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o /tmp/es -w '%{http_code}' "$base/es/patrones" || true)"
+            echo "attempt $attempt: /es/patrones => $code"
+            if [ "$code" = "404" ]; then removed=1; break; fi
+            sleep 10
+          done
+          test "$removed" = "1"
 
           code="$(curl -sS --max-time 30 -H 'Cache-Control: no-cache' -o /tmp/en -w '%{http_code}' "$base/en/patterns")"
           echo "/en/patterns => $code"
