@@ -14,14 +14,13 @@ test("current public workflow contract has no unreviewed security regression", (
   const result = analyzeWorkflows(repositoryWorkflows);
   assert.deepEqual(result.violations, []);
   assert.deepEqual(KNOWN_DEBT.map(({ id }) => id), [
-    "PUB-DEBT-01",
     "PUB-DEBT-02",
     "PUB-DEBT-03",
     "PUB-DEBT-04",
   ]);
   assert.equal(
     FLOATING_ACTION_EXCEPTIONS.reduce((sum, item) => sum + item.maxOccurrences, 0),
-    4,
+    0,
   );
   assert.ok(FLOATING_ACTION_EXCEPTIONS.every((item) => item.rationale && item.removalGate));
 });
@@ -174,14 +173,14 @@ test("a new floating action in a hardened workflow fails", () => {
   assertViolation(mutated, "ACTION_NOT_PINNED");
 });
 
-test("expanding a historical floating exception fails", () => {
+test("a floating publisher action fails once all reviewed exceptions are retired", () => {
   const mutated = cloneWorkflows();
   mutated.set(
     "update-feed.yml",
     mutated.get("update-feed.yml") +
       "\n      - uses: actions/checkout@v4\n",
   );
-  assertViolation(mutated, "FLOATING_EXCEPTION_EXPANDED");
+  assertViolation(mutated, "ACTION_NOT_PINNED");
 });
 
 test("environment and broad artifact dumps fail", () => {
