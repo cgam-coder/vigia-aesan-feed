@@ -1,4 +1,4 @@
-name: Temporary SEO brand production diagnostic
+name: Temporary SEO brand production smoke
 
 on:
   push:
@@ -14,45 +14,73 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Diagnose production root-home SEO contract
+      - name: Validate production root-home SEO contract
         shell: bash
         run: |
           set -euo pipefail
           base="https://nagamealert.com"
 
-          fetch_one() {
+          request() {
             local path="$1"
-            local slug
-            slug="$(echo "$path" | tr '/?=&' '_____')"
-            local body="/tmp/body-${slug}"
-            local headers="/tmp/headers-${slug}"
-            local code
-            code="$(curl -sS --max-time 30 \
+            curl -sS --max-time 30 \
               -H 'Cache-Control: no-cache' \
               -H 'Pragma: no-cache' \
-              -H 'User-Agent: NagameAlert-SEO-Brand-Diagnostic/1.0' \
-              -o "$body" -D "$headers" -w '%{http_code}' "$base$path")"
-            echo "===== $path => $code ====="
-            grep -iE '^(location|x-robots-tag|content-type|cf-cache-status|age):' "$headers" || true
-            echo "-- TITLE --"
-            grep -oE '<title[^>]*>[^<]*</title>' "$body" | head -5 || true
-            echo "-- CANONICAL / ALTERNATES --"
-            grep -oE '<link[^>]+(canonical|alternate)[^>]*>' "$body" | head -20 || true
-            echo "-- ROBOTS --"
-            grep -oE '<meta[^>]+(robots|googlebot)[^>]*>' "$body" | head -10 || true
-            echo "-- WEBSITE JSONLD --"
-            grep -oE '"@type":"WebSite"|"name":"NagameAlert"|"alternateName":[^,}]*|"url":"https://nagamealert.com/"' "$body" | head -20 || true
-            echo "-- BRAND / H1 --"
-            grep -oE '<h1[^>]*>[^<]*(<[^>]+>[^<]*</[^>]+>)*[^<]*</h1>' "$body" | head -5 || true
-            echo "-- BYTES --"
-            wc -c "$body"
+              -H 'User-Agent: NagameAlert-SEO-Brand-Release/1.0' \
+              -o /tmp/body -D /tmp/headers -w '%{http_code}' "$base$path"
           }
 
-          fetch_one "/"
-          fetch_one "/es"
-          fetch_one "/es/"
-          fetch_one "/en"
-          fetch_one "/en/"
-          fetch_one "/robots.txt"
-          fetch_one "/sitemap.xml"
-          fetch_one "/sitemaps/static-es.xml"
+          expect_status() {
+            local path="$1" expected="$2"
+            local code
+            code="$(request "$path")"
+            echo "$path => $code"
+            test "$code" = "$expected"
+          }
+
+          expect_redirect() {
+            local path="$1" expected_suffix="$2"
+            expect_status "$path" 308
+            local location
+            location="$(awk 'BEGIN{IGNORECASE=1} /^location:/{sub(/\r$/,""); print $2}' /tmp/headers)"
+            echo "$path location=$location"
+            case "$location" in
+              "$base$expected_suffix"|"$expected_suffix") ;;
+              *) echo "Unexpected redirect: $location"; exit 1 ;;
+            esac
+          }
+
+          expect_status "/" 200
+          grep -Fq '<title>NagameAlert | Alertas y notificaciones oficiales</title>' /tmp/body
+          grep -Eq '<link[^>]+rel="canonical"[^>]+href="https://nagamealert\.com/"|<link[^>]+href="https://nagamealert\.com/"[^>]+rel="canonical"' /tmp/body
+          grep -Eqi 'hrefLang="es"[^>]+href="https://nagamealert\.com/"|href="https://nagamealert\.com/"[^>]+hrefLang="es"' /tmp/body
+          grep -Eqi 'hrefLang="en"[^>]+href="https://nagamealert\.com/en/"|href="https://nagamealert\.com/en/"[^>]+hrefLang="en"' /tmp/body
+          grep -Eqi 'hrefLang="x-default"[^>]+href="https://nagamealert\.com/"|href="https://nagamealert\.com/"[^>]+hrefLang="x-default"' /tmp/body
+          grep -Fq '"@type":"WebSite"' /tmp/body
+          grep -Fq '"name":"NagameAlert"' /tmp/body
+          grep -Fq '"alternateName":["Nagame Alert","nagamealert.com"]' /tmp/body
+          if grep -qi '^x-robots-tag:.*noindex' /tmp/headers; then echo "Root unexpectedly noindex"; exit 1; fi
+          if grep -Eq '<meta[^>]+name="robots"[^>]+content="[^"]*noindex' /tmp/body; then echo "Root meta noindex"; exit 1; fi
+
+          expect_redirect "/es" "/"
+          expect_redirect "/es/" "/"
+          expect_redirect "/es/?utm_source=linkedin" "/?utm_source=linkedin"
+
+          expect_redirect "/en" "/en/"
+          expect_status "/en/" 200
+          grep -Fq '<title>NagameAlert | Official alerts and notifications</title>' /tmp/body
+          grep -Eq '<link[^>]+rel="canonical"[^>]+href="https://nagamealert\.com/en/"|<link[^>]+href="https://nagamealert\.com/en/"[^>]+rel="canonical"' /tmp/body
+          if grep -Fq '"@type":"WebSite"' /tmp/body; then echo "English home has duplicate site-level WebSite"; exit 1; fi
+
+          expect_status "/robots.txt" 200
+          grep -Fq 'Sitemap: https://nagamealert.com/sitemap.xml' /tmp/body
+
+          expect_status "/sitemap.xml" 200
+          grep -Fq '<sitemapindex' /tmp/body
+
+          expect_status "/sitemaps/static-es.xml" 200
+          grep -Fq '<loc>https://nagamealert.com/</loc>' /tmp/body
+          if grep -Fq '<loc>https://nagamealert.com/es/</loc>' /tmp/body; then
+            echo "Legacy /es/ home still emitted in static sitemap"; exit 1
+          fi
+
+          echo "SEO-BRAND production smoke PASS"
