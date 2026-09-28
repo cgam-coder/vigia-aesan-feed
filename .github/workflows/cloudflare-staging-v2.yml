@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -1099,6 +1099,93 @@ jobs:
           console.log("F3B_PROD_D1_POST "+JSON.stringify(summary));
           NODE
               echo "F3B_PRODUCTION_CERTIFICATION main=$expected_main url=$prod_url status=PASS"
+              ;;
+            perf-f1-bind-limit-production-cert)
+              test "$CF_WORKER" = "vigia-runtime"
+              prod_url="https://nagamealert.com"
+              expected_version="d000cbd8-1bba-46ef-8d26-eb29b9841246"
+
+              deployment="$(wrangler deployments status --name "$CF_WORKER" --json)"
+              DEPLOYMENT="$deployment" EXPECTED="$expected_version" node --input-type=module - <<'NODE'
+          const d=JSON.parse(process.env.DEPLOYMENT||"{}");
+          const versions=Array.isArray(d?.versions)?d.versions:[];
+          if(versions.length!==1||versions[0]?.version_id!==process.env.EXPECTED||Number(versions[0]?.percentage)!==100)
+            throw new Error("expected production version not active at 100%");
+          console.log("PERF_F1_BIND_LIMIT_PROD_DEPLOYMENT "+JSON.stringify({
+            deploymentId:d.id??null,versionId:versions[0].version_id,percentage:Number(versions[0].percentage),createdOn:d.created_on??null
+          }));
+          NODE
+
+              before="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              BEFORE="$before" node --input-type=module - <<'NODE'
+          const row=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])?.[0]??{};
+          const v=row(process.env.BEFORE);
+          if(Number(v.total)!==84786||Number(v.aesan)!==128) throw new Error("production D1 baseline drift");
+          console.log("PERF_F1_BIND_LIMIT_PROD_D1_BEFORE "+JSON.stringify({total:Number(v.total),aesan:Number(v.aesan)}));
+          NODE
+
+              h1="$RUNNER_TEMP/prod-bind-page1.headers"
+              b1="$RUNNER_TEMP/prod-bind-page1.json"
+              code1="$(curl --silent --show-error --get --max-time 120                 --header "X-Nagame-Perf: 1" --dump-header "$h1" --output "$b1" --write-out '%{http_code}'                 --data-urlencode "period=all" --data-urlencode "country=ALL" --data-urlencode "source=AESAN"                 --data-urlencode "pageSize=100" "$prod_url/api/terminal/alerts")"
+              test "$code1" = "200"
+
+              cursor="$(BODY="$b1" HEADERS="$h1" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.env.BODY,"utf8"));
+          const headers=readFileSync(process.env.HEADERS,"utf8").split(/\r?\n/);
+          const get=(name)=>{
+            const prefix=name.toLowerCase()+":";
+            const line=[...headers].reverse().find(v=>v.toLowerCase().startsWith(prefix));
+            return line?line.slice(line.indexOf(":")+1).trim():"";
+          };
+          if(body?.total!==128||body?.facets?.aesan?.all!==128||body?.pagination?.pageSize!==100||
+             body?.pagination?.returned!==100||body?.pagination?.hasMore!==true||
+             typeof body?.pagination?.nextCursor!=="string"||!body.pagination.nextCursor)
+            throw new Error("production pageSize=100 first-page contract mismatch");
+          const rows=get("x-nagame-d1-rows");
+          if(!rows||/rows_written=[1-9]/u.test(rows)) throw new Error("invalid/writing perf header");
+          console.error("PERF_F1_BIND_LIMIT_PROD_PAGE1 "+JSON.stringify({
+            total:body.total,returned:body.pagination.returned,hasMore:body.pagination.hasMore,
+            rowsHeader:rows,serverTiming:get("server-timing")
+          }));
+          process.stdout.write(body.pagination.nextCursor);
+          NODE
+              )"
+              test -n "$cursor"
+
+              h2="$RUNNER_TEMP/prod-bind-page2.headers"
+              b2="$RUNNER_TEMP/prod-bind-page2.json"
+              code2="$(curl --silent --show-error --get --max-time 120                 --header "X-Nagame-Perf: 1" --dump-header "$h2" --output "$b2" --write-out '%{http_code}'                 --data-urlencode "period=all" --data-urlencode "country=ALL" --data-urlencode "source=AESAN"                 --data-urlencode "pageSize=100" --data-urlencode "cursor=$cursor"                 "$prod_url/api/terminal/alerts")"
+              test "$code2" = "200"
+
+              BODY="$b2" HEADERS="$h2" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.env.BODY,"utf8"));
+          const headers=readFileSync(process.env.HEADERS,"utf8").split(/\r?\n/);
+          const get=(name)=>{
+            const prefix=name.toLowerCase()+":";
+            const line=[...headers].reverse().find(v=>v.toLowerCase().startsWith(prefix));
+            return line?line.slice(line.indexOf(":")+1).trim():"";
+          };
+          if(body?.total!==128||body?.pagination?.pageSize!==100||body?.pagination?.returned!==28||
+             body?.pagination?.hasMore!==false||body?.pagination?.nextCursor!==null)
+            throw new Error("production page2 contract mismatch: "+JSON.stringify(body?.pagination));
+          const rows=get("x-nagame-d1-rows");
+          if(!rows||/rows_written=[1-9]/u.test(rows)) throw new Error("invalid/writing page2 perf header");
+          console.log("PERF_F1_BIND_LIMIT_PROD_PAGE2 "+JSON.stringify({
+            total:body.total,returned:body.pagination.returned,hasMore:body.pagination.hasMore,
+            rowsHeader:rows,serverTiming:get("server-timing")
+          }));
+          NODE
+
+              after="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              BEFORE="$before" AFTER="$after" node --input-type=module - <<'NODE'
+          const row=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])?.[0]??{};
+          const b=row(process.env.BEFORE),a=row(process.env.AFTER);
+          if(Number(b.total)!==Number(a.total)||Number(b.aesan)!==Number(a.aesan)) throw new Error("production D1 changed");
+          console.log("PERF_F1_BIND_LIMIT_PROD_D1_POST "+JSON.stringify({total:Number(a.total),aesan:Number(a.aesan),delta:{total:Number(a.total)-Number(b.total),aesan:Number(a.aesan)-Number(b.aesan)}}));
+          NODE
+              echo "PERF_F1_BIND_LIMIT_PRODUCTION_CERT main=c3148e369d53424fe1008538bf457df3b6e01053 status=PASS"
               ;;
             perf-f1-bind-limit-preview-cert)
               test "$CF_WORKER" = "vigia-runtime"
