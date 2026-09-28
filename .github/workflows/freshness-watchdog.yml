@@ -30,10 +30,11 @@ jobs:
     timeout-minutes: 35
     env:
       VIGIA_FRESHNESS_URL: ${{ format('{0}/api/freshness', needs.runtime_target.outputs.base_url) }}
-      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
       - name: Audit official parity and run bounded recovery
         shell: bash
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           set -euo pipefail
           test -n "$VIGIA_SYNC_TOKEN"
