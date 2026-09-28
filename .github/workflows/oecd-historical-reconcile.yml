@@ -24,10 +24,11 @@ jobs:
     timeout-minutes: 225
     env:
       VIGIA_OECD_SYNC_URL: ${{ format('{0}/api/oecd/sync', needs.runtime_target.outputs.base_url) }}
-      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
       - name: Continue the persisted UTC historical sweep while yielding to recent
         shell: bash
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           set -euo pipefail
           test -n "$VIGIA_SYNC_TOKEN"
