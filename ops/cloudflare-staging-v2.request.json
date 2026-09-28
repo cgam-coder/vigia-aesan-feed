@@ -1,4 +1,4 @@
 {
-  "operation": "worker-versions",
-  "nonce": "perf-f1-production-versions-20260928"
+  "operation": "worker-status",
+  "nonce": "perf-f1-production-status-20260928-r2"
 }
