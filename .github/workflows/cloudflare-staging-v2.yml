@@ -151,8 +151,8 @@ jobs:
           }
           const c=summary["ES2026/517"];
           if(c.taxonomyStatus!=="known"||c.taxonomyCode!=="allergy_intolerance_adverse"||
-             !c.stateCounts.some((count)=>count>1)){
-            throw new Error("ES2026/517 preserved revision-state contract mismatch: "+JSON.stringify(c));
+             c.publicationSelection!=="current_publication"||c.publicationCount<2||c.versionCount<2||c.isUpdate!==true){
+            throw new Error("ES2026/517 preserved revision-publication contract mismatch: "+JSON.stringify(c));
           }
           console.log("AESAN_FUNCTIONAL_D1 "+JSON.stringify({
             production:{total:Number(prod.total),aesan:Number(prod.aesan)},
@@ -257,8 +257,12 @@ jobs:
             assert(t177.includes("361614"),"177 lot 361614 absent from detail");
 
             await findDetail(page,"ES2026/517");
-            const states=await page.$eval(".na-alert-detail__publication-state",(els)=>els.length);
-            assert(states>=1,"517 preserved revision state absent from detail");
+            const revision=await page.evaluate(()=>({
+              publications:document.querySelectorAll(".na-alert-detail__publication").length,
+              historical:document.querySelectorAll(".na-alert-detail__publication--historical").length,
+              preservedStates:document.querySelectorAll(".na-alert-detail__publication-state").length
+            }));
+            assert(revision.publications>=2&&revision.historical>=1,"517 preserved revision publication absent from detail");
 
             let response=await page.goto(BASE+"/es/alertas?q=sulfitos&period=all&source=AESAN",{waitUntil:"domcontentloaded",timeout:60000});
             assert(response?.status()===200,"sulfitos list HTTP");
@@ -280,7 +284,7 @@ jobs:
             }));
             assert(target.hash&&target.exists,"sulfitos click target anchor missing");
             assert(target.containsSulfitos,"sulfitos not present on clicked detail");
-            console.log("AESAN_FUNCTIONAL_BROWSER "+JSON.stringify({ES085:p085,ES177Lot:true,ES517PreservedStates:states,sulfitos:{...search,target}}));
+            console.log("AESAN_FUNCTIONAL_BROWSER "+JSON.stringify({ES085:p085,ES177Lot:true,ES517Revision:revision,sulfitos:{...search,target}}));
             await page.close();
           } finally {
             await browser.close();
