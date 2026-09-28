@@ -29,10 +29,11 @@ jobs:
       cancel-in-progress: false
     env:
       VIGIA_BASE_URL: ${{ needs.runtime_target.outputs.base_url }}
-      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
     steps:
       - name: Refresh OECD only when the recent lane is aging
         shell: bash
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           set -euo pipefail
           test -n "$VIGIA_SYNC_TOKEN"
