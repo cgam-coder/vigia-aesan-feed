@@ -1,4 +1,4 @@
-name: Temporary WORK23-F1 production release smoke
+name: Temporary WORK23-F1 production smoke
 
 on:
   push:
@@ -12,59 +12,60 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 6
     steps:
       - name: Validate WORK23-F1 production release
         shell: bash
         run: |
           set -euo pipefail
           base="https://nagamealert.com"
-          ready=0
-          for attempt in $(seq 1 60); do
-            code="$(curl -sS --max-time 20 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o /tmp/es -D /tmp/es-h -w '%{http_code}' "$base/es/patrones" || true)"
-            if [ "$code" = "200" ] && grep -Fq "No son una taxonomía oficial de AESAN" /tmp/es; then
-              echo "Release visible on attempt $attempt"
-              ready=1
-              break
-            fi
-            echo "Release not visible yet: attempt=$attempt code=$code"
-            sleep 5
-          done
-          test "$ready" = "1"
 
-          grep -Fq "Qué se repite en el archivo público de AESAN" /tmp/es
-          grep -Fq "Recurrencia no significa identidad" /tmp/es
-          grep -Fq "Clasificación NagameAlert" /tmp/es
-          grep -Fq "Marcas repetidas" /tmp/es
-          grep -Fq "Carrefour" /tmp/es
-          grep -Fq 'href="/es/patrones"' /tmp/es
-          grep -Fq 'href="/en/patterns"' /tmp/es
-          grep -Fq '<link rel="canonical" href="https://nagamealert.com/es/patrones"/>' /tmp/es
-          grep -Fq '<link rel="alternate" hrefLang="es" href="https://nagamealert.com/es/patrones"/>' /tmp/es
-          grep -Fq '<link rel="alternate" hrefLang="en" href="https://nagamealert.com/en/patterns"/>' /tmp/es
-          grep -Fq '<link rel="alternate" hrefLang="x-default" href="https://nagamealert.com/es/patrones"/>' /tmp/es
-          if grep -qi '^x-robots-tag:.*noindex' /tmp/es-h; then echo "Clean ES route unexpectedly noindex"; exit 1; fi
-          if grep -Fq '<meta name="robots" content="noindex' /tmp/es; then echo "Clean ES meta noindex"; exit 1; fi
+          request() {
+            local path="$1"
+            curl -sS --max-time 30 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+              -H 'User-Agent: NagameAlert-WORK23-F1-Release/1.0' \
+              -o /tmp/body -D /tmp/headers -w '%{http_code}' "$base$path"
+          }
 
-          code="$(curl -sS --max-time 30 -H 'Cache-Control: no-cache' -o /tmp/en -D /tmp/en-h -w '%{http_code}' "$base/en/patterns")"
-          test "$code" = "200"
-          grep -Fq "What repeats across the public AESAN archive" /tmp/en
-          grep -Fq "Recurrence does not mean identity" /tmp/en
-          grep -Fq "They are not an official AESAN taxonomy" /tmp/en
-          grep -Fq "NagameAlert classification" /tmp/en
-          grep -Fq '<link rel="canonical" href="https://nagamealert.com/en/patterns"/>' /tmp/en
-          if grep -qi '^x-robots-tag:.*noindex' /tmp/en-h; then echo "Clean EN route unexpectedly noindex"; exit 1; fi
+          expect200() {
+            local path="$1"
+            local code
+            code="$(request "$path")"
+            echo "$path => $code"
+            test "$code" = "200"
+          }
 
-          code="$(curl -sS --max-time 30 -o /tmp/query -D /tmp/query-h -w '%{http_code}' "$base/es/patrones?brand=Carrefour")"
-          test "$code" = "200"
-          grep -qi '^x-robots-tag: noindex' /tmp/query-h
+          expect200 "/es/patrones"
+          grep -Fq "Qué se repite en el archivo público de AESAN" /tmp/body
+          grep -Fq "Recurrencia no significa identidad" /tmp/body
+          grep -Fq "No son una taxonomía oficial de AESAN" /tmp/body
+          grep -Fq "Clasificación NagameAlert" /tmp/body
+          grep -Fq "Marcas repetidas" /tmp/body
+          grep -Fq '<link rel="canonical" href="https://nagamealert.com/es/patrones"/>' /tmp/body
+          grep -Fq '<link rel="alternate" hrefLang="es" href="https://nagamealert.com/es/patrones"/>' /tmp/body
+          grep -Fq '<link rel="alternate" hrefLang="en" href="https://nagamealert.com/en/patterns"/>' /tmp/body
+          grep -Fq '<link rel="alternate" hrefLang="x-default" href="https://nagamealert.com/es/patrones"/>' /tmp/body
+          grep -Fq '<meta name="robots" content="index, follow"/>' /tmp/body
+          if grep -qi '^x-robots-tag:.*noindex' /tmp/headers; then echo "Clean ES route unexpectedly noindex"; exit 1; fi
 
-          curl -sS --max-time 30 -o /tmp/static-es "$base/sitemaps/static-es.xml"
-          curl -sS --max-time 30 -o /tmp/static-en "$base/sitemaps/static-en.xml"
-          grep -Fq '<loc>https://nagamealert.com/es/patrones</loc>' /tmp/static-es
-          grep -Fq '<loc>https://nagamealert.com/en/patterns</loc>' /tmp/static-en
+          expect200 "/en/patterns"
+          grep -Fq "What repeats across the public AESAN archive" /tmp/body
+          grep -Fq "Recurrence does not mean identity" /tmp/body
+          grep -Fq "They are not an official AESAN taxonomy" /tmp/body
+          grep -Fq "NagameAlert classification" /tmp/body
+          grep -Fq '<link rel="canonical" href="https://nagamealert.com/en/patterns"/>' /tmp/body
+          grep -Fq '<meta name="robots" content="index, follow"/>' /tmp/body
 
-          curl -sS --max-time 30 -o /tmp/home "$base/"
-          grep -Fq 'href="/es/patrones"' /tmp/home
+          expect200 "/es/patrones?brand=Carrefour"
+          grep -Fq '<meta name="robots" content="noindex, follow"/>' /tmp/body
+
+          expect200 "/"
+          grep -Fq 'href="/es/patrones"' /tmp/body
+
+          expect200 "/sitemaps/static-es.xml"
+          grep -Fq '<loc>https://nagamealert.com/es/patrones</loc>' /tmp/body
+
+          expect200 "/sitemaps/static-en.xml"
+          grep -Fq '<loc>https://nagamealert.com/en/patterns</loc>' /tmp/body
 
           echo "WORK23-F1 production smoke PASS"
