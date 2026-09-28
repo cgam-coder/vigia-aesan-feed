@@ -1,4 +1,4 @@
-name: Temporary WORK23-F1 Preview smoke final
+name: Temporary WORK23-F1 D1 cost probe
 
 on:
   push:
@@ -10,45 +10,39 @@ permissions:
   contents: read
 
 jobs:
-  smoke:
+  probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
-      - name: Validate exact WORK23-F1 Preview
+      - name: Measure Preview query cost and production baseline
         shell: bash
         run: |
           set -euo pipefail
-          base="https://work-work23-f1-public-patterns-vigia-runtime.c-gamiz93.workers.dev"
+          preview="https://validation-work23-f1-cloudflare-ci-v4-vigia-runtime.c-gamiz93.workers.dev/api/work23-cost"
+          ok=0
+          for attempt in $(seq 1 30); do
+            code="$(curl -sS --max-time 20 -o /tmp/cost.json -D /tmp/cost.h -w '%{http_code}' "$preview" || true)"
+            echo "Preview cost attempt $attempt => $code"
+            if [ "$code" = "200" ]; then ok=1; break; fi
+            sleep 5
+          done
+          test "$ok" = "1"
+          cat /tmp/cost.json
+          echo
+          rows_read="$(jq -r '.meta.rows_read // -1' /tmp/cost.json)"
+          rows_written="$(jq -r '.meta.rows_written // -1' /tmp/cost.json)"
+          row_count="$(jq -r '.rowCount // -1' /tmp/cost.json)"
+          echo "WORK23 rows: count=$row_count rows_read=$rows_read rows_written=$rows_written"
+          test "$row_count" -ge 1
+          test "$rows_read" -ge "$row_count"
+          test "$rows_read" -lt 5000
+          test "$rows_written" = "0"
 
-          check() {
-            local path="$1"
-            local code
-            code="$(curl -sS --max-time 30 -H 'Cache-Control: no-cache' -o /tmp/body -D /tmp/headers -w '%{http_code}' "$base$path")"
-            echo "$path => $code"
-            test "$code" = "200"
-          }
+          prod="https://nagamealert.com/api/terminal/alerts?period=all&country=ALL&source=AESAN&pageSize=50"
+          curl -sS --max-time 30 -H "X-Nagame-Perf: 1" -o /tmp/prod.json -D /tmp/prod.h "$prod"
+          echo "Production terminal D1 header:"
+          grep -i '^x-nagame-d1-rows:' /tmp/prod.h || true
+          echo "Production terminal server timing:"
+          grep -i '^server-timing:' /tmp/prod.h || true
 
-          check "/es/patrones"
-          grep -Fq "Qué se repite en el archivo público de AESAN" /tmp/body
-          grep -Fq "Recurrencia no significa identidad" /tmp/body
-          grep -Fq "No son una taxonomía oficial de AESAN" /tmp/body
-          grep -Fq "Clasificación NagameAlert" /tmp/body
-          grep -Fq 'href="/es/patrones"' /tmp/body
-          grep -Fq 'href="/en/patterns"' /tmp/body
-          grep -Fq "Marcas repetidas" /tmp/body
-          grep -qi '^x-robots-tag: noindex' /tmp/headers
-
-          check "/en/patterns"
-          grep -Fq "What repeats across the public AESAN archive" /tmp/body
-          grep -Fq "Recurrence does not mean identity" /tmp/body
-          grep -Fq "They are not an official AESAN taxonomy" /tmp/body
-          grep -Fq "NagameAlert classification" /tmp/body
-          grep -Fq 'href="/es/patrones"' /tmp/body
-          grep -Fq 'href="/en/patterns"' /tmp/body
-          grep -Fq "Repeated brands" /tmp/body
-          grep -qi '^x-robots-tag: noindex' /tmp/headers
-
-          check "/es/patrones?brand=Carrefour"
-          grep -qi '^x-robots-tag: noindex' /tmp/headers
-
-          echo "WORK23-F1 exact Preview smoke PASS"
+          echo "WORK23-F1 cost probe PASS"
