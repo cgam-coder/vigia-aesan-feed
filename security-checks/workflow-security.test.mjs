@@ -13,9 +13,7 @@ const repositoryWorkflows = await loadWorkflows(process.cwd());
 test("current public workflow contract has no unreviewed security regression", () => {
   const result = analyzeWorkflows(repositoryWorkflows);
   assert.deepEqual(result.violations, []);
-  assert.deepEqual(KNOWN_DEBT.map(({ id }) => id), [
-    "PUB-DEBT-04",
-  ]);
+  assert.deepEqual(KNOWN_DEBT.map(({ id }) => id), []);
   assert.equal(
     FLOATING_ACTION_EXCEPTIONS.reduce((sum, item) => sum + item.maxOccurrences, 0),
     0,
@@ -193,6 +191,14 @@ test("runtime writer freeze certification rejects wider VIGIA scope", () => {
     ),
   );
   assertViolation(mutated, "FREEZE_CERT_VIGIA_SECRET_SCOPE");
+});
+
+test("only the two reviewed AESAN publishers can request contents write", () => {
+  const writers = [...repositoryWorkflows]
+    .filter(([, source]) => /^\s*contents:\s*write\s*(?:#.*)?$/mu.test(source))
+    .map(([file]) => file)
+    .sort();
+  assert.deepEqual(writers, ["update-feed.yml", "update-full-feed.yml"]);
 });
 
 test("a production secret added to public SEO fails", () => {
