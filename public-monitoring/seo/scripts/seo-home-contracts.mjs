@@ -3,14 +3,14 @@ import { pathToFileURL } from "node:url";
 
 const ORIGIN = "https://nagamealert.com";
 export const HOME_SNAPSHOT_TARGETS = Object.freeze([
-  { name:"es", path:"/es/", canonicalPath:"/es/", indexable:true, discovery:true, invalidQuery:false },
+  { name:"es", path:"/", canonicalPath:"/", indexable:true, discovery:true, invalidQuery:false },
   { name:"en", path:"/en/", canonicalPath:"/en/", indexable:true, discovery:true, invalidQuery:false },
-  { name:"es-filter", path:"/es/?source=RASFF", canonicalPath:"/es/", indexable:false, discovery:false, invalidQuery:false },
-  { name:"es-utm", path:"/es/?utm_source=linkedin&utm_medium=social", canonicalPath:"/es/", indexable:false, discovery:false, invalidQuery:false },
+  { name:"es-filter", path:"/?source=RASFF", canonicalPath:"/", indexable:false, discovery:false, invalidQuery:false },
+  { name:"es-utm", path:"/?utm_source=linkedin&utm_medium=social", canonicalPath:"/", indexable:false, discovery:false, invalidQuery:false },
   { name:"en-utm", path:"/en/?utm_source=linkedin&utm_medium=social", canonicalPath:"/en/", indexable:false, discovery:false, invalidQuery:false },
   { name:"es-archive-utm", path:"/es/alertas?utm_source=linkedin&utm_medium=social", canonicalPath:"/es/alertas", indexable:false, discovery:false, invalidQuery:false },
   { name:"en-archive-utm", path:"/en/alerts?utm_source=linkedin&utm_medium=social", canonicalPath:"/en/alerts", indexable:false, discovery:false, invalidQuery:false },
-  { name:"es-invalid", path:"/es/?seo_invalid_parameter=1", canonicalPath:"/es/", indexable:false, discovery:false, invalidQuery:true },
+  { name:"es-invalid", path:"/?seo_invalid_parameter=1", canonicalPath:"/", indexable:false, discovery:false, invalidQuery:true },
 ]);
 
 // Inspect generated HTTP HTML without treating hydration strings as real links.
