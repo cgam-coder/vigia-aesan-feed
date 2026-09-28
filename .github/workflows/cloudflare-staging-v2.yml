@@ -1344,7 +1344,9 @@ jobs:
               node --input-type=module - "$RUNNER_TEMP/oecd-observe-state.json" <<'NODE'
           import { readFileSync } from "node:fs";
           const body=JSON.parse(readFileSync(process.argv[2],"utf8"));
-          if(!body||typeof body!=="object"||body.source!=="OECD") throw new Error("invalid OECD observe body");
+          if(!body||typeof body!=="object"||Array.isArray(body)||
+             !Object.prototype.hasOwnProperty.call(body,"historicalReconcile")||
+             !Object.prototype.hasOwnProperty.call(body,"lease")) throw new Error("invalid OECD observe body");
           const compact=(state)=>state?{
             source:state.source??null,mode:state.mode??null,status:state.status??null,
             cursor:state.cursor??null,cursorKey:state.cursorKey??null,totalUnits:state.totalUnits??null,
