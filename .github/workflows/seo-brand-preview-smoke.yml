@@ -1,4 +1,4 @@
-name: Temporary SEO brand Preview smoke
+name: Temporary SEO brand production smoke
 
 on:
   push:
@@ -14,11 +14,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Validate runtime Preview routing and isolation
+      - name: Validate production root-home SEO contract
         shell: bash
         run: |
           set -euo pipefail
-          base="https://work-seo-brand-f1-root-home-vigia-runtime.c-gamiz93.workers.dev"
+          base="https://nagamealert.com"
 
           request() {
             local path="$1"
@@ -34,25 +34,26 @@ jobs:
           }
 
           expect_redirect() {
-            local path="$1" expected_suffix="$2"
+            local path="$1" expected="$2"
             expect_status "$path" 308
             local location
             location="$(awk 'BEGIN{IGNORECASE=1} /^location:/{sub(/\r$/,""); print $2}' /tmp/headers)"
             echo "$path location=$location"
-            case "$location" in
-              "$base$expected_suffix"|"$expected_suffix") ;;
-              *) echo "Unexpected redirect: $location"; exit 1 ;;
-            esac
+            test "$location" = "$base$expected" || test "$location" = "$expected"
           }
 
           expect_status "/" 200
+          ! grep -qi '^x-robots-tag:.*noindex' /tmp/headers
+          grep -Eq '<meta[^>]+name="robots"[^>]+content="index, follow"|<meta[^>]+content="index, follow"[^>]+name="robots"' /tmp/body
+          grep -Eq '<link[^>]+rel="canonical"[^>]+href="https://nagamealert\.com/"|<link[^>]+href="https://nagamealert\.com/"[^>]+rel="canonical"' /tmp/body
+          grep -Eq 'hreflang="es"[^>]+href="https://nagamealert\.com/"|href="https://nagamealert\.com/"[^>]+hreflang="es"' /tmp/body
+          grep -Eq 'hreflang="en"[^>]+href="https://nagamealert\.com/en/"|href="https://nagamealert\.com/en/"[^>]+hreflang="en"' /tmp/body
+          grep -Eq 'hreflang="x-default"[^>]+href="https://nagamealert\.com/"|href="https://nagamealert\.com/"[^>]+hreflang="x-default"' /tmp/body
+          test "$(grep -o '"@type":"WebSite"' /tmp/body | wc -l)" -eq 1
+          grep -Fq '"name":"NagameAlert"' /tmp/body
+          grep -Fq '"alternateName":["Nagame Alert","nagamealert.com"]' /tmp/body
+          grep -Fq '"url":"https://nagamealert.com/"' /tmp/body
           grep -Fq 'NagameAlert | Alertas y notificaciones oficiales' /tmp/body
-          grep -Fq 'Portal de Alertas y Notificaciones Oficiales' /tmp/body
-          grep -qi '^x-robots-tag: noindex' /tmp/headers
-          grep -Fq '<meta name="robots" content="noindex, follow"/>' /tmp/body
-          if grep -Fq 'rel="canonical"' /tmp/body; then
-            echo "Technical Preview unexpectedly emitted canonical metadata"; exit 1
-          fi
 
           expect_redirect "/es" "/"
           expect_redirect "/es/" "/"
@@ -60,7 +61,15 @@ jobs:
 
           expect_redirect "/en" "/en/"
           expect_status "/en/" 200
+          grep -Eq '<link[^>]+rel="canonical"[^>]+href="https://nagamealert\.com/en/"|<link[^>]+href="https://nagamealert\.com/en/"[^>]+rel="canonical"' /tmp/body
+          test "$(grep -o '"@type":"WebSite"' /tmp/body | wc -l)" -eq 0
           grep -Fq 'NagameAlert | Official alerts and notifications' /tmp/body
-          grep -qi '^x-robots-tag: noindex' /tmp/headers
 
-          echo "SEO-BRAND Preview routing/isolation PASS"
+          expect_status "/sitemaps/static-es.xml" 200
+          grep -Fq '<loc>https://nagamealert.com/</loc>' /tmp/body
+          ! grep -Fq '<loc>https://nagamealert.com/es/</loc>' /tmp/body
+
+          expect_status "/robots.txt" 200
+          grep -Fq 'Sitemap: https://nagamealert.com/sitemap.xml' /tmp/body
+
+          echo "SEO-BRAND production smoke PASS"
