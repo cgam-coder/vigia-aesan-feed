@@ -1,0 +1,51 @@
+name: Temporary WORK23-F1 Preview smoke
+
+on:
+  push:
+    branches: [ops/work23-f1-preview-smoke]
+    paths:
+      - ".github/workflows/work23-f1-preview-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate WORK23-F1 Preview routing and SSR
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://work-work23-f1-public-patterns-vigia-runtime.c-gamiz93.workers.dev"
+
+          check() {
+            local path="$1"
+            local expected="$2"
+            local code
+            code="$(curl -sS --max-time 30 -H 'Cache-Control: no-cache' -o /tmp/body -D /tmp/headers -w '%{http_code}' "$base$path")"
+            echo "$path => $code"
+            test "$code" = "$expected"
+          }
+
+          check "/es/patrones" 200
+          grep -Fq "Qué se repite en el archivo público de AESAN" /tmp/body
+          grep -Fq "Recurrencia no significa identidad" /tmp/body
+          grep -Fq "No son una taxonomía oficial de AESAN" /tmp/body
+          grep -Fq 'href="/es/patrones"' /tmp/body
+          grep -Fq 'href="/en/patterns"' /tmp/body
+          grep -qi '^x-robots-tag: noindex' /tmp/headers
+
+          check "/en/patterns" 200
+          grep -Fq "What repeats across the public AESAN archive" /tmp/body
+          grep -Fq "Recurrence does not mean identity" /tmp/body
+          grep -Fq "They are not an official AESAN taxonomy" /tmp/body
+          grep -Fq 'href="/es/patrones"' /tmp/body
+          grep -Fq 'href="/en/patterns"' /tmp/body
+          grep -qi '^x-robots-tag: noindex' /tmp/headers
+
+          check "/es/patrones?brand=Carrefour" 200
+          grep -qi '^x-robots-tag: noindex' /tmp/headers
+
+          echo "WORK23-F1 Preview smoke PASS"
