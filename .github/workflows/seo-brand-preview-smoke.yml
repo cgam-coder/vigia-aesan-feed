@@ -14,34 +14,53 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Diagnose and validate runtime Preview root-home SEO contract
+      - name: Validate runtime Preview routing and isolation
         shell: bash
         run: |
           set -euo pipefail
           base="https://work-seo-brand-f1-root-home-vigia-runtime.c-gamiz93.workers.dev"
 
-          fetch_one() {
+          request() {
             local path="$1"
-            local code
-            code="$(curl -sS --max-time 30 -o /tmp/body -D /tmp/headers -w '%{http_code}' "$base$path")"
-            echo "===== $path => $code ====="
-            grep -iE '^(location|x-robots-tag|content-type):' /tmp/headers || true
-            echo "-- links/meta/jsonld --"
-            grep -oE '<link[^>]+(canonical|alternate)[^>]*>|<meta[^>]+robots[^>]*>|"@type":"WebSite"|"alternateName":\[[^]]+\]|<title>[^<]+</title>' /tmp/body | head -30 || true
-            echo "-- body size --"
-            wc -c /tmp/body
-            echo "$code"
+            curl -sS --max-time 30 -o /tmp/body -D /tmp/headers -w '%{http_code}' "$base$path"
           }
 
-          test "$(fetch_one "/" | tee /tmp/root.out | tail -1)" = "200"
-          cat /tmp/root.out
-          grep -Fq 'https://nagamealert.com/' /tmp/body
-          grep -Fq '"@type":"WebSite"' /tmp/body
-          grep -Fq '"alternateName":["Nagame Alert","nagamealert.com"]' /tmp/body
+          expect_status() {
+            local path="$1" expected="$2"
+            local code
+            code="$(request "$path")"
+            echo "$path => $code"
+            test "$code" = "$expected"
+          }
+
+          expect_redirect() {
+            local path="$1" expected_suffix="$2"
+            expect_status "$path" 308
+            local location
+            location="$(awk 'BEGIN{IGNORECASE=1} /^location:/{sub(/\r$/,""); print $2}' /tmp/headers)"
+            echo "$path location=$location"
+            case "$location" in
+              "$base$expected_suffix"|"$expected_suffix") ;;
+              *) echo "Unexpected redirect: $location"; exit 1 ;;
+            esac
+          }
+
+          expect_status "/" 200
           grep -Fq 'NagameAlert | Alertas y notificaciones oficiales' /tmp/body
+          grep -Fq 'Portal de Alertas y Notificaciones Oficiales' /tmp/body
+          grep -qi '^x-robots-tag: noindex' /tmp/headers
+          grep -Fq '<meta name="robots" content="noindex, follow"/>' /tmp/body
+          if grep -Fq 'rel="canonical"' /tmp/body; then
+            echo "Technical Preview unexpectedly emitted canonical metadata"; exit 1
+          fi
 
-          for p in /es /es/ '/es/?utm_source=linkedin' /en /en/; do
-            fetch_one "$p" | tee "/tmp/$(echo "$p" | tr '/?=&' '_____').out"
-          done
+          expect_redirect "/es" "/"
+          expect_redirect "/es/" "/"
+          expect_redirect "/es/?utm_source=linkedin" "/?utm_source=linkedin"
 
-          echo "SEO-BRAND Preview diagnostic completed"
+          expect_redirect "/en" "/en/"
+          expect_status "/en/" 200
+          grep -Fq 'NagameAlert | Official alerts and notifications' /tmp/body
+          grep -qi '^x-robots-tag: noindex' /tmp/headers
+
+          echo "SEO-BRAND Preview routing/isolation PASS"
