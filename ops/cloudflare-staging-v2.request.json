@@ -1,4 +1,4 @@
 {
-  "operation": "terminal-perf-candidate-preview-cert",
-  "nonce": "terminal-perf-f1-preview-cert-20260928-r2"
+  "operation": "worker-status",
+  "nonce": "perf-f1-production-status-20260928"
 }
