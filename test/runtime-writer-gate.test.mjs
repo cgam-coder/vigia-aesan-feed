@@ -51,7 +51,7 @@ test("every production D1 writer is gated by the reusable writer gate", () => {
         `${path}:${job} missing gate condition`);
     }
   }
-  assert.equal(writerJobs, 12);
+  assert.equal(writerJobs, 11);
 });
 
 test("proof workflow exercises both open and frozen branches without a production endpoint", () => {
