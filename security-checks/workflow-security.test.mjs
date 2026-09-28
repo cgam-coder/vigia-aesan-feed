@@ -21,7 +21,7 @@ test("current public workflow contract has no unreviewed security regression", (
   ]);
   assert.equal(
     FLOATING_ACTION_EXCEPTIONS.reduce((sum, item) => sum + item.maxOccurrences, 0),
-    4,
+    2,
   );
   assert.ok(FLOATING_ACTION_EXCEPTIONS.every((item) => item.rationale && item.removalGate));
 });
@@ -174,14 +174,26 @@ test("a new floating action in a hardened workflow fails", () => {
   assertViolation(mutated, "ACTION_NOT_PINNED");
 });
 
-test("expanding a historical floating exception fails", () => {
+test("expanding the remaining full-publisher floating exception fails", () => {
   const mutated = cloneWorkflows();
   mutated.set(
-    "update-feed.yml",
-    mutated.get("update-feed.yml") +
+    "update-full-feed.yml",
+    mutated.get("update-full-feed.yml") +
       "\n      - uses: actions/checkout@v4\n",
   );
   assertViolation(mutated, "FLOATING_EXCEPTION_EXPANDED");
+});
+
+test("recent AESAN publisher cannot reintroduce a floating action", () => {
+  const mutated = cloneWorkflows();
+  mutated.set(
+    "update-feed.yml",
+    mutated.get("update-feed.yml").replace(
+      /actions\/checkout@[0-9a-f]{40}/,
+      "actions/checkout@v4",
+    ),
+  );
+  assertViolation(mutated, "ACTION_NOT_PINNED");
 });
 
 test("environment and broad artifact dumps fail", () => {
