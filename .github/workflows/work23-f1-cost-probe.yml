@@ -1,0 +1,48 @@
+name: Temporary WORK23-F1 D1 cost probe
+
+on:
+  push:
+    branches: [ops/work23-f1-preview-smoke]
+    paths:
+      - ".github/workflows/work23-f1-cost-probe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Measure Preview query cost and production baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          preview="https://validation-work23-f1-cloudflare-ci-v4-vigia-runtime.c-gamiz93.workers.dev/api/work23-cost"
+          ok=0
+          for attempt in $(seq 1 30); do
+            code="$(curl -sS --max-time 20 -o /tmp/cost.json -D /tmp/cost.h -w '%{http_code}' "$preview" || true)"
+            echo "Preview cost attempt $attempt => $code"
+            if [ "$code" = "200" ]; then ok=1; break; fi
+            sleep 5
+          done
+          test "$ok" = "1"
+          cat /tmp/cost.json
+          echo
+          rows_read="$(jq -r '.meta.rows_read // -1' /tmp/cost.json)"
+          rows_written="$(jq -r '.meta.rows_written // -1' /tmp/cost.json)"
+          row_count="$(jq -r '.rowCount // -1' /tmp/cost.json)"
+          echo "WORK23 rows: count=$row_count rows_read=$rows_read rows_written=$rows_written"
+          test "$row_count" -ge 1
+          test "$rows_read" -ge "$row_count"
+          test "$rows_read" -lt 5000
+          test "$rows_written" = "0"
+
+          prod="https://nagamealert.com/api/terminal/alerts?period=all&country=ALL&source=AESAN&pageSize=50"
+          curl -sS --max-time 30 -H "X-Nagame-Perf: 1" -o /tmp/prod.json -D /tmp/prod.h "$prod"
+          echo "Production terminal D1 header:"
+          grep -i '^x-nagame-d1-rows:' /tmp/prod.h || true
+          echo "Production terminal server timing:"
+          grep -i '^server-timing:' /tmp/prod.h || true
+
+          echo "WORK23-F1 cost probe PASS"
