@@ -181,6 +181,28 @@ test("OECD recent freshness retry cannot expand token scope back to a job", () =
   assertViolation(mutated, "OECD_RECENT_RETRY_SECRET_SCOPE");
 });
 
+test("runtime writer freeze certification keeps credentials at step scope", () => {
+  const source = repositoryWorkflows.get("runtime-writer-freeze-cert.yml");
+  const vigiaLines = source.split(/\r?\n/u).filter((line) => line.includes("VIGIA_SYNC_TOKEN:"));
+  const cloudflareLines = source.split(/\r?\n/u).filter((line) => line.includes("CLOUDFLARE_API_TOKEN:"));
+  assert.equal(vigiaLines.length, 2);
+  assert.equal(cloudflareLines.length, 2);
+  assert.ok(vigiaLines.every((line) => /^          VIGIA_SYNC_TOKEN:/u.test(line)));
+  assert.ok(cloudflareLines.every((line) => /^          CLOUDFLARE_API_TOKEN:/u.test(line)));
+});
+
+test("runtime writer freeze certification rejects wider VIGIA scope", () => {
+  const mutated = cloneWorkflows();
+  mutated.set(
+    "runtime-writer-freeze-cert.yml",
+    mutated.get("runtime-writer-freeze-cert.yml").replace(
+      "          VIGIA_SYNC_TOKEN:",
+      "      VIGIA_SYNC_TOKEN:",
+    ),
+  );
+  assertViolation(mutated, "FREEZE_CERT_VIGIA_SECRET_SCOPE");
+});
+
 test("a production secret added to public SEO fails", () => {
   const mutated = cloneWorkflows();
   mutated.set(
