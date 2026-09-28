@@ -79,6 +79,7 @@ export function analyzeWorkflows(workflows) {
     checkRetiredClosureVerifier(file, source, violations);
     checkRasffCarrierBoundary(file, source, violations);
     checkSafetyOecdCarrierBoundary(file, source, violations);
+    checkFreshnessWatchdogBoundary(file, source, violations);
 
     for (const actionUse of findActionUses(source)) {
       if (actionUse.local || actionUse.pinned) continue;
@@ -249,6 +250,18 @@ function checkSafetyOecdCarrierBoundary(file, source, violations) {
   if (secretLines.length !== 8 || secretLines.some(({ line }) => !/^\s{10}VIGIA_SYNC_TOKEN:/u.test(line))) {
     violations.push(problem(file, "SAFETY_OECD_SECRET_SCOPE",
       "Safety Gate/OECD production token must exist only at the eight authenticated step scopes.",
+      secretLines[0]?.index ?? null));
+  }
+}
+
+function checkFreshnessWatchdogBoundary(file, source, violations) {
+  if (file !== "freshness-watchdog.yml") return;
+  const secretLines = source.split(/\r?\n/u)
+    .map((line, index) => ({ line, index:index + 1 }))
+    .filter(({ line }) => /VIGIA_SYNC_TOKEN:\s*\$\{\{\s*secrets\.VIGIA_SYNC_TOKEN\s*\}\}/u.test(line));
+  if (secretLines.length !== 1 || !/^\s{10}VIGIA_SYNC_TOKEN:/u.test(secretLines[0]?.line ?? "")) {
+    violations.push(problem(file, "FRESHNESS_SECRET_SCOPE",
+      "Five-source freshness token must exist only at the authenticated step scope.",
       secretLines[0]?.index ?? null));
   }
 }
