@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","rasff-integrity-readonly","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -1099,6 +1099,104 @@ jobs:
           console.log("F3B_PROD_D1_POST "+JSON.stringify(summary));
           NODE
               echo "F3B_PRODUCTION_CERTIFICATION main=$expected_main url=$prod_url status=PASS"
+              ;;
+            perf-f1-bind-limit-preview-cert)
+              test "$CF_WORKER" = "vigia-runtime"
+              preview_url="https://work-perf-f1-json-bind-limit-fix-vigia-runtime.c-gamiz93.workers.dev"
+              preview_d1="nagamealert-preview-db"
+
+              prod_before="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              preview_before="$(wrangler d1 execute "$preview_d1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan, SUM(CASE WHEN source<>'AESAN' THEN 1 ELSE 0 END) AS non_aesan FROM alerts" --json)"
+              PROD_BEFORE="$prod_before" PREVIEW_BEFORE="$preview_before" node --input-type=module - <<'NODE'
+          const row=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])?.[0]??{};
+          const prod=row(process.env.PROD_BEFORE), preview=row(process.env.PREVIEW_BEFORE);
+          if(Number(prod.total)!==84786||Number(prod.aesan)!==128) throw new Error("production D1 baseline drift");
+          if(Number(preview.total)!==129||Number(preview.aesan)!==129||Number(preview.non_aesan)!==0) throw new Error("Preview D1 baseline drift");
+          console.log("PERF_F1_BIND_LIMIT_D1_PREFLIGHT "+JSON.stringify({
+            production:{total:Number(prod.total),aesan:Number(prod.aesan)},
+            preview:{total:Number(preview.total),aesan:Number(preview.aesan),nonAesan:Number(preview.non_aesan)}
+          }));
+          NODE
+
+              robots_code="$(curl --silent --show-error --max-time 60 --output "$RUNNER_TEMP/bindlimit-robots.txt" --write-out '%{http_code}' "$preview_url/robots.txt")"
+              test "$robots_code" = "200"
+              grep -Fxq "User-agent: *" "$RUNNER_TEMP/bindlimit-robots.txt"
+              grep -Fxq "Disallow: /" "$RUNNER_TEMP/bindlimit-robots.txt"
+              sitemap_code="$(curl --silent --show-error --max-time 60 --output "$RUNNER_TEMP/bindlimit-sitemap.txt" --write-out '%{http_code}' "$preview_url/sitemap.xml")"
+              test "$sitemap_code" = "404"
+              echo "PERF_F1_BIND_LIMIT_INDEXABILITY status=PASS"
+
+              headers1="$RUNNER_TEMP/bindlimit-page1.headers"
+              body1="$RUNNER_TEMP/bindlimit-page1.json"
+              code1="$(curl --silent --show-error --get --max-time 120                 --header "X-Nagame-Perf: 1"                 --dump-header "$headers1" --output "$body1" --write-out '%{http_code}'                 --data-urlencode "period=all" --data-urlencode "country=ALL"                 --data-urlencode "pageSize=100"                 "$preview_url/api/terminal/alerts")"
+              test "$code1" = "200"
+
+              cursor="$(BODY="$body1" HEADERS="$headers1" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.env.BODY,"utf8"));
+          const headers=readFileSync(process.env.HEADERS,"utf8").split(/\r?\n/);
+          const get=(name)=>{
+            const prefix=name.toLowerCase()+":";
+            const line=[...headers].reverse().find((v)=>v.toLowerCase().startsWith(prefix));
+            return line ? line.slice(line.indexOf(":")+1).trim() : "";
+          };
+          if(body?.total!==129||body?.facets?.total!==129||body?.facets?.sources?.AESAN!==129)
+            throw new Error("pageSize=100 total/source mismatch");
+          if(body?.pagination?.pageSize!==100||body?.pagination?.returned!==100||body?.pagination?.hasMore!==true||
+             typeof body?.pagination?.nextCursor!=="string"||!body.pagination.nextCursor)
+            throw new Error("pageSize=100 pagination mismatch");
+          const rows=get("x-nagame-d1-rows");
+          if(!rows) throw new Error("missing perf rows header");
+          if(/rows_written=[1-9]/u.test(rows)) throw new Error("Preview API wrote D1 rows");
+          console.error("PERF_F1_BIND_LIMIT_PAGE1 "+JSON.stringify({
+            total:body.total,returned:body.pagination.returned,hasMore:body.pagination.hasMore,
+            rowsHeader:rows,serverTiming:get("server-timing")
+          }));
+          process.stdout.write(body.pagination.nextCursor);
+          NODE
+              )"
+              test -n "$cursor"
+
+              headers2="$RUNNER_TEMP/bindlimit-page2.headers"
+              body2="$RUNNER_TEMP/bindlimit-page2.json"
+              code2="$(curl --silent --show-error --get --max-time 120                 --header "X-Nagame-Perf: 1"                 --dump-header "$headers2" --output "$body2" --write-out '%{http_code}'                 --data-urlencode "period=all" --data-urlencode "country=ALL"                 --data-urlencode "pageSize=100" --data-urlencode "cursor=$cursor"                 "$preview_url/api/terminal/alerts")"
+              test "$code2" = "200"
+
+              BODY="$body2" HEADERS="$headers2" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.env.BODY,"utf8"));
+          const headers=readFileSync(process.env.HEADERS,"utf8").split(/\r?\n/);
+          const get=(name)=>{
+            const prefix=name.toLowerCase()+":";
+            const line=[...headers].reverse().find((v)=>v.toLowerCase().startsWith(prefix));
+            return line ? line.slice(line.indexOf(":")+1).trim() : "";
+          };
+          if(body?.total!==129||body?.pagination?.pageSize!==100||body?.pagination?.returned!==29||
+             body?.pagination?.hasMore!==false||body?.pagination?.nextCursor!==null)
+            throw new Error("page 2 pagination mismatch: "+JSON.stringify(body?.pagination));
+          const rows=get("x-nagame-d1-rows");
+          if(!rows) throw new Error("missing page2 perf rows header");
+          if(/rows_written=[1-9]/u.test(rows)) throw new Error("Preview page2 wrote D1 rows");
+          console.log("PERF_F1_BIND_LIMIT_PAGE2 "+JSON.stringify({
+            total:body.total,returned:body.pagination.returned,hasMore:body.pagination.hasMore,
+            rowsHeader:rows,serverTiming:get("server-timing")
+          }));
+          NODE
+
+              prod_after="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              preview_after="$(wrangler d1 execute "$preview_d1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan, SUM(CASE WHEN source<>'AESAN' THEN 1 ELSE 0 END) AS non_aesan FROM alerts" --json)"
+              PROD_BEFORE="$prod_before" PROD_AFTER="$prod_after" PREVIEW_BEFORE="$preview_before" PREVIEW_AFTER="$preview_after" node --input-type=module - <<'NODE'
+          const row=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])?.[0]??{};
+          const pb=row(process.env.PROD_BEFORE),pa=row(process.env.PROD_AFTER),vb=row(process.env.PREVIEW_BEFORE),va=row(process.env.PREVIEW_AFTER);
+          if(Number(pb.total)!==Number(pa.total)||Number(pb.aesan)!==Number(pa.aesan)) throw new Error("production D1 changed");
+          if(Number(vb.total)!==Number(va.total)||Number(vb.aesan)!==Number(va.aesan)||Number(vb.non_aesan)!==Number(va.non_aesan))
+            throw new Error("Preview D1 changed");
+          console.log("PERF_F1_BIND_LIMIT_D1_POST "+JSON.stringify({
+            production:{total:Number(pa.total),aesan:Number(pa.aesan)},
+            preview:{total:Number(va.total),aesan:Number(va.aesan),nonAesan:Number(va.non_aesan)}
+          }));
+          NODE
+              echo "PERF_F1_BIND_LIMIT_PREVIEW_CERT commit=9bdd9c995b3074f9ad6137ce1ccc6bc04cd6c74b status=PASS"
               ;;
             rasff-integrity-readonly)
               test "$CF_WORKER" = "vigia-runtime"
