@@ -1,0 +1,80 @@
+name: Temporary WORK22-F0 stratified entity evidence audit
+
+on:
+  push:
+    branches: [ops/seo-geo-f1-exclusion-audit]
+    paths:
+      - ".github/workflows/work22-f0-stratified-evidence.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Sample historical entity evidence across sitemap shards
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const ORIGIN="https://nagamealert.com";
+          const SOURCES=["AESAN","RAPNA","RASFF","SAFETY GATE","OECD"];
+          const SEG={AESAN:"aesan",RAPNA:"rapna",RASFF:"rasff","SAFETY GATE":"safety-gate",OECD:"oecd"};
+          const decode=(v)=>v.replaceAll("&amp;","&").replaceAll("&lt;","<").replaceAll("&gt;",">").replaceAll("&quot;",'"').replaceAll("&#x27;","'").replaceAll("&#39;","'");
+          const strip=(v)=>decode(v.replace(/<[^>]+>/gu," ").replace(/\s+/gu," ").trim());
+          const fact=(html,label)=>{const marker="<dt>"+label+"</dt><dd>";const s=html.indexOf(marker);if(s<0)return "";const f=s+marker.length;const e=html.indexOf("</dd>",f);return e<0?"":strip(html.slice(f,e));};
+          const read=async(url)=>{const r=await fetch(url,{headers:{"user-agent":"NagameAlert-WORK22-F0-Stratified/1.0","cache-control":"no-cache"},signal:AbortSignal.timeout(45000)});if(!r.ok)throw new Error(url+": HTTP "+r.status);return r.text();};
+          const xmlValues=(xml,tag)=>[...xml.matchAll(new RegExp("<"+tag+">([^<]+)</"+tag+">","gu"))].map(m=>decode(m[1]));
+          const mapLimit=async(items,limit,fn)=>{const out=new Array(items.length);let next=0;const workers=Array.from({length:Math.min(limit,items.length)},async()=>{while(true){const i=next++;if(i>=items.length)return;out[i]=await fn(items[i]);}});await Promise.all(workers);return out;};
+          const root=await read(ORIGIN+"/sitemap.xml");
+          const children=xmlValues(root,"loc");
+          const report={checkedAt:new Date().toISOString(),sources:{},crossSourceExactIdentifiers:[],sameSourceIdentifierRecurrence:[],modelCollisionExamples:[]};
+          const identifierOwners=new Map();
+          const modelOwners=new Map();
+
+          for(const source of SOURCES){
+            const shards=children.filter(u=>u.includes("/alerts-es-"+SEG[source]+"-"));
+            const chosen=[0,Math.floor((shards.length-1)/2),shards.length-1].filter((v,i,a)=>v>=0&&a.indexOf(v)===i).map(i=>shards[i]);
+            const urls=[];
+            for(const shard of chosen){
+              const locs=xmlValues(await read(shard),"loc");
+              const indexes=[0,Math.floor((locs.length-1)/4),Math.floor((locs.length-1)/2),Math.floor(3*(locs.length-1)/4),locs.length-1].filter((v,i,a)=>v>=0&&a.indexOf(v)===i);
+              for(const i of indexes) if(locs[i]) urls.push(locs[i]);
+            }
+            const unique=[...new Set(urls)];
+            const pages=await mapLimit(unique,8,async(url)=>{
+              const html=await read(url);
+              const identifiers=fact(html,"Identificadores oficiales");
+              const model=fact(html,"Modelo");
+              const commercialReference=fact(html,"Referencia comercial");
+              const lots=fact(html,"Lote/s");
+              const brand=fact(html,"Marca");
+              const product=fact(html,"Producto");
+              const rawIdentifierHints=/<dt>[^<]*(?:EAN|GTIN|c[oó]digo\s+de\s+barras)[^<]*<\/dt>/iu.test(html);
+              const refs=(html.match(/<span>Referencia[^<]*<\/span>/giu)??[]).map(strip);
+              const ids=identifiers?identifiers.split(/\s+·\s+/u).map(x=>x.replace(/^(?:EAN|Código de barras|Barcode|Identificador):\s*/iu,"").trim()).filter(Boolean):[];
+              for(const id of ids){const owners=identifierOwners.get(id)??[];owners.push({source,url,product,brand,model,refs});identifierOwners.set(id,owners);}
+              if(model){const key=model.toLocaleLowerCase("es");const owners=modelOwners.get(key)??[];owners.push({source,url,product,brand,model});modelOwners.set(key,owners);}
+              return {url,product,brand,model,commercialReference,lots,identifiers,rawIdentifierHints,hasOperator:html.includes('id="alert-operators-title"')};
+            });
+            report.sources[source]={
+              shards:shards.length,chosenShards:chosen.length,sample:pages.length,
+              withCanonicalIdentifier:pages.filter(x=>x.identifiers).length,
+              withRawIdentifierHint:pages.filter(x=>x.rawIdentifierHints).length,
+              withModel:pages.filter(x=>x.model).length,
+              withCommercialReference:pages.filter(x=>x.commercialReference).length,
+              withLots:pages.filter(x=>x.lots).length,
+              withBrand:pages.filter(x=>x.brand).length,
+              withExplicitOperator:pages.filter(x=>x.hasOperator).length,
+              identifierExamples:pages.filter(x=>x.identifiers).slice(0,5),
+              modelExamples:pages.filter(x=>x.model).slice(0,5),
+              lotExamples:pages.filter(x=>x.lots).slice(0,5)
+            };
+          }
+          report.crossSourceExactIdentifiers=[...identifierOwners.entries()].filter(([,o])=>new Set(o.map(x=>x.source)).size>1).map(([identifier,owners])=>({identifier,owners})).slice(0,50);
+          report.sameSourceIdentifierRecurrence=[...identifierOwners.entries()].filter(([,o])=>o.length>1).map(([identifier,owners])=>({identifier,owners})).slice(0,50);
+          report.modelCollisionExamples=[...modelOwners.entries()].filter(([,o])=>o.length>1&&new Set(o.map(x=>x.product)).size>1).map(([model,owners])=>({model,owners})).slice(0,30);
+          console.log(JSON.stringify(report,null,2));
+          NODE
