@@ -80,6 +80,7 @@ export function analyzeWorkflows(workflows) {
     checkRasffCarrierBoundary(file, source, violations);
     checkSafetyOecdCarrierBoundary(file, source, violations);
     checkFreshnessWatchdogBoundary(file, source, violations);
+    checkOecdHistoricalBoundary(file, source, violations);
 
     for (const actionUse of findActionUses(source)) {
       if (actionUse.local || actionUse.pinned) continue;
@@ -262,6 +263,18 @@ function checkFreshnessWatchdogBoundary(file, source, violations) {
   if (secretLines.length !== 1 || !/^\s{10}VIGIA_SYNC_TOKEN:/u.test(secretLines[0]?.line ?? "")) {
     violations.push(problem(file, "FRESHNESS_SECRET_SCOPE",
       "Five-source freshness token must exist only at the authenticated step scope.",
+      secretLines[0]?.index ?? null));
+  }
+}
+
+function checkOecdHistoricalBoundary(file, source, violations) {
+  if (file !== "oecd-historical-reconcile.yml") return;
+  const secretLines = source.split(/\r?\n/u)
+    .map((line, index) => ({ line, index:index + 1 }))
+    .filter(({ line }) => /VIGIA_SYNC_TOKEN:\s*\$\{\{\s*secrets\.VIGIA_SYNC_TOKEN\s*\}\}/u.test(line));
+  if (secretLines.length !== 1 || !/^\s{10}VIGIA_SYNC_TOKEN:/u.test(secretLines[0]?.line ?? "")) {
+    violations.push(problem(file, "OECD_HISTORICAL_SECRET_SCOPE",
+      "OECD historical reconciliation token must exist only at the authenticated step scope.",
       secretLines[0]?.index ?? null));
   }
 }
