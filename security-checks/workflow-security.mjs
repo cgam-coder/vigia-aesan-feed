@@ -24,17 +24,13 @@ export const FLOATING_ACTION_EXCEPTIONS = Object.freeze([
     "AESAN publisher credentials and push path must be validated together."),
   debt("update-full-feed.yml", "actions/setup-node", "v4", 1,
     "AESAN full publisher pin remains an operational change."),
-  debt("update-feed.yml", "actions/checkout", "v4", 1,
-    "AESAN publisher credentials and push path must be validated together."),
-  debt("update-feed.yml", "actions/setup-node", "v4", 1,
-    "AESAN recent publisher pin remains an operational change."),
 ]);
 
 export const KNOWN_DEBT = Object.freeze([
   {
     id: "PUB-DEBT-01",
     scope: "operational-action-pins",
-    statement: "Four operational action references remain on reviewed @v4 exceptions.",
+    statement: "Two operational action references remain on reviewed @v4 exceptions.",
     removalGate: "Coordinate each carrier, preserve behavior and observe a legitimate run.",
   },
   {
