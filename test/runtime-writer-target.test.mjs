@@ -11,7 +11,6 @@ const workflows = [
   ".github/workflows/oecd-recent-freshness-retry.yml",
   ".github/workflows/rasff-control.yml",
   ".github/workflows/freshness-watchdog.yml",
-  ".github/workflows/gh-fixes-closure-once.yml",
 ];
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
