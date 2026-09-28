@@ -1,0 +1,59 @@
+name: Temporary WORK23-F0 recurrence audit
+
+on:
+  push:
+    branches: [ops/work23-f0-recurrence-audit]
+    paths:
+      - ".github/workflows/work23-f0-recurrence-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Audit AESAN recurrence evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const ORIGIN="https://nagamealert.com";
+          const normalize=(value="")=>value.normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase().replace(/\b(?:s\.?l\.?u?|s\.?a\.?u?|s\.?c\.?|sociedad limitada|sociedad anonima)\b/gu," ").replace(/[^a-z0-9]+/gu," ").trim();
+          const stable=(id)=>Buffer.from(id,"utf8").toString("base64url");
+          const slug=(title)=>normalize(title).replace(/\s+/gu,"-").slice(0,96).replace(/-+$/gu,"")||"alerta";
+          const readJson=async(url)=>{const r=await fetch(url,{headers:{"user-agent":"NagameAlert-WORK23-F0-Audit/1.0","cache-control":"no-cache"},signal:AbortSignal.timeout(45000)});if(!r.ok)throw new Error(url+": HTTP "+r.status);return r.json();};
+          const readText=async(url)=>{const r=await fetch(url,{headers:{"user-agent":"NagameAlert-WORK23-F0-Audit/1.0","cache-control":"no-cache"},signal:AbortSignal.timeout(45000)});if(!r.ok)throw new Error(url+": HTTP "+r.status);return r.text();};
+          const mapLimit=async(items,limit,fn)=>{const out=new Array(items.length);let next=0;const workers=Array.from({length:Math.min(limit,items.length)},async()=>{while(true){const i=next++;if(i>=items.length)return;out[i]=await fn(items[i]);}});await Promise.all(workers);return out;};
+          const all=[]; let cursor=null; let pages=0;
+          do {
+            const u=new URL(ORIGIN+"/api/terminal/alerts");u.searchParams.set("period","all");u.searchParams.set("country","ALL");u.searchParams.set("source","AESAN");u.searchParams.set("pageSize","100");if(cursor)u.searchParams.set("cursor",cursor);
+            const j=await readJson(u);all.push(...(j.items??[]));cursor=j.pagination?.nextCursor??null;pages++;if(pages>10)throw new Error("pagination runaway");
+          } while(cursor);
+          const group=(field)=>{const m=new Map();for(const a of all){const label=String(a[field]??"").trim();const key=normalize(label);if(!key||!label)continue;const g=m.get(key)??{key,label,alerts:[]};g.alerts.push(a);m.set(key,g);}return [...m.values()];};
+          const summarize=(g)=>({key:g.key,label:g.label,alertCount:g.alerts.length,references:g.alerts.map(a=>a.reference),brands:[...new Set(g.alerts.map(a=>a.brand).filter(Boolean))],hazards:[...new Set(g.alerts.map(a=>a.hazard).filter(Boolean))],lots:[...new Set(g.alerts.flatMap(a=>Array.isArray(a.lots)?a.lots:[]).filter(Boolean))],titles:[...new Set(g.alerts.map(a=>a.title).filter(Boolean))]});
+          const products=group("product").map(summarize).sort((a,b)=>b.alertCount-a.alertCount||a.label.localeCompare(b.label,"es"));
+          const brands=group("brand").map(summarize).sort((a,b)=>b.alertCount-a.alertCount||a.label.localeCompare(b.label,"es"));
+          const categories=group("productClass").map(summarize).sort((a,b)=>b.alertCount-a.alertCount||a.label.localeCompare(b.label,"es"));
+          const details=await mapLimit(all,8,async a=>{
+            const url=ORIGIN+"/es/alerta/aesan/"+stable(a.id)+"/"+slug(a.title);
+            const html=await readText(url);
+            const pairs=[...html.matchAll(/<dt>(Fabricante|Proveedor|Distribuidor|Importador|Minorista|Otro operador)<\/dt><dd>([\s\S]*?)<\/dd>/giu)].map(m=>({role:m[1],name:m[2].replace(/<[^>]+>/gu," ").replace(/\s+/gu," ").trim()})).filter(x=>x.name);
+            return {id:a.id,reference:a.reference,operators:pairs};
+          });
+          const operatorGroups=new Map();
+          for(const d of details)for(const o of d.operators){const key=normalize(o.name);if(!key)continue;const g=operatorGroups.get(key)??{key,label:o.name,roles:new Set(),references:[]};g.roles.add(o.role);g.references.push(d.reference);operatorGroups.set(key,g);}
+          const operators=[...operatorGroups.values()].map(g=>({key:g.key,label:g.label,roles:[...g.roles],alertCount:g.references.length,references:g.references})).sort((a,b)=>b.alertCount-a.alertCount||a.label.localeCompare(b.label,"es"));
+          const dated=all.map(a=>a.publishedAt).filter(Boolean).sort();
+          const repeatedProducts=products.filter(g=>g.alertCount>1);
+          const ambiguousProducts=repeatedProducts.filter(g=>g.brands.length>1||g.hazards.length>1||g.lots.length>1);
+          const report={
+            checkedAt:new Date().toISOString(),totalAlerts:all.length,pages,dateRange:{first:dated[0]??null,last:dated.at(-1)??null},
+            products:{groups:products.length,repeated:repeatedProducts.length,top:repeatedProducts.slice(0,20),ambiguousCount:ambiguousProducts.length,ambiguousExamples:ambiguousProducts.slice(0,15)},
+            brands:{groups:brands.length,repeated:brands.filter(g=>g.alertCount>1).length,top:brands.filter(g=>g.alertCount>1).slice(0,20)},
+            categories:{groups:categories.length,repeated:categories.filter(g=>g.alertCount>1).length,top:categories.slice(0,20)},
+            operators:{pagesWithExplicitOperator:details.filter(d=>d.operators.length).length,groups:operators.length,repeated:operators.filter(g=>g.alertCount>1).length,top:operators.filter(g=>g.alertCount>1).slice(0,20)}
+          };
+          console.log(JSON.stringify(report,null,2));
+          NODE
