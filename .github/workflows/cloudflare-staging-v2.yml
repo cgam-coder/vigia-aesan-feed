@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -304,6 +304,76 @@ jobs:
           console.log("TERMINAL_HYDRATION_JSON "+JSON.stringify({ids:101,rowsRead:hydration.rowsRead,duration:hydration.duration,resultRows:hydration.resultRows,explain}));
           NODE
               echo "TERMINAL_DEFAULT_GEO_HYDRATION_BENCHMARK status=PASS"
+              ;;
+            terminal-perf-production-cert-current)
+              test "$CF_WORKER" = "vigia-runtime"
+              prod_url="https://nagamealert.com"
+              expected_version="91b1a099-2959-4b95-860a-d7d5fc21b939"
+
+              deployment_json="$(wrangler deployments status --name "$CF_WORKER" --json)"
+              DEPLOYMENT_JSON="$deployment_json" EXPECTED_VERSION="$expected_version" node --input-type=module - <<'NODE'
+          const d=JSON.parse(process.env.DEPLOYMENT_JSON||"{}");
+          const versions=Array.isArray(d?.versions)?d.versions:[];
+          if(versions.length!==1||versions[0]?.version_id!==process.env.EXPECTED_VERSION||Number(versions[0]?.percentage)!==100) {
+            throw new Error("PERF-F1 production version is not active at 100%: "+JSON.stringify(d));
+          }
+          console.log("PERF_F1_PROD_DEPLOYMENT "+JSON.stringify({
+            deploymentId:d.id??null,
+            versionId:versions[0].version_id,
+            percentage:Number(versions[0].percentage),
+            createdOn:d.created_on??null
+          }));
+          NODE
+
+              prod_before="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              ledger_before="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT id,name FROM d1_migrations ORDER BY id DESC LIMIT 1" --json)"
+              PROD_BEFORE="$prod_before" LEDGER_BEFORE="$ledger_before" node --input-type=module - <<'NODE'
+          const row=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])?.[0]??{};
+          const prod=row(process.env.PROD_BEFORE), ledger=row(process.env.LEDGER_BEFORE);
+          if(Number(prod.total)!==84786||Number(prod.aesan)!==128) throw new Error("production D1 baseline drift before PERF-F1 cert");
+          if(String(ledger.name)!=="0013_chubby_morph.sql") throw new Error("production ledger drift before PERF-F1 cert");
+          console.log("PERF_F1_PROD_D1_PREFLIGHT "+JSON.stringify({
+            total:Number(prod.total),aesan:Number(prod.aesan),ledger:String(ledger.name)
+          }));
+          NODE
+
+              node ops/terminal-perf-production-cert-current.mjs
+
+              browser_dir="$RUNNER_TEMP/perf-f1-prod-browser"
+              rm -rf "$browser_dir"
+              mkdir -p "$browser_dir"
+              cp "$GITHUB_WORKSPACE/ops/f3b-production-smoke.mjs" "$browser_dir/smoke.mjs"
+              cd "$browser_dir"
+              npm init -y >/dev/null 2>&1
+              npm install --no-audit --no-fund --silent puppeteer-core@24.24.1
+              chrome="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+              test -n "$chrome"
+              PROD_URL="$prod_url" CHROME="$chrome" node smoke.mjs
+              cd "$GITHUB_WORKSPACE"
+
+              robots_code="$(curl --silent --show-error --max-time 60 --output "$RUNNER_TEMP/perf-f1-prod-robots.txt" --write-out '%{http_code}' "$prod_url/robots.txt")"
+              test "$robots_code" = "200"
+              grep -Fq "Allow: /" "$RUNNER_TEMP/perf-f1-prod-robots.txt"
+              if grep -Fxq "Disallow: /" "$RUNNER_TEMP/perf-f1-prod-robots.txt"; then
+                echo "production robots unexpectedly blocks all" >&2
+                exit 1
+              fi
+              sitemap_code="$(curl --silent --show-error --max-time 90 --output "$RUNNER_TEMP/perf-f1-prod-sitemap.xml" --write-out '%{http_code}' "$prod_url/sitemap.xml")"
+              test "$sitemap_code" = "200"
+              echo "PERF_F1_PROD_SEO status=PASS"
+
+              prod_after="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              ledger_after="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT id,name FROM d1_migrations ORDER BY id DESC LIMIT 1" --json)"
+              PROD_BEFORE="$prod_before" PROD_AFTER="$prod_after" LEDGER_AFTER="$ledger_after" node --input-type=module - <<'NODE'
+          const row=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])?.[0]??{};
+          const before=row(process.env.PROD_BEFORE), after=row(process.env.PROD_AFTER), ledger=row(process.env.LEDGER_AFTER);
+          if(Number(before.total)!==Number(after.total)||Number(before.aesan)!==Number(after.aesan)) throw new Error("production D1 changed during PERF-F1 cert");
+          if(String(ledger.name)!=="0013_chubby_morph.sql") throw new Error("production ledger changed during PERF-F1 cert");
+          console.log("PERF_F1_PROD_D1_POST "+JSON.stringify({
+            total:Number(after.total),aesan:Number(after.aesan),ledger:String(ledger.name),deltaTotal:Number(after.total)-Number(before.total),deltaAesan:Number(after.aesan)-Number(before.aesan)
+          }));
+          NODE
+              echo "TERMINAL_PERF_PRODUCTION_CERT main=6f554c6ecaa7e4e56949abbf92fa25bc91a68c55 version=$expected_version status=PASS"
               ;;
             terminal-perf-candidate-preview-cert)
               test "$CF_WORKER" = "vigia-runtime"
