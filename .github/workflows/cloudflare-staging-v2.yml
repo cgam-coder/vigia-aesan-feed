@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","f3b-production-certification","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","aesan-functional-recheck","f3b-production-certification","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -106,6 +106,196 @@ jobs:
           NODE
               done
               echo "OWNER_RUNTIME_POST_PREFLIGHT_ALL status=PASS"
+              ;;
+            aesan-functional-recheck)
+              test "$CF_WORKER" = "vigia-runtime"
+              prod_url="https://nagamealert.com"
+
+              prod_before="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              cases_json="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT reference,lots,version_count,is_update,aesan_taxonomy_status,aesan_taxonomy_code,canonical_json FROM alerts WHERE source='AESAN' AND reference IN ('ES2026/085','ES2026/177','ES2026/517') ORDER BY reference" --json)"
+              PROD_BEFORE="$prod_before" CASES_JSON="$cases_json" node --input-type=module - <<'NODE'
+          const rows=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])??[];
+          const prod=rows(process.env.PROD_BEFORE)[0]??{};
+          if(Number(prod.total)<1000||Number(prod.aesan)<100) throw new Error("production corpus unexpectedly small");
+          const cases=rows(process.env.CASES_JSON);
+          if(cases.length!==3) throw new Error("expected three AESAN functional cases, got "+cases.length);
+          const byRef=new Map(cases.map((row)=>[String(row.reference),row]));
+          const summary={};
+          for(const ref of ["ES2026/085","ES2026/177","ES2026/517"]){
+            const row=byRef.get(ref);
+            if(!row) throw new Error("missing "+ref);
+            const canonical=JSON.parse(String(row.canonical_json||"{}"));
+            const evidence=canonical?.sourceRecord?.aesanPublicationEvidence;
+            if(!evidence||!Array.isArray(evidence.publications)) throw new Error(ref+" missing publication evidence");
+            const states=evidence.publications.map((p)=>Array.isArray(p?.states)?p.states.length:0);
+            summary[ref]={
+              taxonomyStatus:String(row.aesan_taxonomy_status??""),
+              taxonomyCode:String(row.aesan_taxonomy_code??""),
+              publicationSelection:String(evidence?.selection?.status??""),
+              publicationCount:evidence.publications.length,
+              stateCounts:states,
+              lots:JSON.parse(String(row.lots||"[]")),
+              versionCount:Number(row.version_count??0),
+              isUpdate:Boolean(row.is_update),
+            };
+          }
+          const a=summary["ES2026/085"];
+          if(a.taxonomyStatus!=="known"||a.taxonomyCode!=="allergy_intolerance_adverse"||
+             a.publicationSelection!=="parallel_publications"||a.publicationCount<2){
+            throw new Error("ES2026/085 parallel-publication contract mismatch: "+JSON.stringify(a));
+          }
+          const b=summary["ES2026/177"];
+          if(b.taxonomyStatus!=="known"||b.taxonomyCode!=="general_population"||
+             !b.lots.some((lot)=>String(lot).includes("361614"))){
+            throw new Error("ES2026/177 lot/taxonomy contract mismatch: "+JSON.stringify(b));
+          }
+          const c=summary["ES2026/517"];
+          if(c.taxonomyStatus!=="known"||c.taxonomyCode!=="allergy_intolerance_adverse"||
+             !c.stateCounts.some((count)=>count>1)){
+            throw new Error("ES2026/517 preserved revision-state contract mismatch: "+JSON.stringify(c));
+          }
+          console.log("AESAN_FUNCTIONAL_D1 "+JSON.stringify({
+            production:{total:Number(prod.total),aesan:Number(prod.aesan)},
+            cases:summary
+          }));
+          NODE
+
+              for ref in "ES2026/085" "ES2026/177" "ES2026/517"; do
+                safe="$(printf '%s' "$ref" | tr '/:' '__')"
+                curl --silent --show-error --get --fail-with-body --max-time 90 \
+                  --data-urlencode "q=$ref" --data-urlencode "period=all" --data-urlencode "country=ALL" \
+                  --data-urlencode "source=AESAN" --data-urlencode "pageSize=50" \
+                  "$prod_url/api/terminal/alerts" > "$RUNNER_TEMP/aesan-$safe.json"
+              done
+
+              R085="$RUNNER_TEMP/aesan-ES2026_085.json" R177="$RUNNER_TEMP/aesan-ES2026_177.json" R517="$RUNNER_TEMP/aesan-ES2026_517.json" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const check=(path,ref)=>{
+            const body=JSON.parse(readFileSync(path,"utf8"));
+            const item=(body?.items??[]).find((candidate)=>candidate?.reference===ref);
+            if(!item) throw new Error("API missing "+ref);
+            return item;
+          };
+          const a=check(process.env.R085,"ES2026/085");
+          const b=check(process.env.R177,"ES2026/177");
+          const c=check(process.env.R517,"ES2026/517");
+          if(a.aesanAlertType!=="allergy_intolerance_adverse"||a.publicationSummary?.mode!=="parallel"||Number(a.publicationSummary?.count)<2)
+            throw new Error("API ES2026/085 contract mismatch");
+          if(b.aesanAlertType!=="general_population"||!(b.lots??[]).some((lot)=>String(lot).includes("361614")))
+            throw new Error("API ES2026/177 contract mismatch");
+          if(c.aesanAlertType!=="allergy_intolerance_adverse") throw new Error("API ES2026/517 taxonomy mismatch");
+          console.log("AESAN_FUNCTIONAL_API_CASES "+JSON.stringify({
+            "ES2026/085":{aesanAlertType:a.aesanAlertType,publicationSummary:a.publicationSummary??null},
+            "ES2026/177":{aesanAlertType:b.aesanAlertType,lots:b.lots},
+            "ES2026/517":{aesanAlertType:c.aesanAlertType,versionCount:c.versionCount??null,isUpdate:c.isUpdate??null}
+          }));
+          NODE
+
+              curl --silent --show-error --get --fail-with-body --max-time 90 \
+                --data-urlencode "q=sulfitos" --data-urlencode "period=all" --data-urlencode "country=ALL" \
+                --data-urlencode "source=AESAN" --data-urlencode "pageSize=50" \
+                "$prod_url/api/terminal/alerts" > "$RUNNER_TEMP/aesan-sulfitos.json"
+              SULFITOS="$RUNNER_TEMP/aesan-sulfitos.json" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.env.SULFITOS,"utf8"));
+          if(!Number.isInteger(body?.total)||body.total<1||!(body?.items?.length>0)) throw new Error("sulfitos search returned no AESAN results");
+          const matched=(body.items??[]).filter((item)=>item?.matchedPublication);
+          if(!matched.length) throw new Error("sulfitos search has no matchedPublication evidence");
+          console.log("AESAN_SULFITOS_API "+JSON.stringify({
+            total:body.total,
+            references:(body.items??[]).map((item)=>item.reference),
+            matched:matched.map((item)=>({reference:item.reference,title:item.matchedPublication.title,anchor:item.matchedPublication.anchor}))
+          }));
+          NODE
+
+              browser_dir="$RUNNER_TEMP/aesan-functional-browser"
+              rm -rf "$browser_dir"
+              mkdir -p "$browser_dir"
+              cd "$browser_dir"
+              npm init -y >/dev/null 2>&1
+              npm install --no-audit --no-fund --silent puppeteer-core@24.24.1
+              chrome="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+              test -n "$chrome"
+              PROD_URL="$prod_url" CHROME="$chrome" node --input-type=module - <<'NODE'
+          import puppeteer from "puppeteer-core";
+          const BASE=process.env.PROD_URL, CHROME=process.env.CHROME;
+          const assert=(value,message)=>{ if(!value) throw new Error(message); };
+          const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
+          const browser=await puppeteer.launch({executablePath:CHROME,headless:true,args:["--no-sandbox","--disable-dev-shm-usage","--disable-gpu","--window-size=1365,900"]});
+          const ready=async(page)=>{
+            await page.waitForSelector(".na-terminal-results",{timeout:60000});
+            await page.waitForFunction(()=>document.querySelector(".na-terminal-results")?.getAttribute("aria-busy")==="false",{timeout:60000});
+            await sleep(100);
+          };
+          const findDetail=async(page,ref)=>{
+            const response=await page.goto(BASE+"/es/alertas?q="+encodeURIComponent(ref)+"&period=all&source=AESAN",{waitUntil:"domcontentloaded",timeout:60000});
+            assert(response?.status()===200,ref+" list HTTP");
+            await ready(page);
+            const href=await page.evaluate((needle)=>{
+              const card=[...document.querySelectorAll(".na-alert-card")].find((el)=>(el.textContent??"").includes(needle));
+              return card?.querySelector(".na-alert-card__primary")?.getAttribute("href")??null;
+            },ref);
+            assert(href,ref+" card/detail link missing");
+            const detail=await page.goto(new URL(href,BASE).href,{waitUntil:"domcontentloaded",timeout:60000});
+            assert(detail?.status()===200,ref+" detail HTTP");
+            await page.waitForSelector(".na-alert-detail",{timeout:60000});
+          };
+          try{
+            const page=await browser.newPage();
+            await page.setViewport({width:1365,height:900,deviceScaleFactor:1});
+            await page.evaluateOnNewDocument(()=>localStorage.setItem("nagamealert-theme","dark"));
+
+            await findDetail(page,"ES2026/085");
+            const p085=await page.evaluate(()=>({
+              overview:document.querySelector(".na-alert-detail__publication-overview")?.textContent??"",
+              publications:document.querySelectorAll(".na-alert-detail__publication").length
+            }));
+            assert(/comparten esta referencia/i.test(p085.overview)&&p085.publications>=2,"085 parallel publications not rendered");
+
+            await findDetail(page,"ES2026/177");
+            const t177=await page.evaluate(()=>document.body.innerText);
+            assert(t177.includes("361614"),"177 lot 361614 absent from detail");
+
+            await findDetail(page,"ES2026/517");
+            const states=await page.$eval(".na-alert-detail__publication-state",(els)=>els.length);
+            assert(states>=1,"517 preserved revision state absent from detail");
+
+            let response=await page.goto(BASE+"/es/alertas?q=sulfitos&period=all&source=AESAN",{waitUntil:"domcontentloaded",timeout:60000});
+            assert(response?.status()===200,"sulfitos list HTTP");
+            await ready(page);
+            const search=await page.evaluate(()=>({
+              cards:document.querySelectorAll(".na-alert-card").length,
+              matchHref:document.querySelector(".na-alert-card__publication-match a")?.getAttribute("href")??null,
+              matchText:document.querySelector(".na-alert-card__publication-match")?.textContent??""
+            }));
+            assert(search.cards>0,"sulfitos rendered no cards");
+            assert(search.matchHref&&/Coincidencia en otra publicación:/i.test(search.matchText),"sulfitos matched-publication link absent");
+            response=await page.goto(new URL(search.matchHref,BASE).href,{waitUntil:"domcontentloaded",timeout:60000});
+            assert(response?.status()===200,"sulfitos matched publication detail HTTP");
+            await page.waitForSelector(".na-alert-detail",{timeout:60000});
+            const target=await page.evaluate(()=>({
+              hash:location.hash,
+              exists:Boolean(location.hash&&document.querySelector(location.hash)),
+              containsSulfitos:document.body.innerText.toLocaleLowerCase("es").includes("sulfitos")
+            }));
+            assert(target.hash&&target.exists,"sulfitos click target anchor missing");
+            assert(target.containsSulfitos,"sulfitos not present on clicked detail");
+            console.log("AESAN_FUNCTIONAL_BROWSER "+JSON.stringify({ES085:p085,ES177Lot:true,ES517PreservedStates:states,sulfitos:{...search,target}}));
+            await page.close();
+          } finally {
+            await browser.close();
+          }
+          NODE
+              cd "$GITHUB_WORKSPACE"
+
+              prod_after="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN source='AESAN' THEN 1 ELSE 0 END) AS aesan FROM alerts" --json)"
+              PROD_BEFORE="$prod_before" PROD_AFTER="$prod_after" node --input-type=module - <<'NODE'
+          const row=(raw)=>(JSON.parse(raw||"[]")||[]).flatMap?.(x=>x.results??[])?.[0]??{};
+          const before=row(process.env.PROD_BEFORE), after=row(process.env.PROD_AFTER);
+          if(Number(before.total)!==Number(after.total)||Number(before.aesan)!==Number(after.aesan)) throw new Error("production D1 changed during AESAN functional recheck");
+          console.log("AESAN_FUNCTIONAL_D1_UNCHANGED "+JSON.stringify({total:Number(after.total),aesan:Number(after.aesan)}));
+          NODE
+              echo "AESAN_FUNCTIONAL_RECHECK status=PASS"
               ;;
             f3b-production-certification)
               test "$CF_WORKER" = "vigia-runtime"
