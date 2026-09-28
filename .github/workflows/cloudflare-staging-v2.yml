@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-status","worker-rollback",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -1335,6 +1335,32 @@ jobs:
           }));
           NODE
               echo "RASFF_INTEGRITY_READONLY status=PASS"
+              ;;
+            oecd-observe-readonly)
+              test -n "$VIGIA_SYNC_TOKEN"
+              base="https://vigia-runtime.c-gamiz93.workers.dev"
+              code="$(curl --silent --show-error --location --max-time 60                 --header "Authorization: Bearer $VIGIA_SYNC_TOKEN"                 --output "$RUNNER_TEMP/oecd-observe-state.json" --write-out '%{http_code}'                 "$base/api/oecd/sync?observe=1")"
+              test "$code" = "200"
+              node --input-type=module - "$RUNNER_TEMP/oecd-observe-state.json" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.argv[2],"utf8"));
+          if(!body||typeof body!=="object"||body.source!=="OECD") throw new Error("invalid OECD observe body");
+          const compact=(state)=>state?{
+            source:state.source??null,mode:state.mode??null,status:state.status??null,
+            cursor:state.cursor??null,cursorKey:state.cursorKey??null,totalUnits:state.totalUnits??null,
+            recordsObserved:state.recordsObserved??null,recordsPersisted:state.recordsPersisted??null,
+            newCount:state.newCount??null,updatedCount:state.updatedCount??null,
+            pageErrors:state.pageErrors??null,detailFailures:state.detailFailures??null,
+            lastSuccessAt:state.lastSuccessAt??null,lastError:state.lastError??null,
+            leaseOwnerId:state.leaseOwnerId??null,leaseMode:state.leaseMode??null,leaseExpiresAt:state.leaseExpiresAt??null
+          }:null;
+          console.log("OECD_OBSERVE_READONLY "+JSON.stringify({
+            recent:compact(body.recent),
+            historical:compact(body.historicalReconcile??body.historical??body.reconcile),
+            lease:body.lease??null
+          }));
+          NODE
+              echo "OECD_OBSERVE_READONLY status=PASS"
               ;;
             owner-runtime-readonly-smoke)
               test -n "$VIGIA_SYNC_TOKEN"
