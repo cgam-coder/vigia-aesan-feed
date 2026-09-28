@@ -1,4 +1,4 @@
-name: Temporary WORK23-F1 production smoke certified
+name: Temporary WORK23 rollback production smoke
 
 on:
   push:
@@ -12,48 +12,37 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
-      - name: Certify converged production release
+      - name: Certify removal of public Patterns surface
         shell: bash
         run: |
           set -euo pipefail
           base="https://nagamealert.com"
 
-          curl -sS --max-time 30 -H 'Cache-Control: no-cache' -o /tmp/es -D /tmp/es-h "$base/es/patrones"
-          grep -Fq "Qué se repite en el archivo público de AESAN" /tmp/es
-          grep -Fq "Recurrencia no significa identidad" /tmp/es
-          grep -Fq "Clasificación NagameAlert" /tmp/es
-          grep -Fq "No son una taxonomía oficial de AESAN" /tmp/es
-          grep -Fq "Marcas repetidas" /tmp/es
-          grep -Fq "Carrefour" /tmp/es
-          grep -Fq 'href="/es/patrones"' /tmp/es
-          grep -Fq 'href="/en/patterns"' /tmp/es
-          grep -Fq '<meta name="robots" content="index, follow"/>' /tmp/es
-          grep -Fq '<link rel="canonical" href="https://nagamealert.com/es/patrones"/>' /tmp/es
-          grep -Fq '<link rel="alternate" hrefLang="es" href="https://nagamealert.com/es/patrones"/>' /tmp/es
-          grep -Fq '<link rel="alternate" hrefLang="en" href="https://nagamealert.com/en/patterns"/>' /tmp/es
-          grep -Fq '<link rel="alternate" hrefLang="x-default" href="https://nagamealert.com/es/patrones"/>' /tmp/es
-          if grep -qi '^x-robots-tag:.*noindex' /tmp/es-h; then exit 1; fi
+          code="$(curl -sS --max-time 30 -H 'Cache-Control: no-cache' -o /tmp/es -w '%{http_code}' "$base/es/patrones")"
+          echo "/es/patrones => $code"
+          test "$code" = "404"
 
-          curl -sS --max-time 30 -H 'Cache-Control: no-cache' -o /tmp/en -D /tmp/en-h "$base/en/patterns"
-          grep -Fq "What repeats across the public AESAN archive" /tmp/en
-          grep -Fq "Recurrence does not mean identity" /tmp/en
-          grep -Fq "NagameAlert classification" /tmp/en
-          grep -Fq "They are not an official AESAN taxonomy" /tmp/en
-          grep -Fq '<meta name="robots" content="index, follow"/>' /tmp/en
-          grep -Fq '<link rel="canonical" href="https://nagamealert.com/en/patterns"/>' /tmp/en
-          if grep -qi '^x-robots-tag:.*noindex' /tmp/en-h; then exit 1; fi
+          code="$(curl -sS --max-time 30 -H 'Cache-Control: no-cache' -o /tmp/en -w '%{http_code}' "$base/en/patterns")"
+          echo "/en/patterns => $code"
+          test "$code" = "404"
 
-          curl -sS --max-time 30 -o /tmp/query -D /tmp/query-h "$base/es/patrones?brand=Carrefour"
-          grep -qi '^x-robots-tag: noindex, follow' /tmp/query-h
+          code="$(curl -sS --max-time 30 -H 'Cache-Control: no-cache' -o /tmp/root -w '%{http_code}' "$base/")"
+          echo "/ => $code"
+          test "$code" = "200"
+          if grep -Fq 'href="/es/patrones"' /tmp/root; then echo "Patterns still linked from landing"; exit 1; fi
 
-          curl -sS --max-time 30 -o /tmp/static-es "$base/sitemaps/static-es.xml"
-          curl -sS --max-time 30 -o /tmp/static-en "$base/sitemaps/static-en.xml"
-          grep -Fq '<loc>https://nagamealert.com/es/patrones</loc>' /tmp/static-es
-          grep -Fq '<loc>https://nagamealert.com/en/patterns</loc>' /tmp/static-en
+          code="$(curl -sS --max-time 30 -H 'Cache-Control: no-cache' -o /tmp/alerts -w '%{http_code}' "$base/es/alertas")"
+          echo "/es/alertas => $code"
+          test "$code" = "200"
 
-          curl -sS --max-time 30 -o /tmp/home "$base/"
-          grep -Fq 'href="/es/patrones"' /tmp/home
+          code="$(curl -sS --max-time 30 -H 'Cache-Control: no-cache' -o /tmp/ses -w '%{http_code}' "$base/sitemaps/static-es.xml")"
+          test "$code" = "200"
+          if grep -Fq 'https://nagamealert.com/es/patrones' /tmp/ses; then echo "ES sitemap still contains Patterns"; exit 1; fi
 
-          echo "WORK23-F1 production smoke CERTIFIED PASS"
+          code="$(curl -sS --max-time 30 -H 'Cache-Control: no-cache' -o /tmp/sen -w '%{http_code}' "$base/sitemaps/static-en.xml")"
+          test "$code" = "200"
+          if grep -Fq 'https://nagamealert.com/en/patterns' /tmp/sen; then echo "EN sitemap still contains Patterns"; exit 1; fi
+
+          echo "WORK23 rollback production smoke PASS"
