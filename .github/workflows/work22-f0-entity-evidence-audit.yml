@@ -1,0 +1,99 @@
+name: Temporary WORK22-F0 entity evidence audit
+
+on:
+  push:
+    branches: [ops/seo-geo-f1-exclusion-audit]
+    paths:
+      - ".github/workflows/work22-f0-entity-evidence-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Sample recent public entity evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const ORIGIN="https://nagamealert.com";
+          const SOURCES=["AESAN","RAPNA","RASFF","SAFETY GATE","OECD"];
+          const SEG={AESAN:"aesan",RAPNA:"rapna",RASFF:"rasff","SAFETY GATE":"safety-gate",OECD:"oecd"};
+          const SAMPLE=50;
+          const stable=(id)=>Buffer.from(id,"utf8").toString("base64url");
+          const norm=(v="")=>String(v).trim().normalize("NFKD").replace(/[\u0300-\u036f]/gu,"").toLocaleLowerCase("es");
+          const slug=(title)=>norm(title).replace(/[’']/gu,"").replace(/[^a-z0-9]+/gu,"-").replace(/^-+|-+$/gu,"").slice(0,96).replace(/-+$/gu,"")||"alerta";
+          const decode=(v)=>v.replaceAll("&amp;","&").replaceAll("&lt;","<").replaceAll("&gt;",">").replaceAll("&quot;",'"').replaceAll("&#x27;","'").replaceAll("&#39;","'");
+          const strip=(v)=>decode(v.replace(/<[^>]+>/gu," ").replace(/\s+/gu," ").trim());
+          const fact=(html,label)=>{
+            const marker="<dt>"+label+"</dt><dd>";
+            const start=html.indexOf(marker);
+            if(start<0)return "";
+            const from=start+marker.length;
+            const end=html.indexOf("</dd>",from);
+            return end<0?"":strip(html.slice(from,end));
+          };
+          const read=async(url,json=false)=>{
+            const r=await fetch(url,{headers:{"user-agent":"NagameAlert-WORK22-F0-Audit/1.0","cache-control":"no-cache"},signal:AbortSignal.timeout(45000)});
+            if(!r.ok) throw new Error(url+": HTTP "+r.status);
+            return json?r.json():r.text();
+          };
+          const mapLimit=async(items,limit,fn)=>{
+            const out=new Array(items.length); let next=0;
+            const workers=Array.from({length:Math.min(limit,items.length)},async()=>{
+              while(true){const i=next++;if(i>=items.length)return;out[i]=await fn(items[i],i);}
+            });
+            await Promise.all(workers); return out;
+          };
+          const report={checkedAt:new Date().toISOString(),samplePerSource:SAMPLE,sources:{},exactIdentifierCollisions:[]};
+          const identifierOwners=new Map();
+
+          for(const source of SOURCES){
+            const api=await read(ORIGIN+"/api/terminal/alerts?period=all&country=ALL&source="+encodeURIComponent(source)+"&pageSize="+SAMPLE,true);
+            const items=api.items??[];
+            const pages=await mapLimit(items,8,async(item)=>{
+              const path="/es/alerta/"+SEG[source]+"/"+stable(item.id)+"/"+slug(item.title);
+              const html=await read(ORIGIN+path);
+              const identifiers=fact(html,"Identificadores oficiales");
+              const model=fact(html,"Modelo");
+              const commercialReference=fact(html,"Referencia comercial");
+              const lots=fact(html,"Lote/s");
+              const brand=fact(html,"Marca");
+              const hasOperator=html.includes('id="alert-operators-title"');
+              const rawIdentifierHints=source==="AESAN" && /<dt>[^<]*(?:EAN|GTIN|c[oó]digo\s+de\s+barras)[^<]*<\/dt>/iu.test(html);
+              const ids=identifiers?identifiers.split(/\s+·\s+/u).map(x=>x.trim()).filter(Boolean):[];
+              for(const id of ids){
+                const normalized=id.replace(/^(?:EAN|Código de barras|Barcode|Identificador):\s*/iu,"").trim();
+                if(!normalized) continue;
+                const owners=identifierOwners.get(normalized)??[];
+                owners.push({source,id:item.id,reference:item.reference,title:item.title});
+                identifierOwners.set(normalized,owners);
+              }
+              return {id:item.id,reference:item.reference,title:item.title,path,identifiers,model,commercialReference,lots,brand,hasOperator,rawIdentifierHints};
+            });
+            report.sources[source]={
+              sample:pages.length,
+              withCanonicalIdentifier:pages.filter(x=>x.identifiers).length,
+              withModel:pages.filter(x=>x.model).length,
+              withCommercialReference:pages.filter(x=>x.commercialReference).length,
+              withLots:pages.filter(x=>x.lots).length,
+              withBrand:pages.filter(x=>x.brand).length,
+              withExplicitOperator:pages.filter(x=>x.hasOperator).length,
+              withAesanRawIdentifierHint:pages.filter(x=>x.rawIdentifierHints).length,
+              examples:{
+                identifiers:pages.filter(x=>x.identifiers).slice(0,5),
+                model:pages.filter(x=>x.model).slice(0,3),
+                lots:pages.filter(x=>x.lots).slice(0,3),
+                operator:pages.filter(x=>x.hasOperator).slice(0,3)
+              }
+            };
+          }
+          report.exactIdentifierCollisions=[...identifierOwners.entries()]
+            .filter(([,owners])=>new Set(owners.map(x=>x.source)).size>1)
+            .map(([identifier,owners])=>({identifier,owners}))
+            .slice(0,50);
+          console.log(JSON.stringify(report,null,2));
+          NODE
