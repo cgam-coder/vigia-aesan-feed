@@ -24,12 +24,6 @@ export const FLOATING_ACTION_EXCEPTIONS = Object.freeze([
 
 export const KNOWN_DEBT = Object.freeze([
   {
-    id: "PUB-DEBT-02",
-    scope: "production-secret-injection",
-    statement: "Several operational workflows inject VIGIA_SYNC_TOKEN at job scope.",
-    removalGate: "Move per step without changing behavior; this is not server-side capability separation.",
-  },
-  {
     id: "PUB-DEBT-03",
     scope: "public-operational-diagnostics",
     statement: "Historical workflows publish broader status and evidence than the target projection.",
@@ -71,6 +65,7 @@ export function analyzeWorkflows(workflows) {
 
   for (const [file, source] of workflows) {
     checkOfflineBoundary(file, source, violations);
+    checkProductionTokenScope(file, source, violations);
     checkPermissions(file, source, violations);
     checkPrivilegedEvents(file, source, violations);
     checkRunBlocks(file, source, violations);
@@ -110,6 +105,18 @@ export function analyzeWorkflows(workflows) {
     knownDebt: KNOWN_DEBT,
     floatingExceptions: FLOATING_ACTION_EXCEPTIONS,
   };
+}
+
+function checkProductionTokenScope(file, source, violations) {
+  const lines = source.split(/\r?\n/u)
+    .map((line, index) => ({ line, index:index + 1 }))
+    .filter(({ line }) => /VIGIA_SYNC_TOKEN:\s*\$\{\{\s*secrets\.VIGIA_SYNC_TOKEN\s*\}\}/u.test(line));
+  for (const item of lines) {
+    if (!/^\s{10}VIGIA_SYNC_TOKEN:/u.test(item.line)) {
+      violations.push(problem(file, "PRODUCTION_TOKEN_JOB_SCOPE",
+        "VIGIA_SYNC_TOKEN must only be injected at authenticated step scope.", item.index));
+    }
+  }
 }
 
 function checkOfflineBoundary(file, source, violations) {
