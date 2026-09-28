@@ -1,0 +1,112 @@
+name: Temporary SEO-GEO-F1 cohort audit
+
+on:
+  push:
+    branches: [ops/seo-geo-f1-cohort-audit]
+    paths:
+      - ".github/workflows/seo-geo-f1-cohort-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Audit public terminal vs sitemap cohorts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const ORIGIN = "https://nagamealert.com";
+          const SOURCES = ["AESAN","RAPNA","RASFF","SAFETY GATE","OECD"];
+          const SEG = {AESAN:"aesan",RAPNA:"rapna",RASFF:"rasff","SAFETY GATE":"safety-gate",OECD:"oecd"};
+          const PERIODS = ["7d","30d","3m","1y","all"];
+
+          const read = async (url, json=false) => {
+            const r = await fetch(url, {
+              headers:{"user-agent":"NagameAlert-SEO-GEO-F1-Audit/1.0","cache-control":"no-cache"},
+              signal:AbortSignal.timeout(45_000),
+            });
+            if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+            return json ? r.json() : r.text();
+          };
+          const xmlValues = (xml, tag) => [...xml.matchAll(new RegExp(`<${tag}>([^<]+)</${tag}>`, "gu"))].map(m=>m[1]
+            .replaceAll("&amp;","&").replaceAll("&lt;","<").replaceAll("&gt;",">").replaceAll("&quot;",'"').replaceAll("&apos;","'"));
+
+          const root = await read(`${ORIGIN}/sitemap.xml`);
+          const children = xmlValues(root,"loc");
+          const alertChildren = children.filter(u=>/\/sitemaps\/alerts-(?:es|en)-(?:aesan|rapna|rasff|safety-gate|oecd)-\d+\.xml$/u.test(u));
+
+          const sitemap = {};
+          const allLocs = new Map();
+          for (const source of SOURCES) sitemap[source] = {es:0,en:0,esShards:0,enShards:0,emptyEs:0,emptyEn:0,duplicates:0};
+
+          for (const child of alertChildren) {
+            const m = child.match(/alerts-(es|en)-(aesan|rapna|rasff|safety-gate|oecd)-(\d+)\.xml$/u);
+            if (!m) continue;
+            const locale=m[1], seg=m[2];
+            const source=Object.entries(SEG).find(([,v])=>v===seg)?.[0];
+            if (!source) throw new Error(`Unknown source segment ${seg}`);
+            const xml=await read(child);
+            const locs=xmlValues(xml,"loc");
+            sitemap[source][locale+"Shards"]++;
+            if (locs.length===0) sitemap[source][locale==="es"?"emptyEs":"emptyEn"]++;
+            sitemap[source][locale]+=locs.length;
+            for (const loc of locs) {
+              const count=allLocs.get(loc)??0;
+              allLocs.set(loc,count+1);
+              if (count>0) sitemap[source].duplicates++;
+            }
+          }
+
+          const terminal={};
+          for (const source of SOURCES) {
+            terminal[source]={};
+            for (const period of PERIODS) {
+              const j=await read(`${ORIGIN}/api/terminal/alerts?period=${period}&country=ALL&source=${encodeURIComponent(source)}&pageSize=1`,true);
+              terminal[source][period]=j.total;
+            }
+          }
+          const global={};
+          for (const period of PERIODS) {
+            const j=await read(`${ORIGIN}/api/terminal/alerts?period=${period}&country=ALL&pageSize=1`,true);
+            global[period]=j.total;
+          }
+
+          const rows=SOURCES.map(source=>{
+            const raw=terminal[source].all;
+            const es=sitemap[source].es;
+            return {
+              source,
+              terminalAll:raw,
+              terminal30d:terminal[source]["30d"],
+              terminal1y:terminal[source]["1y"],
+              sitemapEs:es,
+              sitemapEn:sitemap[source].en,
+              coveragePct:raw ? Number((100*es/raw).toFixed(2)) : null,
+              excludedApprox:raw-es,
+              esShards:sitemap[source].esShards,
+              enShards:sitemap[source].enShards,
+              emptyEs:sitemap[source].emptyEs,
+              emptyEn:sitemap[source].emptyEn,
+              duplicates:sitemap[source].duplicates,
+              localeParity:es===sitemap[source].en,
+            };
+          });
+
+          const report={
+            checkedAt:new Date().toISOString(),
+            sitemapChildren:children.length,
+            alertSitemapChildren:alertChildren.length,
+            uniqueAlertLocs:allLocs.size,
+            duplicatedLocs:[...allLocs.values()].filter(v=>v>1).length,
+            globalTerminal:global,
+            sources:rows,
+          };
+          console.log(JSON.stringify(report,null,2));
+
+          if (rows.some(r=>!r.localeParity)) throw new Error("ES/EN sitemap count parity failed");
+          if (report.duplicatedLocs) throw new Error(`Duplicate primary sitemap URLs: ${report.duplicatedLocs}`);
+          NODE
