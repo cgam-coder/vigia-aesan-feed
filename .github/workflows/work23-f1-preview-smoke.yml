@@ -1,4 +1,4 @@
-name: Temporary WORK23-F1 production diagnostic
+name: Temporary WORK23-F1 production smoke certified
 
 on:
   push:
@@ -10,44 +10,50 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
+  smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Diagnose production WORK23-F1 contracts
+      - name: Certify converged production release
         shell: bash
         run: |
           set -euo pipefail
           base="https://nagamealert.com"
+
           curl -sS --max-time 30 -H 'Cache-Control: no-cache' -o /tmp/es -D /tmp/es-h "$base/es/patrones"
+          grep -Fq "Qué se repite en el archivo público de AESAN" /tmp/es
+          grep -Fq "Recurrencia no significa identidad" /tmp/es
+          grep -Fq "Clasificación NagameAlert" /tmp/es
+          grep -Fq "No son una taxonomía oficial de AESAN" /tmp/es
+          grep -Fq "Marcas repetidas" /tmp/es
+          grep -Fq "Carrefour" /tmp/es
+          grep -Fq 'href="/es/patrones"' /tmp/es
+          grep -Fq 'href="/en/patterns"' /tmp/es
+          grep -Fq '<meta name="robots" content="index, follow"/>' /tmp/es
+          grep -Fq '<link rel="canonical" href="https://nagamealert.com/es/patrones"/>' /tmp/es
+          grep -Fq '<link rel="alternate" hrefLang="es" href="https://nagamealert.com/es/patrones"/>' /tmp/es
+          grep -Fq '<link rel="alternate" hrefLang="en" href="https://nagamealert.com/en/patterns"/>' /tmp/es
+          grep -Fq '<link rel="alternate" hrefLang="x-default" href="https://nagamealert.com/es/patrones"/>' /tmp/es
+          if grep -qi '^x-robots-tag:.*noindex' /tmp/es-h; then exit 1; fi
+
           curl -sS --max-time 30 -H 'Cache-Control: no-cache' -o /tmp/en -D /tmp/en-h "$base/en/patterns"
+          grep -Fq "What repeats across the public AESAN archive" /tmp/en
+          grep -Fq "Recurrence does not mean identity" /tmp/en
+          grep -Fq "NagameAlert classification" /tmp/en
+          grep -Fq "They are not an official AESAN taxonomy" /tmp/en
+          grep -Fq '<meta name="robots" content="index, follow"/>' /tmp/en
+          grep -Fq '<link rel="canonical" href="https://nagamealert.com/en/patterns"/>' /tmp/en
+          if grep -qi '^x-robots-tag:.*noindex' /tmp/en-h; then exit 1; fi
+
           curl -sS --max-time 30 -o /tmp/query -D /tmp/query-h "$base/es/patrones?brand=Carrefour"
+          grep -qi '^x-robots-tag: noindex, follow' /tmp/query-h
+
           curl -sS --max-time 30 -o /tmp/static-es "$base/sitemaps/static-es.xml"
           curl -sS --max-time 30 -o /tmp/static-en "$base/sitemaps/static-en.xml"
+          grep -Fq '<loc>https://nagamealert.com/es/patrones</loc>' /tmp/static-es
+          grep -Fq '<loc>https://nagamealert.com/en/patterns</loc>' /tmp/static-en
+
           curl -sS --max-time 30 -o /tmp/home "$base/"
+          grep -Fq 'href="/es/patrones"' /tmp/home
 
-          echo "=== ES headers ==="
-          grep -iE '^(HTTP/|x-robots-tag|content-type|cf-cache-status|location):' /tmp/es-h || true
-          echo "=== ES head ==="
-          grep -oE '<title[^>]*>[^<]*</title>|<meta[^>]+robots[^>]*>|<link[^>]+(canonical|alternate)[^>]*>' /tmp/es | head -30 || true
-          echo "=== ES markers ==="
-          for needle in "Qué se repite en el archivo público de AESAN" "Recurrencia no significa identidad" "Clasificación NagameAlert" "No son una taxonomía oficial de AESAN" "Marcas repetidas" "Carrefour" 'href="/es/patrones"' 'href="/en/patterns"'; do
-            if grep -Fq "$needle" /tmp/es; then echo "PASS ES: $needle"; else echo "MISS ES: $needle"; fi
-          done
-
-          echo "=== EN headers/head ==="
-          grep -iE '^(HTTP/|x-robots-tag|content-type|cf-cache-status|location):' /tmp/en-h || true
-          grep -oE '<title[^>]*>[^<]*</title>|<meta[^>]+robots[^>]*>|<link[^>]+(canonical|alternate)[^>]*>' /tmp/en | head -30 || true
-          for needle in "What repeats across the public AESAN archive" "Recurrence does not mean identity" "NagameAlert classification" "They are not an official AESAN taxonomy"; do
-            if grep -Fq "$needle" /tmp/en; then echo "PASS EN: $needle"; else echo "MISS EN: $needle"; fi
-          done
-
-          echo "=== QUERY headers ==="
-          grep -iE '^(HTTP/|x-robots-tag|content-type|cf-cache-status|location):' /tmp/query-h || true
-          echo "=== SITEMAPS ==="
-          grep -F 'https://nagamealert.com/es/patrones' /tmp/static-es || true
-          grep -F 'https://nagamealert.com/en/patterns' /tmp/static-en || true
-          echo "=== HOME ==="
-          if grep -Fq 'href="/es/patrones"' /tmp/home; then echo "PASS HOME patterns"; else echo "MISS HOME patterns"; fi
-          echo "=== BYTES ==="
-          wc -c /tmp/es /tmp/en /tmp/query /tmp/static-es /tmp/static-en /tmp/home
+          echo "WORK23-F1 production smoke CERTIFIED PASS"
