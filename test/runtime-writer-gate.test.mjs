@@ -11,7 +11,6 @@ const workflows = [
   [".github/workflows/oecd-recent-freshness-retry.yml", ["retry-recent-if-stale"]],
   [".github/workflows/rasff-control.yml", ["recent", "reconcile"]],
   [".github/workflows/freshness-watchdog.yml", ["parity"]],
-  [".github/workflows/gh-fixes-closure-once.yml", ["repair-and-verify"]],
 ];
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -52,7 +51,7 @@ test("every production D1 writer is gated by the reusable writer gate", () => {
         `${path}:${job} missing gate condition`);
     }
   }
-  assert.equal(writerJobs, 12);
+  assert.equal(writerJobs, 11);
 });
 
 test("proof workflow exercises both open and frozen branches without a production endpoint", () => {

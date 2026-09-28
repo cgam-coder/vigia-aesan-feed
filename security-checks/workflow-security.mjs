@@ -12,6 +12,10 @@ const CONTENTS_WRITE_PUBLISHERS = new Set([
   "update-full-feed.yml",
 ]);
 
+const PUBLIC_ARTIFACT_PUBLISHERS = new Set([
+  "seo-public-snapshot.yml",
+]);
+
 const PRIVILEGED_EVENTS = new Set([
   "pull_request_target",
   "workflow_run",
@@ -23,12 +27,6 @@ export const FLOATING_ACTION_EXCEPTIONS = Object.freeze([
 ]);
 
 export const KNOWN_DEBT = Object.freeze([
-  {
-    id: "PUB-DEBT-03",
-    scope: "public-operational-diagnostics",
-    statement: "Historical workflows publish broader status and evidence than the target projection.",
-    removalGate: "Add a tested projection and retain required private evidence through an authorized channel.",
-  },
   {
     id: "PUB-DEBT-04",
     scope: "platform-protection",
@@ -70,8 +68,6 @@ export function analyzeWorkflows(workflows) {
     checkPrivilegedEvents(file, source, violations);
     checkRunBlocks(file, source, violations);
     checkArtifacts(file, source, violations);
-    checkExtraordinaryClosure(file, source, violations);
-    checkRetiredClosureVerifier(file, source, violations);
     checkRasffCarrierBoundary(file, source, violations);
     checkSafetyOecdCarrierBoundary(file, source, violations);
     checkFreshnessWatchdogBoundary(file, source, violations);
@@ -164,58 +160,6 @@ function checkPrivilegedEvents(file, source, violations) {
           token + " requires exact contextual review before entering a public workflow.", index + 1));
       }
     }
-  }
-}
-
-
-function checkExtraordinaryClosure(file, source, violations) {
-  if (file !== "gh-fixes-closure-once.yml") return;
-  if (/^\s{2}(?:push|schedule):/mu.test(source)) {
-    violations.push(problem(file, "EXTRAORDINARY_AUTOMATIC_TRIGGER",
-      "Extraordinary repair must never run from push or schedule."));
-  }
-  if (!/^\s{2}workflow_dispatch:/mu.test(source)) {
-    violations.push(problem(file, "EXTRAORDINARY_MANUAL_ONLY",
-      "Extraordinary repair must retain workflow_dispatch."));
-  }
-  if (!/^\s{6}confirm:/mu.test(source) || !source.includes("RUN-GH-FIXES-CLOSURE")) {
-    violations.push(problem(file, "EXTRAORDINARY_CONFIRMATION",
-      "Extraordinary repair requires the reviewed explicit confirmation contract."));
-  }
-  const secretLines = source.split(/\r?\n/u)
-    .map((line, index) => ({ line, index:index + 1 }))
-    .filter(({ line }) => /VIGIA_SYNC_TOKEN:\s*\$\{\{\s*secrets\.VIGIA_SYNC_TOKEN\s*\}\}/u.test(line));
-  if (secretLines.length !== 1 || !/^\s{10}VIGIA_SYNC_TOKEN:/u.test(secretLines[0]?.line ?? "")) {
-    violations.push(problem(file, "EXTRAORDINARY_SECRET_SCOPE",
-      "VIGIA_SYNC_TOKEN must exist exactly once at the authenticated step scope.",
-      secretLines[0]?.index ?? null));
-  }
-}
-
-
-function checkRetiredClosureVerifier(file, source, violations) {
-  if (file !== "gh-fixes-closure-verify.yml") return;
-  if (/^\s{2}(?:push|schedule):/mu.test(source)) {
-    violations.push(problem(file, "RETIRED_VERIFIER_AUTOMATIC_TRIGGER",
-      "Retired closure verification must not run from push or schedule."));
-  }
-  if (!/^\s{2}workflow_dispatch:/mu.test(source)) {
-    violations.push(problem(file, "RETIRED_VERIFIER_MANUAL_ONLY",
-      "Retired closure verification must remain manually dispatchable only."));
-  }
-  const secretLines = source.split(/\r?\n/u)
-    .map((line, index) => ({ line, index:index + 1 }))
-    .filter(({ line }) => /VIGIA_SYNC_TOKEN:\s*\$\{\{\s*secrets\.VIGIA_SYNC_TOKEN\s*\}\}/u.test(line));
-  if (secretLines.length !== 1 || !/^\s{10}VIGIA_SYNC_TOKEN:/u.test(secretLines[0]?.line ?? "")) {
-    violations.push(problem(file, "RETIRED_VERIFIER_SECRET_SCOPE",
-      "VIGIA_SYNC_TOKEN must exist exactly once at the authenticated verifier step scope.",
-      secretLines[0]?.index ?? null));
-  }
-  if (!/actions\/checkout@[0-9a-f]{40}/u.test(source) ||
-      !/actions\/upload-artifact@[0-9a-f]{40}/u.test(source) ||
-      !/persist-credentials:\s*false/u.test(source)) {
-    violations.push(problem(file, "RETIRED_VERIFIER_ACTION_BOUNDARY",
-      "Retired verifier actions must stay pinned and checkout credentials must not persist."));
   }
 }
 
@@ -377,6 +321,10 @@ function checkArtifacts(file, source, violations) {
   const lines = source.split(/\r?\n/);
   for (let index = 0; index < lines.length; index += 1) {
     if (!/uses:\s*actions\/upload-artifact@/.test(lines[index])) continue;
+    if (!PUBLIC_ARTIFACT_PUBLISHERS.has(file)) {
+      violations.push(problem(file, "UNEXPECTED_PUBLIC_ARTIFACT",
+        "Only the bounded public SEO snapshot may publish a workflow artifact.", index + 1));
+    }
     const stepIndent = nearestStepIndent(lines, index);
     for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
       const line = lines[cursor];

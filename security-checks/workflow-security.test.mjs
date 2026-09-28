@@ -14,7 +14,6 @@ test("current public workflow contract has no unreviewed security regression", (
   const result = analyzeWorkflows(repositoryWorkflows);
   assert.deepEqual(result.violations, []);
   assert.deepEqual(KNOWN_DEBT.map(({ id }) => id), [
-    "PUB-DEBT-03",
     "PUB-DEBT-04",
   ]);
   assert.equal(
@@ -45,60 +44,34 @@ test("production sync token cannot expand back to job scope", () => {
   assertViolation(mutated, "PRODUCTION_TOKEN_JOB_SCOPE");
 });
 
-test("extraordinary repair remains manual-only, confirmed and step-scoped", () => {
-  const source = repositoryWorkflows.get("gh-fixes-closure-once.yml");
-  assert.match(source, /^  workflow_dispatch:/mu);
-  assert.doesNotMatch(source, /^  (?:push|schedule):/mu);
-  assert.match(source, /^      confirm:/mu);
-  assert.match(source, /RUN-GH-FIXES-CLOSURE/u);
-  assert.equal((source.match(/VIGIA_SYNC_TOKEN:\s*\$\{\{\s*secrets\.VIGIA_SYNC_TOKEN\s*\}\}/gu) ?? []).length, 1);
-  assert.match(source, /^          VIGIA_SYNC_TOKEN:/mu);
-  assert.match(source, /actions\/upload-artifact@[0-9a-f]{40}/u);
+test("retired GH-FIXES workflow surfaces stay absent", () => {
+  assert.equal(repositoryWorkflows.has("gh-fixes-closure-once.yml"), false);
+  assert.equal(repositoryWorkflows.has("gh-fixes-closure-verify.yml"), false);
 });
 
-test("extraordinary repair cannot regain an automatic trigger", () => {
+test("only the bounded public SEO snapshot may publish an artifact", () => {
+  const uploaders = [...repositoryWorkflows.entries()]
+    .filter(([, source]) => /uses:\s*actions\/upload-artifact@/u.test(source))
+    .map(([file]) => file);
+  assert.deepEqual(uploaders, ["seo-public-snapshot.yml"]);
+  assert.match(
+    repositoryWorkflows.get("seo-public-snapshot.yml"),
+    /path:\s*public-monitoring\/seo\/seo-validation-evidence\//u,
+  );
+});
+
+test("a new operational artifact publisher is rejected", () => {
   const mutated = cloneWorkflows();
   mutated.set(
-    "gh-fixes-closure-once.yml",
-    mutated.get("gh-fixes-closure-once.yml").replace(
-      "  workflow_dispatch:\n",
-      "  push:\n    branches: [main]\n",
-    ),
+    "freshness-watchdog.yml",
+    mutated.get("freshness-watchdog.yml") +
+      "\n      - name: Unexpected evidence artifact\n" +
+      "        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02\n" +
+      "        with:\n" +
+      "          name: unexpected-evidence\n" +
+      "          path: bounded-evidence.json\n",
   );
-  assertViolation(mutated, "EXTRAORDINARY_AUTOMATIC_TRIGGER");
-});
-
-test("extraordinary repair cannot lose explicit confirmation", () => {
-  const mutated = cloneWorkflows();
-  mutated.set(
-    "gh-fixes-closure-once.yml",
-    mutated.get("gh-fixes-closure-once.yml").replaceAll("RUN-GH-FIXES-CLOSURE", "REMOVED-CONFIRMATION"),
-  );
-  assertViolation(mutated, "EXTRAORDINARY_CONFIRMATION");
-});
-
-
-test("retired closure verifier remains manual-only, pinned and step-scoped", () => {
-  const source = repositoryWorkflows.get("gh-fixes-closure-verify.yml");
-  assert.match(source, /^  workflow_dispatch:/mu);
-  assert.doesNotMatch(source, /^  (?:push|schedule):/mu);
-  assert.equal((source.match(/VIGIA_SYNC_TOKEN:\s*\$\{\{\s*secrets\.VIGIA_SYNC_TOKEN\s*\}\}/gu) ?? []).length, 1);
-  assert.match(source, /^          VIGIA_SYNC_TOKEN:/mu);
-  assert.match(source, /actions\/checkout@[0-9a-f]{40}/u);
-  assert.match(source, /actions\/upload-artifact@[0-9a-f]{40}/u);
-  assert.match(source, /persist-credentials:\s*false/u);
-});
-
-test("retired closure verifier cannot regain an automatic trigger", () => {
-  const mutated = cloneWorkflows();
-  mutated.set(
-    "gh-fixes-closure-verify.yml",
-    mutated.get("gh-fixes-closure-verify.yml").replace(
-      "  workflow_dispatch:\n",
-      "  push:\n    branches: [main]\n",
-    ),
-  );
-  assertViolation(mutated, "RETIRED_VERIFIER_AUTOMATIC_TRIGGER");
+  assertViolation(mutated, "UNEXPECTED_PUBLIC_ARTIFACT");
 });
 
 
