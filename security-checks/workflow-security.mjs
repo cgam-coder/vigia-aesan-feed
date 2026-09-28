@@ -20,19 +20,9 @@ const PRIVILEGED_EVENTS = new Set([
 
 // Reviewed historical exceptions: explicit debt, not a safety claim.
 export const FLOATING_ACTION_EXCEPTIONS = Object.freeze([
-  debt("update-full-feed.yml", "actions/checkout", "v4", 1,
-    "AESAN publisher credentials and push path must be validated together."),
-  debt("update-full-feed.yml", "actions/setup-node", "v4", 1,
-    "AESAN full publisher pin remains an operational change."),
 ]);
 
 export const KNOWN_DEBT = Object.freeze([
-  {
-    id: "PUB-DEBT-01",
-    scope: "operational-action-pins",
-    statement: "Two operational action references remain on reviewed @v4 exceptions.",
-    removalGate: "Coordinate each carrier, preserve behavior and observe a legitimate run.",
-  },
   {
     id: "PUB-DEBT-02",
     scope: "production-secret-injection",
