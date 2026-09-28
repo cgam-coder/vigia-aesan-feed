@@ -163,6 +163,28 @@ test("OECD historical reconcile cannot expand token scope back to a job", () => 
   assertViolation(mutated, "OECD_HISTORICAL_SECRET_SCOPE");
 });
 
+test("runtime writer freeze certification step-scopes its production credentials", () => {
+  const source = repositoryWorkflows.get("runtime-writer-freeze-cert.yml");
+  assert.equal((source.match(/VIGIA_SYNC_TOKEN:\s*\$\{\{\s*secrets\.VIGIA_SYNC_TOKEN\s*\}\}/gu) ?? []).length, 2);
+  assert.equal((source.match(/CLOUDFLARE_API_TOKEN:\s*\$\{\{\s*secrets\.CLOUDFLARE_API_TOKEN\s*\}\}/gu) ?? []).length, 2);
+  for (const line of source.split(/\r?\n/u).filter((line) =>
+    /(?:VIGIA_SYNC_TOKEN|CLOUDFLARE_API_TOKEN):\s*\$\{\{/u.test(line))) {
+    assert.match(line, /^          /u);
+  }
+});
+
+test("runtime writer freeze certification cannot expand VIGIA token back to job scope", () => {
+  const mutated = cloneWorkflows();
+  mutated.set(
+    "runtime-writer-freeze-cert.yml",
+    mutated.get("runtime-writer-freeze-cert.yml").replace(
+      "    env:\n      CF_D1:",
+      "    env:\n      VIGIA_SYNC_TOKEN: $" + "{{ secrets.VIGIA_SYNC_TOKEN }}\n      CF_D1:",
+    ),
+  );
+  assertViolation(mutated, "FREEZE_CERT_VIGIA_SECRET_SCOPE");
+});
+
 test("a production secret added to public SEO fails", () => {
   const mutated = cloneWorkflows();
   mutated.set(
