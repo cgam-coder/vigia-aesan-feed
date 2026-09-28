@@ -81,6 +81,7 @@ export function analyzeWorkflows(workflows) {
     checkSafetyOecdCarrierBoundary(file, source, violations);
     checkFreshnessWatchdogBoundary(file, source, violations);
     checkOecdHistoricalBoundary(file, source, violations);
+    checkFreezeCertificationBoundary(file, source, violations);
 
     for (const actionUse of findActionUses(source)) {
       if (actionUse.local || actionUse.pinned) continue;
@@ -276,6 +277,27 @@ function checkOecdHistoricalBoundary(file, source, violations) {
     violations.push(problem(file, "OECD_HISTORICAL_SECRET_SCOPE",
       "OECD historical reconciliation token must exist only at the authenticated step scope.",
       secretLines[0]?.index ?? null));
+  }
+}
+
+function checkFreezeCertificationBoundary(file, source, violations) {
+  if (file !== "runtime-writer-freeze-cert.yml") return;
+  const lines = source.split(/\r?\n/u);
+  const vigia = lines
+    .map((line, index) => ({ line, index:index + 1 }))
+    .filter(({ line }) => /VIGIA_SYNC_TOKEN:\s*\$\{\{\s*secrets\.VIGIA_SYNC_TOKEN\s*\}\}/u.test(line));
+  const cloudflare = lines
+    .map((line, index) => ({ line, index:index + 1 }))
+    .filter(({ line }) => /CLOUDFLARE_API_TOKEN:\s*\$\{\{\s*secrets\.CLOUDFLARE_API_TOKEN\s*\}\}/u.test(line));
+  if (vigia.length !== 2 || vigia.some(({ line }) => !/^\s{10}VIGIA_SYNC_TOKEN:/u.test(line))) {
+    violations.push(problem(file, "FREEZE_CERT_VIGIA_SECRET_SCOPE",
+      "Freeze certification VIGIA token must exist only on the two authenticated steps.",
+      vigia[0]?.index ?? null));
+  }
+  if (cloudflare.length !== 2 || cloudflare.some(({ line }) => !/^\s{10}CLOUDFLARE_API_TOKEN:/u.test(line))) {
+    violations.push(problem(file, "FREEZE_CERT_CLOUDFLARE_SECRET_SCOPE",
+      "Freeze certification Cloudflare token must exist only on the two authenticated steps.",
+      cloudflare[0]?.index ?? null));
   }
 }
 
