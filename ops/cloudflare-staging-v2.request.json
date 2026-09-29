@@ -1,4 +1,4 @@
 {
-  "operation": "source-reliability-f3-live-delta-audit",
-  "nonce": "source-reliability-f3-live-delta-audit-files-20260929"
+  "operation": "worker-status",
+  "nonce": "source-reliability-f3-parserbaseline-postmerge-status-20260929"
 }
