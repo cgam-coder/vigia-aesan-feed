@@ -1,4 +1,4 @@
 {
-  "operation": "worker-status",
-  "nonce": "source-reliability-f3-parserbaseline-postmerge-status-20260929"
+  "operation": "source-reliability-f3-production-build",
+  "nonce": "source-reliability-f3-legacy-parser-baseline-production-20260929"
 }

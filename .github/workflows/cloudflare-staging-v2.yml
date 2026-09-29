@@ -3669,7 +3669,7 @@ jobs:
           NODE
               ;;
             source-reliability-f3-production-build)
-              expected_commit="a823e09ed238b8977ca8cde3cc6ce53bd064cdb6"
+              expected_commit="bf498aa294f864da6bdbf5fdaf7b83ec6b8403c5"
               pre_status="$(wrangler deployments status --name "$CF_WORKER" --json)"
               PRE_STATUS="$pre_status" EXPECTED="$expected_commit" node --input-type=module - <<'NODE'
           const account="9c1807c68493f14259248b5f5782cc6f";
