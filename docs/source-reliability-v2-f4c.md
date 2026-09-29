@@ -31,4 +31,4 @@ parity are observed. F4D is not authorized by a single batch. Rollback: stop
 manual dispatches or revert this additive stage; existing schedulers never move.
 
 The module/tests live under ops so control-only changes do not match AESAN's
-scripts/** or test/** regeneration triggers. No existing workflow is edited.
+scripts/** or test/** regeneration triggers. Existing production workflows are unchanged; offline CI adds ops/** to its path filters.
