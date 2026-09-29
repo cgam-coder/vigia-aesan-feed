@@ -3119,9 +3119,10 @@ jobs:
           const desc=await post({pageNumber:0,pageSize:1,sortBy:"ano",sortOrder:"desc"});
           const min=Number(asc.content?.[0]?.ano), max=Number(desc.content?.[0]?.ano);
           const all=new Map();
+          let duplicateRows=0;
           const perYear=[];
           for(let year=max;year>=min;year-=1){
-            let pageNumber=0, observed=0, operational=0, overlaps=0;
+            let pageNumber=0, observed=0, operational=0, overlaps=0, duplicates=0;
             while(true){
               const page=await post({pageNumber,pageSize:250,sortBy:"identificador",sortOrder:"asc",anoAntigua:String(year)});
               for(const row of page.content){
@@ -3130,8 +3131,19 @@ jobs:
                 const fecha=String(row?.fechaAlta??"").trim();
                 const parsed=Date.parse(fecha);
                 const isOperational=Number.isFinite(parsed) && new Date(parsed).toISOString() >= "2020-01-01T00:00:00.000Z";
-                if(all.has(ref)) throw new Error("duplicate legacy reference across pages/years: "+ref);
-                all.set(ref,{year,fecha,isOperational});
+                const previous=all.get(ref);
+                if(previous){
+                  duplicateRows++;
+                  duplicates++;
+                  const previousDate=Date.parse(String(previous.fecha??""));
+                  if(!Number.isFinite(previousDate) || (Number.isFinite(parsed) && parsed>previousDate)) {
+                    all.set(ref,{year,fecha,isOperational:isOperational||Boolean(previous.isOperational)});
+                  } else if(isOperational && !previous.isOperational) {
+                    all.set(ref,{...previous,isOperational:true});
+                  }
+                } else {
+                  all.set(ref,{year,fecha,isOperational});
+                }
                 observed++;
                 if(isOperational) operational++;
                 if(current.has(ref)) overlaps++;
@@ -3140,7 +3152,7 @@ jobs:
               pageNumber++;
               if(pageNumber>=100) throw new Error("RAPNA legacy page budget exceeded");
             }
-            perYear.push({year,observed,operational,currentOverlap:overlaps});
+            perYear.push({year,observed,operational,currentOverlap:overlaps,duplicateRows:duplicates});
           }
           const official=new Set(all.keys());
           const operationalRefs=[...all].filter(([,v])=>v.isOperational).map(([ref])=>ref);
@@ -3149,7 +3161,9 @@ jobs:
           const operationalMissing=operationalRefs.filter(ref=>!current.has(ref)&&!d1Legacy.has(ref)).sort();
           const operationalStoredLegacy=operationalRefs.filter(ref=>d1Legacy.has(ref)).length;
           console.log("SOURCE_RELIABILITY_F3_RAPNA_OVERLAP "+JSON.stringify({
+            officialLegacyRows:perYear.reduce((sum,row)=>sum+row.observed,0),
             officialLegacy:official.size,
+            duplicateRows,
             operationalLegacy:operationalRefs.length,
             d1Current:current.size,
             d1Legacy:d1Legacy.size,
