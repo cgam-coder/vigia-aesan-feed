@@ -1,4 +1,4 @@
 {
-  "operation": "worker-settings-readonly",
-  "nonce": "home-f7-prod-worker-settings-20260929"
+  "operation": "worker-status",
+  "nonce": "home-f7-production-status-recheck-20260929"
 }
