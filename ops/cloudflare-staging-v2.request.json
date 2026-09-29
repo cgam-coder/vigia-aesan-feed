@@ -1,4 +1,4 @@
 {
-  "operation": "worker-build-trigger-inspect",
-  "nonce": "home-f7-prod-preflight-build-triggers-20260929"
+  "operation": "worker-status",
+  "nonce": "home-f7-production-status-20260929"
 }
