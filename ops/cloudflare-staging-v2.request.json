@@ -1,4 +1,4 @@
 {
-  "operation": "worker-versions",
-  "nonce": "home-f7-prod-preflight-versions-20260929"
+  "operation": "worker-build-trigger-inspect",
+  "nonce": "home-f7-prod-preflight-build-triggers-20260929"
 }
