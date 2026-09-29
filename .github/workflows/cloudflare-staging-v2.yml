@@ -44,7 +44,7 @@ jobs:
           const allowed=new Set([
             "probe","d1-canary-write","d1-canary-read",
             "worker-secret-list","worker-bootstrap-secrets",
-            "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","worker-settings-readonly",
+            "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","home-f7-build-log","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
             "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
@@ -2588,6 +2588,29 @@ jobs:
             logpush:r.logpush??null
           };
           console.log("WORKER_SETTINGS "+JSON.stringify(safe));
+          NODE
+              ;;
+            home-f7-build-log)
+              account_id="9c1807c68493f14259248b5f5782cc6f"
+              build_uuid="82bc8a14-c874-4330-b33d-d7539dca1f6a"
+              logs_json="$(curl --silent --show-error --fail-with-body \
+                "https://api.cloudflare.com/client/v4/accounts/$account_id/builds/builds/$build_uuid/logs" \
+                --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN")"
+              LOGS_JSON="$logs_json" node --input-type=module - <<'NODE'
+          const body=JSON.parse(process.env.LOGS_JSON||"{}");
+          if(body?.success!==true||!body?.result) throw new Error("invalid build logs response");
+          const raw=Array.isArray(body.result.lines)?body.result.lines:[];
+          const lines=raw.map((entry)=>Array.isArray(entry)?String(entry.at(-1)??""):String(entry));
+          const redacted=lines.map((line)=>line
+            .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+/giu,"Bearer [REDACTED]")
+            .replace(/(TOKEN|SECRET|PASSWORD)=\S+/giu,"$1=[REDACTED]"));
+          const interesting=redacted.filter((line)=>/(error|fail|ERR!|npm|typescript|tsc|lint|test|assert|exit code|build-verified|artifact|cloudflare)/iu.test(line));
+          console.log("HOME_F7_BUILD_LOG_SUMMARY "+JSON.stringify({
+            build_uuid:process.env.BUILD_UUID??null,
+            totalLines:lines.length,
+            interesting:interesting.slice(-220),
+            tail:redacted.slice(-120)
+          }));
           NODE
               ;;
             home-f7-production-build)
