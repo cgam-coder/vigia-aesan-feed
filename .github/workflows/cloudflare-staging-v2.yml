@@ -90,7 +90,21 @@ jobs:
                   --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
                   --output "$out" --write-out '%{http_code}' \
                   "$base/api/$endpoint/sync?audit=1")"
-                test "$code" = "200"
+                echo "SOURCE_RELIABILITY_F1_HTTP endpoint=$endpoint code=$code bytes=$(wc -c < "$out")"
+                if [ "$code" != "200" ]; then
+                  ENDPOINT="$endpoint" CODE="$code" node --input-type=module - "$out" <<'NODE'
+          import { readFileSync } from "node:fs";
+          let error="non-json response";
+          try {
+            const body=JSON.parse(readFileSync(process.argv[2],"utf8"));
+            if(typeof body?.error==="string") error=body.error.slice(0,500);
+          } catch {}
+          console.log("SOURCE_RELIABILITY_F1_ERROR "+JSON.stringify({
+            endpoint:process.env.ENDPOINT,http:Number(process.env.CODE),error
+          }));
+          NODE
+                  exit 1
+                fi
                 ENDPOINT="$endpoint" node --input-type=module - "$out" <<'NODE'
           import { readFileSync } from "node:fs";
           const endpoint=process.env.ENDPOINT;
