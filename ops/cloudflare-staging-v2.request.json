@@ -1,4 +1,4 @@
 {
-  "operation": "worker-status",
-  "nonce": "source-reliability-f1-active-deployment-20260929"
+  "operation": "worker-builds-list",
+  "nonce": "source-reliability-f1-pr151-build-history-20260929"
 }
