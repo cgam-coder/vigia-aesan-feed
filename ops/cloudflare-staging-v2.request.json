@@ -1,4 +1,4 @@
 {
-  "operation": "source-reliability-f2a-source-probe",
-  "nonce": "source-reliability-f2a-search-chunk-20260929"
+  "operation": "worker-status",
+  "nonce": "source-reliability-f2a-post-merge-worker-status-20260929"
 }
