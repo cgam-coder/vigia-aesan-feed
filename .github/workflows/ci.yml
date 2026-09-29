@@ -6,6 +6,7 @@ on:
       - "scripts/**"
       - "test/**"
       - "security-checks/**"
+      - "ops/**"
       - "package.json"
       - ".github/workflows/**"
   pull_request:
@@ -13,6 +14,7 @@ on:
       - "scripts/**"
       - "test/**"
       - "security-checks/**"
+      - "ops/**"
       - "package.json"
       - ".github/workflows/**"
   workflow_dispatch:
