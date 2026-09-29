@@ -110,6 +110,26 @@ jobs:
             source-reliability-f2a-fallback-live-cert)
               test -n "$VIGIA_SYNC_TOKEN"
               base="https://vigia-runtime.c-gamiz93.workers.dev"
+              preflight="$RUNNER_TEMP/safety-gate-fallback-preflight.json"
+              pre_code="$(curl --silent --show-error --location --request POST --max-time 180 \
+                --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
+                --output "$preflight" --write-out '%{http_code}' \
+                "$base/api/safety-gate/sync?mode=delta-preview")"
+              echo "SOURCE_RELIABILITY_F2A_FALLBACK_PREFLIGHT code=$pre_code bytes=$(wc -c < "$preflight")"
+              if [ "$pre_code" = "200" ]; then
+                PREFLIGHT="$preflight" node --input-type=module - <<'NODE'
+          import {readFileSync} from "node:fs";
+          const body=JSON.parse(readFileSync(process.env.PREFLIGHT,"utf8"));
+          const p=body?.preview;
+          if(!p||p.zeroWrite!==true) throw new Error("source recovered but zero-write preview contract missing");
+          console.log("SOURCE_RELIABILITY_F2A_SOURCE_RECOVERED "+JSON.stringify({
+            pagesScanned:p.pagesScanned,recordsObserved:p.recordsObserved,
+            candidateDetailRequests:p.candidateDetailRequests,reductionPercent:p.reductionPercent
+          }));
+          NODE
+                exit 0
+              fi
+              test "$pre_code" = "500"
               before="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS alerts, COALESCE(SUM(version_count),0) AS version_sum FROM alerts WHERE source='SAFETY GATE'; SELECT COUNT(*) AS versions FROM alert_versions v INNER JOIN alerts a ON a.id=v.alert_id WHERE a.source='SAFETY GATE';" --json)"
               out="$RUNNER_TEMP/safety-gate-fallback-live.json"
               code="$(curl --silent --show-error --location --request POST --max-time 420 \
