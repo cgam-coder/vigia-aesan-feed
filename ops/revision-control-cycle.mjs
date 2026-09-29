@@ -104,10 +104,17 @@ export async function runCycleParityWake({
       return report;
     }
     const budget = Math.min(unitBudgetMs, remaining);
-    const unit = await runUnit({
-      base, token, active:true, fetchImpl:boundedFetch, clock,
-      postBudgetMs:budget, legacyGuard,
-    });
+    let unit;
+    try {
+      unit = await runUnit({
+        base, token, active:true, fetchImpl:boundedFetch, clock,
+        postBudgetMs:budget, legacyGuard,
+      });
+    } catch {
+      report.blockedReason = "unit-execution-unavailable-no-retry";
+      report.parity = report.units.length ? "HOLD" : "NOT_EXECUTED";
+      return report;
+    }
     report.units.push(unit);
     report.mutatingRequests += unit.mutatingRequests ?? 0;
     if (unit.zeroWrite === false) report.zeroWrite = false;
