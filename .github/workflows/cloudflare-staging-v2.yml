@@ -158,42 +158,51 @@ jobs:
           NODE
               ;;
             source-reliability-f2a-source-probe)
-              node --input-type=module - <<'NODE'
+              d1_recent="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT reference FROM alerts WHERE source='SAFETY GATE' ORDER BY COALESCE(published_at,detected_at) DESC, id DESC LIMIT 298" --json)"
+              D1_RECENT="$d1_recent" node --input-type=module - <<'NODE'
+          const parseRows=(raw)=>{
+            const value=JSON.parse(raw||"[]");
+            return (Array.isArray(value)?value:[]).flatMap((x)=>x?.results??[]);
+          };
+          const d1Refs=new Set(parseRows(process.env.D1_RECENT).map((r)=>String(r.reference??"").trim()).filter(Boolean));
           const indexUrl="https://ec.europa.eu/safety-gate-alerts/api/download/weeklyReport/list/xml/en";
           const indexResponse=await fetch(indexUrl,{headers:{"Accept":"application/xml,text/xml"}});
           const indexText=await indexResponse.text();
-          const reportRefs=[...new Set([...indexText.matchAll(/Report-(\d{4})-(\d{1,3})/g)]
-            .map((m)=>({ref:m[0],year:Number(m[1]),week:Number(m[2]),pos:m.index??0})))]
-            .sort((a,b)=>a.year-b.year||a.week-b.week);
-          const latest=reportRefs.at(-1)??null;
-          let detailUrl=null;
-          if(latest){
-            const window=indexText.slice(Math.max(0,latest.pos-1500),Math.min(indexText.length,latest.pos+3000));
-            const absolute=window.match(/https:\/\/ec\.europa\.eu\/safety-gate-alerts\/api\/download\/weeklyReport\/detail\/xml\/[^<"'\s]+/);
-            const relative=window.match(/\/safety-gate-alerts\/api\/download\/weeklyReport\/detail\/xml\/[^<"'\s]+/);
-            detailUrl=(absolute?.[0]??(relative?new URL(relative[0],"https://ec.europa.eu").href:null))?.replaceAll("&amp;","&")??null;
+          if(!indexResponse.ok) throw new Error("weekly index HTTP "+indexResponse.status);
+          const reports=[...indexText.matchAll(/<weeklyReport>([\s\S]*?)<\/weeklyReport>/g)].flatMap((m)=>{
+            const xml=m[1];
+            const ref=xml.match(/<reference>([^<]+)<\/reference>/)?.[1]?.trim();
+            const year=Number(xml.match(/<year>([^<]+)<\/year>/)?.[1]);
+            const week=Number(xml.match(/<week>([^<]+)<\/week>/)?.[1]);
+            const rawUrl=xml.match(/<URL>([^<]+)<\/URL>/)?.[1]?.trim().replaceAll("&amp;","&");
+            if(!ref||!Number.isFinite(year)||!Number.isFinite(week)||!rawUrl) return [];
+            return [{ref,year,week,url:rawUrl}];
+          }).sort((a,b)=>a.year-b.year||a.week-b.week);
+          const latest=reports.slice(-4);
+          const reportStats=[];
+          const union=new Set();
+          for(const report of latest){
+            const response=await fetch(report.url,{headers:{"Accept":"application/xml,text/xml"}});
+            const text=await response.text();
+            if(!response.ok) throw new Error(report.ref+" HTTP "+response.status);
+            const refs=[...new Set([...text.matchAll(/<caseNumber>([^<]+)<\/caseNumber>/g)]
+              .map((m)=>String(m[1]??"").trim()).filter(Boolean))];
+            refs.forEach((ref)=>union.add(ref));
+            reportStats.push({ref:report.ref,references:refs.length,bytes:new TextEncoder().encode(text).byteLength});
           }
-          const summary={
-            indexStatus:indexResponse.status,
-            indexBytes:new TextEncoder().encode(indexText).byteLength,
-            latestReport:latest?.ref??null,
-            reportCount:reportRefs.length,
-            detailUrlFound:Boolean(detailUrl)
-          };
-          if(detailUrl){
-            const detailResponse=await fetch(detailUrl,{headers:{"Accept":"application/xml,text/xml"}});
-            const detailText=await detailResponse.text();
-            const refs=[...new Set([...detailText.matchAll(/\b(?:SR|OR|A12)\/\d{4,6}\/\d{2}\b/g)].map((m)=>m[0]))];
-            summary.detailStatus=detailResponse.status;
-            summary.detailBytes=new TextEncoder().encode(detailText).byteLength;
-            summary.referenceCount=refs.length;
-            summary.sampleReferences=refs.slice(0,12);
-            summary.containsKnownLatest=[
-              "SR/02448/26","SR/02584/26","SR/02603/26","SR/02613/26"
-            ].filter((ref)=>refs.includes(ref));
-          }
-          console.log("SOURCE_RELIABILITY_F2A_WEEKLY_FALLBACK_PROBE "+JSON.stringify(summary));
-          if(indexResponse.status!==200||!detailUrl||summary.detailStatus!==200) process.exit(2);
+          const weeklyOnly=[...union].filter((ref)=>!d1Refs.has(ref)).sort();
+          const d1Only=[...d1Refs].filter((ref)=>!union.has(ref)).sort();
+          const overlap=[...union].filter((ref)=>d1Refs.has(ref)).length;
+          console.log("SOURCE_RELIABILITY_F2A_WEEKLY_PARITY "+JSON.stringify({
+            reports:reportStats,
+            weeklyUnion:union.size,
+            d1Recent:d1Refs.size,
+            overlap,
+            weeklyOnlyCount:weeklyOnly.length,
+            d1OnlyCount:d1Only.length,
+            weeklyOnly:weeklyOnly.slice(0,25),
+            d1Only:d1Only.slice(0,25)
+          }));
           NODE
               ;;
             source-reliability-f2a-delta-preview)
