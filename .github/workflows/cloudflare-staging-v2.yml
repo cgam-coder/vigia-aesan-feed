@@ -158,50 +158,70 @@ jobs:
           NODE
               ;;
             source-reliability-f2a-source-probe)
-              node --input-type=module - <<'NODE'
-          const recentEndpoint="https://ec.europa.eu/safety-gate-alerts/public/api/notification/mostRecent/?";
+              d1_recent="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT reference FROM alerts WHERE source='SAFETY GATE' ORDER BY COALESCE(published_at,detected_at) DESC, id DESC LIMIT 298" --json)"
+              D1_RECENT="$d1_recent" node --input-type=module - <<'NODE'
+          const parseRows=(raw)=>{
+            const value=JSON.parse(raw||"[]");
+            return (Array.isArray(value)?value:[]).flatMap((x)=>x?.results??[]);
+          };
+          const d1Refs=new Set(parseRows(process.env.D1_RECENT).map((r)=>String(r.reference??"").trim()).filter(Boolean));
+          const endpoint="https://ec.europa.eu/safety-gate-alerts/public/api/notification/mostRecent/?";
           const headers={"Accept":"application/json","Content-Type":"application/json","language":"es"};
-          const healthy=new Set();
-          const page1=[];
+          const healthy=new Map();
+          let totalElements=null;
           for(let page=1;page<=3;page+=1){
-            const response=await fetch(recentEndpoint,{
-              method:"POST",headers,
-              body:JSON.stringify({language:"es",page:String(page),pageSize:"100"})
-            });
+            const response=await fetch(endpoint,{method:"POST",headers,body:JSON.stringify({language:"es",page:String(page),pageSize:"100"})});
+            if(!response.ok) throw new Error("healthy page "+page+" HTTP "+response.status);
             const body=await response.json();
-            if(!response.ok) throw new Error("recent page "+page+" HTTP "+response.status);
-            const content=Array.isArray(body?.content)?body.content:[];
-            content.forEach((item)=>{
-              const ref=String(item?.reference??"").trim();
-              if(ref) healthy.add(ref);
-              if(page===1&&ref) page1.push(ref);
-            });
+            totalElements??=Number(body?.totalElements);
+            for(const item of Array.isArray(body?.content)?body.content:[]) healthy.set(String(item.reference),item);
           }
           const indexUrl="https://ec.europa.eu/safety-gate-alerts/api/download/weeklyReport/list/xml/en";
-          const indexText=await (await fetch(indexUrl,{headers:{"Accept":"application/xml,text/xml"}})).text();
+          const indexResponse=await fetch(indexUrl,{headers:{"Accept":"application/xml,text/xml"}});
+          const indexText=await indexResponse.text();
+          if(!indexResponse.ok) throw new Error("weekly index HTTP "+indexResponse.status);
           const reports=[...indexText.matchAll(/<weeklyReport>([\s\S]*?)<\/weeklyReport>/g)].flatMap((m)=>{
             const xml=m[1];
             const ref=xml.match(/<reference>([^<]+)<\/reference>/)?.[1]?.trim();
-            const url=xml.match(/<URL>([^<]+)<\/URL>/)?.[1]?.trim().replaceAll("&amp;","&");
-            return ref&&url?[{ref,url}]:[];
-          });
-          const r37=reports.find((r)=>r.ref==="Report-2026-37");
-          if(!r37) throw new Error("Report-2026-37 missing");
-          const xml=await (await fetch(r37.url,{headers:{"Accept":"application/xml,text/xml"}})).text();
-          const refs=[...new Set([...xml.matchAll(/<caseNumber>([^<]+)<\/caseNumber>/g)]
-            .map((m)=>String(m[1]??"").trim()).filter(Boolean))];
-          const annotated=refs.map((ref,index)=>({index,ref,inHealthy:healthy.has(ref),page1Index:page1.indexOf(ref)}));
-          const firstHealthy=annotated.findIndex((x)=>x.inHealthy);
-          const missingPrefix=firstHealthy<0?annotated.length:firstHealthy;
-          const missingPositions=annotated.filter((x)=>!x.inHealthy).map((x)=>x.index);
-          console.log("SOURCE_RELIABILITY_F2A_WEEK37_BOUNDARY "+JSON.stringify({
-            reportRefs:refs.length,
-            healthyMatches:annotated.filter((x)=>x.inHealthy).length,
-            missing:annotated.filter((x)=>!x.inHealthy).length,
-            firstHealthyIndex:firstHealthy,
-            missingPrefix,
-            first40:annotated.slice(0,40),
-            missingPositions:missingPositions.slice(0,60)
+            const year=Number(xml.match(/<year>([^<]+)<\/year>/)?.[1]);
+            const week=Number(xml.match(/<week>([^<]+)<\/week>/)?.[1]);
+            const rawUrl=xml.match(/<URL>([^<]+)<\/URL>/)?.[1]?.trim().replaceAll("&amp;","&");
+            if(!ref||!Number.isFinite(year)||!Number.isFinite(week)||!rawUrl) return [];
+            return [{ref,year,week,url:rawUrl}];
+          }).sort((a,b)=>a.year-b.year||a.week-b.week);
+          const latest=reports.slice(-2);
+          const weekly=new Map();
+          for(const report of latest){
+            const response=await fetch(report.url,{headers:{"Accept":"application/xml,text/xml"}});
+            const text=await response.text();
+            if(!response.ok) throw new Error(report.ref+" HTTP "+response.status);
+            const notifications=[...text.matchAll(/<notifications\b[\s\S]*?<\/notifications>/g)].map((m)=>m[0]);
+            for(const xml of notifications){
+              const reference=xml.match(/<caseNumber>([^<]+)<\/caseNumber>/)?.[1]?.trim();
+              if(reference) weekly.set(reference,{reference,report:report.ref});
+            }
+          }
+          const healthyRefs=new Set(healthy.keys());
+          const expectedMissing=Number(totalElements)-healthyRefs.size;
+          const oldMissing=[...d1Refs].filter((ref)=>!healthyRefs.has(ref));
+          const weeklyMissing=[...weekly.keys()].filter((ref)=>!healthyRefs.has(ref));
+          const oldStillCurrent=oldMissing.filter((ref)=>weekly.has(ref));
+          const newWeekly=weeklyMissing.filter((ref)=>!d1Refs.has(ref));
+          const combined=new Set([...oldStillCurrent,...newWeekly]);
+          console.log("SOURCE_RELIABILITY_F2A_PAGE0_SET_PARITY "+JSON.stringify({
+            totalElements,
+            healthy:healthyRefs.size,
+            expectedMissing,
+            d1Recent:d1Refs.size,
+            oldMissing:oldMissing.length,
+            weeklyTwoReports:weekly.size,
+            weeklyMissing:weeklyMissing.length,
+            oldStillCurrent:oldStillCurrent.length,
+            newWeekly:newWeekly.length,
+            combined:combined.size,
+            newWeeklyRefs:newWeekly.sort(),
+            oldMissingNotInWeekly:oldMissing.filter((ref)=>!weekly.has(ref)).sort().slice(0,40),
+            weeklyMissingNotInOld:weeklyMissing.filter((ref)=>!d1Refs.has(ref)).sort()
           }));
           NODE
               ;;
