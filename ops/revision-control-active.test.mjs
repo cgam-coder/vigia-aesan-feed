@@ -68,6 +68,20 @@ test("stage shadow performs GET only; active does exactly one persisted unit wit
   assert.deepEqual(r.delta, { recordsObserved:5, recordsPersisted:0, newCount:0, updatedCount:0, pageErrors:0, detailFailures:0 });
   assert.equal(r.parity, "PASS_SINGLE_BATCH_ONLY"); assert.equal(r.retirementAuthorized, false);
 });
+test("single-unit budget remains 20min by default and can be lowered for a bounded cycle window", async () => {
+  const defaultBudget = fixture({ change:(b) => b.OECD.recent.lastSuccessAt = at(26) });
+  const blocked = await execute(defaultBudget);
+  assert.equal(blocked.blockedReason, "recent-budget-priority");
+  assert.equal(blocked.postBudgetMs, 20 * 60_000);
+  assert.equal(posts(defaultBudget), 0);
+
+  const shorter = fixture({ change:(b) => b.OECD.recent.lastSuccessAt = at(36) });
+  const passed = await execute(shorter, { postBudgetMs:5 * 60_000 });
+  assert.equal(passed.postBudgetMs, 5 * 60_000);
+  assert.equal(passed.parity, "PASS_SINGLE_BATCH_ONLY");
+  assert.equal(posts(shorter), 1);
+});
+
 test("active source lease, stale recent, insufficient recent budget and semantic failures block before POST", async () => {
   for (const [reason, change] of [
     ["active-lease", (b) => b.OECD.lease = { source:"OECD", mode:"recent", ownerId:"legacy", expiresAt:at(-10) }],
