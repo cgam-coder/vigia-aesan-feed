@@ -159,58 +159,42 @@ jobs:
               ;;
             source-reliability-f2a-source-probe)
               node --input-type=module - <<'NODE'
-          const endpoint="https://ec.europa.eu/safety-gate-alerts/public/api/search";
-          const headers={
-            "Accept":"application/json",
-            "Content-Type":"application/json",
-            "language":"es",
-            "lang":"es"
-          };
-          const base={
-            criteria:{year:[2026]},
-            searchCriteriaForNotification:false,
-            isLaunched:true,
-            searchResults:[],
-            displayDefaultResults:false,
-            displayTagsWithSelectedCriteria:[],
-            isForMostRecent:false,
-            language:"es",
-            fullTextSearch:""
-          };
-          const variants=[
-            {name:"size",pagination:{size:100,page:0,sortField:"PUBLICATION_DATE",sortOrder:"DESC"}},
-            {name:"pageSize",pagination:{pageSize:100,page:0,sortField:"PUBLICATION_DATE",sortOrder:"DESC"}},
-            {name:"size-sortBy",pagination:{size:100,page:0,sortBy:"PUBLICATION_DATE",sortOrder:"DESC"}},
-            {name:"ui-default",pagination:{size:9,page:0,sortField:"PUBLICATION_DATE",sortOrder:"DESC"}}
+          const origin="https://ec.europa.eu";
+          const paths=[
+            "/safety-gate-alerts/public/api/search",
+            "/safety-gate-alerts/public/api/search/",
+            "/safety-gate-alerts/api/search",
+            "/safety-gate-alerts/api/search/",
+            "/safety-gate-alerts/screen/public/api/search",
+            "/safety-gate-alerts/screen/public/api/search/",
+            "/safety-gate-alerts/api/public/api/search",
+            "/safety-gate-alerts/api/public/api/search/"
           ];
+          const body=JSON.stringify({
+            criteria:{year:[2026]},
+            language:"es",
+            fullTextSearch:"",
+            pagination:{size:9,page:0,sortField:"PUBLICATION_DATE",sortOrder:"DESC"}
+          });
           const results=[];
-          for(const variant of variants){
-            const response=await fetch(endpoint,{
-              method:"POST",headers,
-              body:JSON.stringify({...base,pagination:variant.pagination})
-            });
-            const text=await response.text();
-            const row={
-              name:variant.name,status:response.status,
-              contentType:response.headers.get("content-type"),
-              bytes:new TextEncoder().encode(text).byteLength
-            };
-            try{
-              const body=JSON.parse(text);
-              row.keys=body&&typeof body==="object"?Object.keys(body).slice(0,30):[];
-              row.contentCount=Array.isArray(body?.content)?body.content.length:null;
-              row.totalElements=Number.isFinite(Number(body?.totalElements))?Number(body.totalElements):null;
-              row.totalPages=Number.isFinite(Number(body?.totalPages))?Number(body.totalPages):null;
-              row.number=Number.isFinite(Number(body?.number))?Number(body.number):null;
-              row.size=Number.isFinite(Number(body?.size))?Number(body.size):null;
-              row.firstRefs=Array.isArray(body?.content)?body.content.slice(0,8).map(x=>x?.reference??null):[];
-              row.error=body?.message??body?.error??null;
-            }catch{
-              row.bodyPrefix=text.slice(0,300).replace(/\s+/g," ");
+          for(const path of paths){
+            for(const method of ["GET","POST"]){
+              const response=await fetch(origin+path,{
+                method,
+                headers:{"Accept":"application/json","Content-Type":"application/json","language":"es","lang":"es"},
+                ...(method==="POST"?{body}: {})
+              });
+              const text=await response.text();
+              results.push({
+                path,method,status:response.status,
+                allow:response.headers.get("allow"),
+                contentType:response.headers.get("content-type"),
+                bytes:new TextEncoder().encode(text).byteLength,
+                prefix:text.slice(0,160).replace(/\s+/g," ")
+              });
             }
-            results.push(row);
           }
-          console.log("SOURCE_RELIABILITY_F2A_SEARCH_PROBE "+JSON.stringify(results));
+          console.log("SOURCE_RELIABILITY_F2A_SEARCH_ROUTE_MATRIX "+JSON.stringify(results));
           NODE
               ;;
             source-reliability-f2a-delta-preview)
