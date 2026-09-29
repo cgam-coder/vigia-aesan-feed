@@ -1,0 +1,17 @@
+name: TEMP schedule event probe
+
+on:
+  schedule:
+    - cron: "51 * * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Report schedule event only
+        run: |
+          echo "TEMP_SCHEDULE_PROBE event=$GITHUB_EVENT_NAME sha=$GITHUB_SHA run_id=$GITHUB_RUN_ID"
