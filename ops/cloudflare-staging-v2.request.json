@@ -1,4 +1,4 @@
 {
-  "operation": "source-reliability-f1-build-log",
-  "nonce": "source-reliability-f1-build-log-20260929"
+  "operation": "worker-builds-list",
+  "nonce": "source-reliability-f1-postfix-build-history-20260929"
 }
