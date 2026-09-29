@@ -83,7 +83,7 @@ jobs:
               ;;
             source-reliability-f1-build-log)
               account_id="9c1807c68493f14259248b5f5782cc6f"
-              build_uuid="5b886cb1-bdf2-4ab1-ab3e-62da0e74c0e2"
+              build_uuid="b368da74-adff-4ec2-bc82-d7ac3400c1d4"
               logs_json="$(curl --silent --show-error --fail-with-body \
                 "https://api.cloudflare.com/client/v4/accounts/$account_id/builds/builds/$build_uuid/logs" \
                 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN")"
