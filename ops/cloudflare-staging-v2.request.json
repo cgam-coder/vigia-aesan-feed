@@ -1,4 +1,4 @@
 {
-  "operation": "source-reliability-f3-live-cycle-cert",
-  "nonce": "source-reliability-f3-terminal-aggregate-cert-20260929"
+  "operation": "source-reliability-f3-freshness-diagnose",
+  "nonce": "source-reliability-f3-freshness-diagnose-20260929"
 }

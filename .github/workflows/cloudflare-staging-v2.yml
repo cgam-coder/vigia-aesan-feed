@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","home-f7-build-log","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f3-build-log","source-reliability-f3-live-cycle-cert","source-reliability-f3-live-delta-audit","source-reliability-f3-false-version-repair-audit","source-reliability-f3-false-version-repair","source-reliability-f3-live-step-cert","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f3-rapna-duplicate-detail","source-reliability-f3-rapna-operational-diff","source-reliability-f3-preview-observe","source-reliability-f3-production-build","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f3-build-log","source-reliability-f3-live-cycle-cert","source-reliability-f3-live-delta-audit","source-reliability-f3-false-version-repair-audit","source-reliability-f3-false-version-repair","source-reliability-f3-live-step-cert","source-reliability-f3-freshness-diagnose","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f3-rapna-duplicate-detail","source-reliability-f3-rapna-operational-diff","source-reliability-f3-preview-observe","source-reliability-f3-production-build","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -4046,6 +4046,64 @@ jobs:
             http:Number(process.env.HTTP_CODE),status:state.status,revisionStatus:state.revisionStatus,
             revisionLastSuccessAt:state.revisionLastSuccessAt,revisionAgeMinutes:state.revisionAgeMinutes,
             recentStatus:view.recent?.status??null,revisionScope:view.revision?.scope??null
+          }));
+          NODE
+              ;;
+            source-reliability-f3-freshness-diagnose)
+              rapna_state="$(wrangler d1 execute "$CF_D1" --remote --command "
+                SELECT source,checked_at AS checkedAt,status,
+                  official_latest_identity AS officialLatestIdentity,
+                  nagame_latest_identity AS nagameLatestIdentity,
+                  latest_identity_parity AS latestIdentityParity,
+                  sample_official_count AS sampleOfficialCount,
+                  sample_nagame_count AS sampleNagameCount,
+                  missing_official_identities AS missingOfficialIdentities,
+                  unexpected_nagame_identities AS unexpectedNagameIdentities,
+                  revision_mismatches AS revisionMismatches,
+                  last_sync_success_at AS lastSyncSuccessAt,
+                  sync_age_minutes AS syncAgeMinutes,lag_minutes AS lagMinutes,
+                  revision_status AS revisionStatus,
+                  revision_last_success_at AS revisionLastSuccessAt,
+                  revision_age_minutes AS revisionAgeMinutes,error
+                FROM source_freshness_state WHERE source='RAPNA';
+                SELECT source,mode,status,cursor,total_units AS totalUnits,
+                  last_success_at AS lastSuccessAt,completed_at AS completedAt,
+                  coverage,last_error AS lastError
+                FROM source_sync_state
+                WHERE source='RAPNA' AND mode IN ('recent','current-parity','legacy-reconcile')
+                ORDER BY mode;
+                SELECT source,mode,completed_at AS completedAt,coverage,audit_status AS auditStatus
+                FROM source_revision_certifications
+                WHERE source='RAPNA' ORDER BY mode;
+              " --json)"
+              RAPNA_STATE="$rapna_state" node --input-type=module - <<'NODE'
+          const raw=JSON.parse(process.env.RAPNA_STATE||"[]");
+          const rows=(Array.isArray(raw)?raw:[]).flatMap(x=>x?.results??[]);
+          const freshness=rows.find(r=>r?.source==="RAPNA"&&"checkedAt" in r)??null;
+          const sync=rows.filter(r=>r?.source==="RAPNA"&&"mode" in r&&"lastSuccessAt" in r);
+          const certs=rows.filter(r=>r?.source==="RAPNA"&&"auditStatus" in r);
+          if(!freshness) throw new Error("RAPNA freshness row missing");
+          const list=(value)=>{try{const p=JSON.parse(String(value??"[]"));return Array.isArray(p)?p:[];}catch{return ["invalid-json"];}}
+          console.log("SOURCE_RELIABILITY_F3_FRESHNESS_DIAG "+JSON.stringify({
+            freshness:{
+              checkedAt:freshness.checkedAt,status:freshness.status,
+              officialLatestIdentity:freshness.officialLatestIdentity??null,
+              nagameLatestIdentity:freshness.nagameLatestIdentity??null,
+              latestIdentityParity:Boolean(freshness.latestIdentityParity),
+              sampleOfficialCount:Number(freshness.sampleOfficialCount??0),
+              sampleNagameCount:Number(freshness.sampleNagameCount??0),
+              missingOfficialIdentities:list(freshness.missingOfficialIdentities),
+              unexpectedNagameIdentities:list(freshness.unexpectedNagameIdentities),
+              revisionMismatches:list(freshness.revisionMismatches),
+              lastSyncSuccessAt:freshness.lastSyncSuccessAt??null,
+              syncAgeMinutes:freshness.syncAgeMinutes===null?null:Number(freshness.syncAgeMinutes),
+              lagMinutes:freshness.lagMinutes===null?null:Number(freshness.lagMinutes),
+              revisionStatus:freshness.revisionStatus,
+              revisionLastSuccessAt:freshness.revisionLastSuccessAt??null,
+              revisionAgeMinutes:freshness.revisionAgeMinutes===null?null:Number(freshness.revisionAgeMinutes),
+              error:freshness.error??null
+            },
+            sync,certifications:certs
           }));
           NODE
               ;;
