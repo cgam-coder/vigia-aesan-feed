@@ -5,7 +5,10 @@ on:
     branches: [main]
     paths:
       - "scripts/**"
+      - "!scripts/revision-control.mjs"
       - "test/**"
+      - "!test/revision-control.test.mjs"
+      - "!test/revision-control-workflow.test.mjs"
       - "package.json"
       - ".github/workflows/update-feed.yml"
   schedule:
