@@ -158,70 +158,46 @@ jobs:
           NODE
               ;;
             source-reliability-f2a-source-probe)
-              d1_recent="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT reference FROM alerts WHERE source='SAFETY GATE' ORDER BY COALESCE(published_at,detected_at) DESC, id DESC LIMIT 298" --json)"
-              D1_RECENT="$d1_recent" node --input-type=module - <<'NODE'
+              d1_updated="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT reference, updated_at AS updatedAt FROM alerts WHERE source='SAFETY GATE' ORDER BY COALESCE(updated_at,published_at,detected_at) DESC, id DESC LIMIT 305" --json)"
+              D1_UPDATED="$d1_updated" node --input-type=module - <<'NODE'
           const parseRows=(raw)=>{
             const value=JSON.parse(raw||"[]");
             return (Array.isArray(value)?value:[]).flatMap((x)=>x?.results??[]);
           };
-          const d1Refs=new Set(parseRows(process.env.D1_RECENT).map((r)=>String(r.reference??"").trim()).filter(Boolean));
+          const d1Rows=parseRows(process.env.D1_UPDATED);
+          const d1Order=d1Rows.map((r)=>String(r.reference??"").trim()).filter(Boolean);
+          const d1Refs=new Set(d1Order);
           const endpoint="https://ec.europa.eu/safety-gate-alerts/public/api/notification/mostRecent/?";
           const headers={"Accept":"application/json","Content-Type":"application/json","language":"es"};
-          const healthy=new Map();
+          const healthyOrder=[];
           let totalElements=null;
           for(let page=1;page<=3;page+=1){
             const response=await fetch(endpoint,{method:"POST",headers,body:JSON.stringify({language:"es",page:String(page),pageSize:"100"})});
             if(!response.ok) throw new Error("healthy page "+page+" HTTP "+response.status);
             const body=await response.json();
             totalElements??=Number(body?.totalElements);
-            for(const item of Array.isArray(body?.content)?body.content:[]) healthy.set(String(item.reference),item);
+            for(const item of Array.isArray(body?.content)?body.content:[]) healthyOrder.push(String(item.reference));
           }
-          const indexUrl="https://ec.europa.eu/safety-gate-alerts/api/download/weeklyReport/list/xml/en";
-          const indexResponse=await fetch(indexUrl,{headers:{"Accept":"application/xml,text/xml"}});
-          const indexText=await indexResponse.text();
-          if(!indexResponse.ok) throw new Error("weekly index HTTP "+indexResponse.status);
-          const reports=[...indexText.matchAll(/<weeklyReport>([\s\S]*?)<\/weeklyReport>/g)].flatMap((m)=>{
-            const xml=m[1];
-            const ref=xml.match(/<reference>([^<]+)<\/reference>/)?.[1]?.trim();
-            const year=Number(xml.match(/<year>([^<]+)<\/year>/)?.[1]);
-            const week=Number(xml.match(/<week>([^<]+)<\/week>/)?.[1]);
-            const rawUrl=xml.match(/<URL>([^<]+)<\/URL>/)?.[1]?.trim().replaceAll("&amp;","&");
-            if(!ref||!Number.isFinite(year)||!Number.isFinite(week)||!rawUrl) return [];
-            return [{ref,year,week,url:rawUrl}];
-          }).sort((a,b)=>a.year-b.year||a.week-b.week);
-          const latest=reports.slice(-2);
-          const weekly=new Map();
-          for(const report of latest){
-            const response=await fetch(report.url,{headers:{"Accept":"application/xml,text/xml"}});
-            const text=await response.text();
-            if(!response.ok) throw new Error(report.ref+" HTTP "+response.status);
-            const notifications=[...text.matchAll(/<notifications\b[\s\S]*?<\/notifications>/g)].map((m)=>m[0]);
-            for(const xml of notifications){
-              const reference=xml.match(/<caseNumber>([^<]+)<\/caseNumber>/)?.[1]?.trim();
-              if(reference) weekly.set(reference,{reference,report:report.ref});
-            }
-          }
-          const healthyRefs=new Set(healthy.keys());
-          const expectedMissing=Number(totalElements)-healthyRefs.size;
-          const oldMissing=[...d1Refs].filter((ref)=>!healthyRefs.has(ref));
-          const weeklyMissing=[...weekly.keys()].filter((ref)=>!healthyRefs.has(ref));
-          const oldStillCurrent=oldMissing.filter((ref)=>weekly.has(ref));
-          const newWeekly=weeklyMissing.filter((ref)=>!d1Refs.has(ref));
-          const combined=new Set([...oldStillCurrent,...newWeekly]);
-          console.log("SOURCE_RELIABILITY_F2A_PAGE0_SET_PARITY "+JSON.stringify({
+          const healthyRefs=new Set(healthyOrder);
+          const overlap=healthyOrder.filter((ref)=>d1Refs.has(ref)).length;
+          const d1Missing=d1Order.filter((ref)=>!healthyRefs.has(ref));
+          const expectedMissing=Number(totalElements)-healthyOrder.length;
+          const positions=healthyOrder.slice(0,30).map((ref,index)=>({
+            healthyIndex:index,
+            ref,
+            d1Index:d1Order.indexOf(ref)
+          }));
+          const exactTailMatches=healthyOrder.reduce((n,ref,index)=>n+(d1Order[100+index]===ref?1:0),0);
+          console.log("SOURCE_RELIABILITY_F2A_UPDATED_ORDER "+JSON.stringify({
             totalElements,
-            healthy:healthyRefs.size,
+            d1Rows:d1Order.length,
+            healthy:healthyOrder.length,
+            overlap,
             expectedMissing,
-            d1Recent:d1Refs.size,
-            oldMissing:oldMissing.length,
-            weeklyTwoReports:weekly.size,
-            weeklyMissing:weeklyMissing.length,
-            oldStillCurrent:oldStillCurrent.length,
-            newWeekly:newWeekly.length,
-            combined:combined.size,
-            newWeeklyRefs:newWeekly.sort(),
-            oldMissingNotInWeekly:oldMissing.filter((ref)=>!weekly.has(ref)).sort().slice(0,40),
-            weeklyMissingNotInOld:weeklyMissing.filter((ref)=>!d1Refs.has(ref)).sort()
+            d1Missing:d1Missing.length,
+            exactTailMatches,
+            first30Positions:positions,
+            d1MissingRefs:d1Missing.slice(0,120)
           }));
           NODE
               ;;
