@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","home-f7-build-log","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f3-rapna-duplicate-detail","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -3175,6 +3175,63 @@ jobs:
             operationalOverlapSample:operationalOverlap.slice(0,30),
             operationalMissingSample:operationalMissing.slice(0,30),
             perYear
+          }));
+          NODE
+              ;;
+            source-reliability-f3-rapna-duplicate-detail)
+              node --input-type=module - <<'NODE'
+          import { createHash } from "node:crypto";
+          const endpoint="https://servicios.consumo.gob.es/rapnaBEPublic/listadoPublico/notificacionAntigua";
+          const headers={"Accept":"application/json","Content-Type":"application/json"};
+          const post=async(body)=>{
+            const response=await fetch(endpoint,{method:"POST",headers,body:JSON.stringify(body)});
+            if(!response.ok) throw new Error("RAPNA legacy HTTP "+response.status);
+            const json=await response.json();
+            if(!Array.isArray(json?.content)) throw new Error("RAPNA legacy invalid page");
+            return json;
+          };
+          const stable=(v)=>Array.isArray(v)?v.map(stable):v&&typeof v==="object"
+            ?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b)).map(([k,x])=>[k,stable(x)])):v;
+          const digest=(v)=>createHash("sha256").update(JSON.stringify(stable(v))).digest("hex");
+          const asc=await post({pageNumber:0,pageSize:1,sortBy:"ano",sortOrder:"asc"});
+          const desc=await post({pageNumber:0,pageSize:1,sortBy:"ano",sortOrder:"desc"});
+          const min=Number(asc.content?.[0]?.ano), max=Number(desc.content?.[0]?.ano);
+          const groups=new Map();
+          for(let year=max;year>=min;year-=1){
+            for(let pageNumber=0;pageNumber<100;pageNumber+=1){
+              const page=await post({pageNumber,pageSize:250,sortBy:"identificador",sortOrder:"asc",anoAntigua:String(year)});
+              for(const row of page.content){
+                const ref=String(row?.identificador??"").trim();
+                if(!ref) throw new Error("RAPNA legacy row without reference");
+                const fecha=String(row?.fechaAlta??"").trim();
+                const parsed=Date.parse(fecha);
+                const operational=Number.isFinite(parsed)&&new Date(parsed).toISOString()>="2020-01-01T00:00:00.000Z";
+                const item={year,id:Number(row?.id??0),fechaAlta:fecha,operational,hash:digest(row)};
+                const list=groups.get(ref)??[];
+                list.push(item); groups.set(ref,list);
+              }
+              if(page.last===true||page.content.length===0||pageNumber+1>=Number(page.totalPages)) break;
+              if(pageNumber===99) throw new Error("RAPNA legacy page budget exceeded");
+            }
+          }
+          const duplicates=[...groups.entries()].filter(([,rows])=>rows.length>1).map(([reference,rows])=>({
+            reference,
+            rows:rows.sort((a,b)=>b.fechaAlta.localeCompare(a.fechaAlta)||b.id-a.id),
+            distinctHashes:new Set(rows.map(r=>r.hash)).size,
+            anyOperational:rows.some(r=>r.operational)
+          })).sort((a,b)=>a.reference.localeCompare(b.reference,"es",{numeric:true}));
+          const conflicting=duplicates.filter(d=>d.distinctHashes>1);
+          const operational=duplicates.filter(d=>d.anyOperational);
+          console.log("SOURCE_RELIABILITY_F3_RAPNA_DUPLICATES "+JSON.stringify({
+            uniqueReferences:groups.size,
+            duplicateGroups:duplicates.length,
+            duplicateRows:duplicates.reduce((n,d)=>n+d.rows.length-1,0),
+            conflictingGroups:conflicting.length,
+            operationalDuplicateGroups:operational.length,
+            duplicates:duplicates.map(d=>({
+              reference:d.reference,distinctHashes:d.distinctHashes,anyOperational:d.anyOperational,
+              rows:d.rows.map(r=>({year:r.year,id:r.id,fechaAlta:r.fechaAlta,operational:r.operational,hash:r.hash.slice(0,16)}))
+            }))
           }));
           NODE
               ;;
