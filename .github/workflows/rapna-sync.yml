@@ -9,7 +9,6 @@ on:
     - cron: "23 * * * *"
     - cron: "53 * * * *"
     - cron: "41 4 * * *"
-    - cron: "11 5 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -99,8 +98,8 @@ jobs:
 
 
   legacy_revision:
-    needs: [writer_gate, runtime_target]
-    if: needs.writer_gate.outputs.allowed == 'true' && github.event_name == 'schedule' && github.event.schedule == '11 5 * * *'
+    needs: [writer_gate, runtime_target, current_parity]
+    if: needs.writer_gate.outputs.allowed == 'true' && needs.current_parity.result == 'success' && github.event_name == 'schedule' && github.event.schedule == '41 4 * * *'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -136,6 +135,11 @@ jobs:
           }else if(state.status==="completed"){
             if(state.coverage!=="official-index-complete"||state.cursor!==state.totalUnits||state.recordsObserved<=0) {
               throw new Error("RAPNA LEGACY terminal certification preconditions failed: "+JSON.stringify(state));
+            }
+            const cert=body?.revisionCertification;
+            if(!cert||cert.source!=="RAPNA"||cert.mode!=="legacy-reconcile"||
+               cert.auditStatus!=="passed"||cert.coverage!=="official-index-complete") {
+              throw new Error("RAPNA LEGACY terminal certification missing: "+JSON.stringify(cert));
             }
             console.log(JSON.stringify({
               status:state.status,cursor:state.cursor,totalUnits:state.totalUnits,pagesScanned:state.pagesScanned,
