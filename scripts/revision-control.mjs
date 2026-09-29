@@ -62,11 +62,7 @@ function validateRevision(view) {
   }
 }
 
-export function validateReliabilitySnapshot(payload, {
-  now = Date.now(),
-  maxSnapshotAgeMinutes = 30,
-  futureToleranceMinutes = 5,
-} = {}) {
+export function validateReliabilitySnapshot(payload) {
   if (!isObject(payload) || !Array.isArray(payload.reliability)) {
     throw new Error("Freshness payload does not contain reliability");
   }
@@ -81,10 +77,6 @@ export function validateReliabilitySnapshot(payload, {
     }
     seen.add(view.source);
     if (!iso(view.checkedAt)) throw new Error(`Invalid checkedAt for ${view.source}`);
-    const ageMs = now - Date.parse(view.checkedAt);
-    if (ageMs > maxSnapshotAgeMinutes * 60_000 || ageMs < -futureToleranceMinutes * 60_000) {
-      throw new Error(`Reliability snapshot for ${view.source} is outside the control window`);
-    }
     if (typeof view.activeLease !== "boolean") throw new Error(`Invalid activeLease for ${view.source}`);
     if (view.error !== null && typeof view.error !== "string") throw new Error(`Invalid error for ${view.source}`);
     validateRecent(view);
@@ -114,6 +106,15 @@ function activeRevisionCycle(revision) {
     revision.progress < revision.total;
 }
 
+function reliabilitySnapshotAgeMinutes(view, now) {
+  return Math.round((now - Date.parse(view.checkedAt)) / 60_000);
+}
+
+function reliabilitySnapshotFresh(view, now, maxSnapshotAgeMinutes, futureToleranceMinutes) {
+  const ageMinutes = reliabilitySnapshotAgeMinutes(view, now);
+  return ageMinutes <= maxSnapshotAgeMinutes && ageMinutes >= -futureToleranceMinutes;
+}
+
 function severity(view) {
   if (activeRevisionCycle(view.revision)) return 4;
   if (view.revision.status === "stale") return 3;
@@ -132,7 +133,9 @@ function laneFor(source) {
 
 export function buildRevisionShadowPlan(payload, observations = {}, options = {}) {
   const now = options.now ?? Date.now();
-  const views = validateReliabilitySnapshot(payload, { ...options, now });
+  const maxSnapshotAgeMinutes = options.maxSnapshotAgeMinutes ?? 30;
+  const futureToleranceMinutes = options.futureToleranceMinutes ?? 5;
+  const views = validateReliabilitySnapshot(payload);
   const candidates = [];
   const blocked = [];
   const idle = [];
@@ -149,12 +152,17 @@ export function buildRevisionShadowPlan(payload, observations = {}, options = {}
     const leaseActive = view.activeLease || observedLease;
     const cycleActive = activeRevisionCycle(view.revision);
     const needsRevision = cycleActive || view.revision.status !== "fresh";
-    const blockedReason = view.error ? "source-error" :
+    const snapshotAgeMinutes = reliabilitySnapshotAgeMinutes(view, now);
+    const snapshotFresh = reliabilitySnapshotFresh(view, now, maxSnapshotAgeMinutes, futureToleranceMinutes);
+    const blockedReason = !snapshotFresh ? "reliability-snapshot-stale" :
+      view.error ? "source-error" :
       leaseActive ? "active-lease" :
       view.recent.status !== "fresh" ? "recent-priority" : null;
 
     const record = {
       source:view.source,
+      reliabilityCheckedAt:view.checkedAt,
+      reliabilityAgeMinutes:snapshotAgeMinutes,
       lane:laneFor(view.source),
       revisionStatus:view.revision.status,
       revisionAgeMinutes:view.revision.ageMinutes,
