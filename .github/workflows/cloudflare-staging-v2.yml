@@ -159,36 +159,62 @@ jobs:
               ;;
             source-reliability-f2a-source-probe)
               node --input-type=module - <<'NODE'
-          const endpoint="https://ec.europa.eu/safety-gate-alerts/public/api/notification/mostRecent/?";
-          const headers={"Accept":"application/json","Content-Type":"application/json","language":"es"};
-          const results=[];
-          for(let page=0;page<5;page+=1){
-            const response=await fetch(endpoint,{
-              method:"POST",
-              headers,
+          const recentEndpoint="https://ec.europa.eu/safety-gate-alerts/public/api/notification/mostRecent/?";
+          const jsonHeaders={"Accept":"application/json","Content-Type":"application/json","language":"es"};
+          const healthy=new Set();
+          const healthyPages=[];
+          for(let page=1;page<=3;page+=1){
+            const response=await fetch(recentEndpoint,{
+              method:"POST",headers:jsonHeaders,
               body:JSON.stringify({language:"es",page:String(page),pageSize:"100"})
             });
-            const text=await response.text();
-            const row={page,status:response.status,bytes:new TextEncoder().encode(text).byteLength};
-            if(response.ok){
-              const body=JSON.parse(text);
-              const content=Array.isArray(body?.content)?body.content:[];
-              Object.assign(row,{
-                contentCount:content.length,
-                totalElements:Number.isFinite(Number(body?.totalElements))?Number(body.totalElements):null,
-                totalPages:Number.isFinite(Number(body?.totalPages))?Number(body.totalPages):null,
-                number:Number.isFinite(Number(body?.number))?Number(body.number):null,
-                size:Number.isFinite(Number(body?.size))?Number(body.size):null,
-                last:body?.last??null,
-                firstReferences:content.slice(0,5).map((x)=>x?.reference??null),
-                lastReferences:content.slice(-5).map((x)=>x?.reference??null)
-              });
-            }else{
-              row.bodyPrefix=text.slice(0,180).replace(/\s+/g," ");
-            }
-            results.push(row);
+            const body=await response.json();
+            if(!response.ok) throw new Error("healthy recent page "+page+" HTTP "+response.status);
+            const content=Array.isArray(body?.content)?body.content:[];
+            content.forEach((item)=>healthy.add(String(item?.reference??"").trim()));
+            healthyPages.push({page,count:content.length});
           }
-          console.log("SOURCE_RELIABILITY_F2A_PAGE100_MATRIX "+JSON.stringify(results));
+          const indexUrl="https://ec.europa.eu/safety-gate-alerts/api/download/weeklyReport/list/xml/en";
+          const indexResponse=await fetch(indexUrl,{headers:{"Accept":"application/xml,text/xml"}});
+          const indexText=await indexResponse.text();
+          if(!indexResponse.ok) throw new Error("weekly index HTTP "+indexResponse.status);
+          const reports=[...indexText.matchAll(/<weeklyReport>([\s\S]*?)<\/weeklyReport>/g)].flatMap((m)=>{
+            const xml=m[1];
+            const ref=xml.match(/<reference>([^<]+)<\/reference>/)?.[1]?.trim();
+            const year=Number(xml.match(/<year>([^<]+)<\/year>/)?.[1]);
+            const week=Number(xml.match(/<week>([^<]+)<\/week>/)?.[1]);
+            const rawUrl=xml.match(/<URL>([^<]+)<\/URL>/)?.[1]?.trim().replaceAll("&amp;","&");
+            if(!ref||!Number.isFinite(year)||!Number.isFinite(week)||!rawUrl) return [];
+            return [{ref,year,week,url:rawUrl}];
+          }).sort((a,b)=>a.year-b.year||a.week-b.week);
+          const latest=reports.slice(-10);
+          const refsByReport=[];
+          for(const report of latest){
+            const response=await fetch(report.url,{headers:{"Accept":"application/xml,text/xml"}});
+            const text=await response.text();
+            if(!response.ok) throw new Error(report.ref+" HTTP "+response.status);
+            const refs=[...new Set([...text.matchAll(/<caseNumber>([^<]+)<\/caseNumber>/g)]
+              .map((m)=>String(m[1]??"").trim()).filter(Boolean))];
+            refsByReport.push({ref:report.ref,refs});
+          }
+          const cumulative=[];
+          const union=new Set();
+          for(let i=refsByReport.length-1;i>=0;i-=1){
+            const current=refsByReport[i];
+            current.refs.forEach((ref)=>union.add(ref));
+            const missing=[...union].filter((ref)=>!healthy.has(ref));
+            cumulative.push({
+              weeks:refsByReport.length-i,
+              oldestIncluded:current.ref,
+              union:union.size,
+              overlapHealthy:[...union].filter((ref)=>healthy.has(ref)).length,
+              page0Candidates:missing.length,
+              sample:missing.slice(0,12)
+            });
+          }
+          console.log("SOURCE_RELIABILITY_F2A_PAGE0_RECON "+JSON.stringify({
+            healthyPages,healthyTotal:healthy.size,cumulative
+          }));
           NODE
               ;;
             source-reliability-f2a-delta-preview)
