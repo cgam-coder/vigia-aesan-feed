@@ -1,4 +1,4 @@
 {
-  "operation": "worker-status",
-  "nonce": "home-f7-production-status-recheck-20260929"
+  "operation": "worker-versions-detailed",
+  "nonce": "home-f7-prod-worker-versions-detailed-20260929"
 }
