@@ -1,4 +1,4 @@
 {
-  "operation": "source-reliability-f2a-production-build",
-  "nonce": "source-reliability-f2a-production-build-bd7acec-20260929"
+  "operation": "worker-builds-list",
+  "nonce": "source-reliability-f2a-after-publish-script-failure-builds-20260929"
 }
