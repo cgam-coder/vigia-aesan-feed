@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","home-f7-build-log","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -105,6 +105,53 @@ jobs:
           console.log("SOURCE_RELIABILITY_F2A_D1_TOP "+JSON.stringify(top.map((r)=>({
             reference:String(r.reference),canonicalBytes:Number(r.canonical_bytes??0),versionCount:Number(r.version_count??0)
           }))));
+          NODE
+              ;;
+            source-reliability-f2a-fallback-live-cert)
+              test -n "$VIGIA_SYNC_TOKEN"
+              base="https://vigia-runtime.c-gamiz93.workers.dev"
+              before="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS alerts, COALESCE(SUM(version_count),0) AS version_sum FROM alerts WHERE source='SAFETY GATE'; SELECT COUNT(*) AS versions FROM alert_versions v INNER JOIN alerts a ON a.id=v.alert_id WHERE a.source='SAFETY GATE';" --json)"
+              out="$RUNNER_TEMP/safety-gate-fallback-live.json"
+              code="$(curl --silent --show-error --location --request POST --max-time 420 \
+                --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
+                --output "$out" --write-out '%{http_code}' \
+                "$base/api/safety-gate/sync?mode=recent")"
+              after="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT COUNT(*) AS alerts, COALESCE(SUM(version_count),0) AS version_sum FROM alerts WHERE source='SAFETY GATE'; SELECT COUNT(*) AS versions FROM alert_versions v INNER JOIN alerts a ON a.id=v.alert_id WHERE a.source='SAFETY GATE'; SELECT source,mode,status,coverage,new_count AS new_count,updated_count AS updated_count,page_errors AS page_errors,detail_failures AS detail_failures,last_error AS last_error,lease_owner_id AS lease_owner_id,lease_mode AS lease_mode,lease_expires_at AS lease_expires_at FROM source_sync_state WHERE source='SAFETY GATE' AND mode='recent';" --json)"
+              HTTP_CODE="$code" BEFORE="$before" AFTER="$after" OUT="$out" node --input-type=module - <<'NODE'
+          import {readFileSync} from "node:fs";
+          const flatten=(raw)=>(Array.isArray(JSON.parse(raw||"[]"))?JSON.parse(raw||"[]"):[]).flatMap(x=>x?.results??[]);
+          const before=flatten(process.env.BEFORE);
+          const after=flatten(process.env.AFTER);
+          const body=JSON.parse(readFileSync(process.env.OUT,"utf8"));
+          const state=body?.state;
+          const http=Number(process.env.HTTP_CODE);
+          const bCounts=before.find(r=>"alerts" in r)??{};
+          const bVersions=before.find(r=>"versions" in r)??{};
+          const aCounts=after.find(r=>"alerts" in r)??{};
+          const aVersions=after.find(r=>"versions" in r)??{};
+          const dbState=after.find(r=>r?.source==="SAFETY GATE"&&r?.mode==="recent")??{};
+          if(http!==200) throw new Error("fallback live cert HTTP "+http);
+          if(!state||state.source!=="SAFETY GATE"||state.mode!=="recent") throw new Error("missing Safety Gate state");
+          if(state.status==="skipped") throw new Error("Safety Gate live cert collided with active lease");
+          if(state.status!=="partial") throw new Error("expected partial fallback state, got "+state.status);
+          if(state.coverage!=="partial"||Number(state.pageErrors)<1) throw new Error("fallback did not remain fail-closed");
+          if(Number(state.updatedCount)!==0) throw new Error("fallback updated existing alerts");
+          if(!String(state.lastError??"").includes("Fallback XML semanal oficial")) throw new Error("fallback evidence missing");
+          if(state.leaseOwnerId!==null||state.leaseMode!==null||state.leaseExpiresAt!==null) throw new Error("fallback did not clear lease");
+          const alertDelta=Number(aCounts.alerts??0)-Number(bCounts.alerts??0);
+          const versionDelta=Number(aVersions.versions??0)-Number(bVersions.versions??0);
+          const versionSumDelta=Number(aCounts.version_sum??0)-Number(bCounts.version_sum??0);
+          const newCount=Number(state.newCount??0);
+          if(alertDelta!==newCount||versionDelta!==newCount||versionSumDelta!==newCount) {
+            throw new Error("D1 fallback deltas do not match new-only writes: "+JSON.stringify({alertDelta,versionDelta,versionSumDelta,newCount}));
+          }
+          if(Number(dbState.updated_count??-1)!==0||String(dbState.status)!=="partial") throw new Error("persisted sync state mismatch");
+          console.log("SOURCE_RELIABILITY_F2A_FALLBACK_LIVE_CERT "+JSON.stringify({
+            http,status:state.status,coverage:state.coverage,pageErrors:Number(state.pageErrors),
+            detailFailures:Number(state.detailFailures),newCount,updatedCount:Number(state.updatedCount),
+            alertDelta,versionDelta,versionSumDelta,lastError:String(state.lastError).slice(0,500),
+            leaseReleased:true
+          }));
           NODE
               ;;
             source-reliability-f2a-delta-shadow)
@@ -2887,6 +2934,65 @@ jobs:
             totalLines:lines.length,
             interesting:interesting.slice(-220),
             tail:redacted.slice(-120)
+          }));
+          NODE
+              ;;
+            source-reliability-f2a-production-build)
+              account_id="9c1807c68493f14259248b5f5782cc6f"
+              trigger_uuid="00310c5e-c497-46d3-8556-f84cf245a25a"
+              expected_commit="bd7acecf1dd242c40b2394bee02ac1af0a2b1a02"
+              payload="$(node --input-type=module -e 'console.log(JSON.stringify({branch:"main",commit_hash:process.argv[1]}))' "$expected_commit")"
+              start_json="$(curl --silent --show-error --fail-with-body \
+                "https://api.cloudflare.com/client/v4/accounts/$account_id/builds/triggers/$trigger_uuid/builds" \
+                --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                --header "Content-Type: application/json" \
+                --request POST --data "$payload")"
+              build_uuid="$(START_JSON="$start_json" EXPECTED="$expected_commit" node --input-type=module - <<'NODE'
+          const body=JSON.parse(process.env.START_JSON||"{}");
+          if(body?.success!==true||!body?.result?.build_uuid) throw new Error("failed to start F2A production build");
+          const r=body.result;
+          const meta=r.build_trigger_metadata??{};
+          if(meta.commit_hash && meta.commit_hash!==process.env.EXPECTED) throw new Error("unexpected commit "+meta.commit_hash);
+          console.log("SOURCE_RELIABILITY_F2A_BUILD_STARTED "+JSON.stringify({
+            buildUuid:r.build_uuid,status:r.status??null,branch:meta.branch??null,
+            commitHash:meta.commit_hash??null,source:meta.build_trigger_source??null
+          }));
+          process.stdout.write(r.build_uuid);
+          NODE
+              )"
+              final_json=""
+              for attempt in $(seq 1 36); do
+                final_json="$(curl --silent --show-error --fail-with-body \
+                  "https://api.cloudflare.com/client/v4/accounts/$account_id/builds/builds/$build_uuid" \
+                  --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN")"
+                state="$(FINAL_JSON="$final_json" node --input-type=module -e 'const b=JSON.parse(process.env.FINAL_JSON||"{}"); process.stdout.write(String(b?.result?.status??"unknown"))')"
+                echo "SOURCE_RELIABILITY_F2A_BUILD_POLL attempt=$attempt status=$state"
+                if [ "$state" = "stopped" ]; then break; fi
+                sleep 10
+              done
+              FINAL_JSON="$final_json" EXPECTED="$expected_commit" node --input-type=module - <<'NODE'
+          const body=JSON.parse(process.env.FINAL_JSON||"{}");
+          if(body?.success!==true||!body?.result) throw new Error("invalid F2A final build response");
+          const r=body.result;
+          const meta=r.build_trigger_metadata??{};
+          const safe={
+            buildUuid:r.build_uuid??null,status:r.status??null,buildOutcome:r.build_outcome??null,
+            branch:meta.branch??null,commitHash:meta.commit_hash??null,
+            createdOn:r.created_on??null,runningOn:r.running_on??null,stoppedOn:r.stopped_on??null,
+            previewUrl:r.preview_url??null
+          };
+          console.log("SOURCE_RELIABILITY_F2A_BUILD_FINAL "+JSON.stringify(safe));
+          if(r.status!=="stopped"||r.build_outcome!=="success") throw new Error("F2A production build did not succeed");
+          if(meta.commit_hash!==process.env.EXPECTED||meta.branch!=="main") throw new Error("F2A production commit/branch mismatch");
+          NODE
+              status_json="$(wrangler deployments status --name "$CF_WORKER" --json)"
+              STATUS_JSON="$status_json" node --input-type=module - <<'NODE'
+          const d=JSON.parse(process.env.STATUS_JSON||"{}");
+          const versions=Array.isArray(d?.versions)?d.versions:[];
+          if(versions.length!==1||Number(versions[0]?.percentage)!==100) throw new Error("F2A deployment not singular at 100%");
+          console.log("SOURCE_RELIABILITY_F2A_POST_DEPLOY "+JSON.stringify({
+            deploymentId:d.id??null,versionId:versions[0]?.version_id??null,
+            percentage:Number(versions[0]?.percentage),createdOn:d.created_on??null
           }));
           NODE
               ;;
