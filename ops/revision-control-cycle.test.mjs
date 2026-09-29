@@ -104,6 +104,19 @@ test("a failed second unit makes the whole window HOLD without a third mutation"
   assert.equal(r.blockedReason, "mutation-outcome-unknown-no-retry");
 });
 
+test("an unavailable unit fails closed without retrying", async () => {
+  let calls = 0;
+  const r = await runCycleParityWake({
+    base:"https://runtime.example", token:"fixture", active:true,
+    clock:() => now, shadow:shadow(plan(3)),
+    runUnit:async () => { calls++; throw Error("network unavailable"); },
+  });
+  assert.equal(calls, 1);
+  assert.equal(r.parity, "NOT_EXECUTED");
+  assert.equal(r.blockedReason, "unit-execution-unavailable-no-retry");
+  assert.equal(r.mutatingRequests, 0);
+});
+
 test("cursor discontinuity is HOLD even when the child unit reports pass", async () => {
   const r = await runCycleParityWake({
     base:"https://runtime.example", token:"fixture", active:true,
