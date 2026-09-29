@@ -1,0 +1,41 @@
+name: VIGIA bounded revision control stage
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: F4C staged OECD continuation; at most one batch
+        required: true
+        type: choice
+        default: shadow
+        options: [shadow, active]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: vigia-revision-control-bounded
+  cancel-in-progress: false
+
+jobs:
+  writer_gate:
+    uses: ./.github/workflows/runtime-writer-gate.yml
+  runtime_target:
+    uses: ./.github/workflows/runtime-writer-target.yml
+  bounded:
+    needs: [writer_gate, runtime_target]
+    if: needs.writer_gate.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Execute one staged wake-up with legacy exclusion and parity evidence
+        env:
+          VIGIA_BASE_URL: ${{ needs.runtime_target.outputs.base_url }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CONTROL_MODE: ${{ inputs.mode }}
+        run: node ops/revision-control-active.mjs "$CONTROL_MODE"
