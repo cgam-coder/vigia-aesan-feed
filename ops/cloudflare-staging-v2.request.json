@@ -1,4 +1,4 @@
 {
-  "operation": "worker-builds-list",
-  "nonce": "source-reliability-f2a-build-history-final-20260929"
+  "operation": "worker-status",
+  "nonce": "source-reliability-f2a-active-status-20260929"
 }
