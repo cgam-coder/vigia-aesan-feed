@@ -58,10 +58,26 @@ test("F4A validates exactly the five-source reliability contract", () => {
   assert.throws(() => validateReliabilitySnapshot({ reliability:duplicate }, { now }), /missing, duplicated or unsupported/u);
 });
 
-test("F4A rejects a stale control snapshot instead of planning from old evidence", () => {
+test("F4A reports a stale control snapshot as blocked instead of planning from old evidence", () => {
   const old = view("OECD", { checkedAt:"2026-09-29T14:00:00.000Z" });
-  assert.throws(() => buildRevisionShadowPlan(payload({ OECD:old }), observations(), { now, maxSnapshotAgeMinutes:30 }),
-    /outside the control window/u);
+  old.revision.status = "stale";
+  const plan = buildRevisionShadowPlan(payload({ OECD:old }), observations(), { now, maxSnapshotAgeMinutes:30 });
+  assert.equal(plan.selected, null);
+  const blocked = plan.blocked.find((item) => item.source === "OECD");
+  assert.equal(blocked.blockedReason, "reliability-snapshot-stale");
+  assert.equal(blocked.reliabilityAgeMinutes, 70);
+});
+
+test("a stale source does not prevent fresh sources from being classified", () => {
+  const old = view("AESAN", { checkedAt:"2026-09-29T14:00:00.000Z" });
+  const rapna = view("RAPNA");
+  rapna.revision.status = "stale";
+  rapna.revision.ageMinutes = 1500;
+  const plan = buildRevisionShadowPlan(payload({ AESAN:old, RAPNA:rapna }), observations(), { now, maxSnapshotAgeMinutes:30 });
+  assert.equal(plan.external[0].source, "AESAN");
+  assert.equal(plan.external[0].blockedReason, "reliability-snapshot-stale");
+  assert.equal(plan.external[0].actionable, false);
+  assert.equal(plan.selected.source, "RAPNA");
 });
 
 test("Safety Gate remains outside revision orchestration while F2A is on hold", () => {
