@@ -159,36 +159,58 @@ jobs:
               ;;
             source-reliability-f2a-source-probe)
               node --input-type=module - <<'NODE'
-          const pageUrl="https://ec.europa.eu/safety-gate-alerts/screen/search?resetSearch=true";
-          const pageResponse=await fetch(pageUrl);
-          const html=await pageResponse.text();
-          const mainSrc=[...html.matchAll(/<script[^>]+src=["']([^"']*main-[^"']+\.js)["']/g)]
-            .map((m)=>new URL(m[1],pageUrl).href)[0];
-          if(!mainSrc) throw new Error("main bundle not found");
-          const main=await (await fetch(mainSrc)).text();
-          const chunkName=main.match(/import\(["']\.\/(chunk-LT65EEDW\.js)["']\)/)?.[1];
-          if(!chunkName) throw new Error("search chunk not found");
-          const chunkUrl=new URL(chunkName,pageUrl).href;
-          const chunk=await (await fetch(chunkUrl)).text();
-          const needle='this.http.post(this.baseUrl+"search"';
-          const pos=chunk.indexOf(needle);
-          if(pos<0) throw new Error("search service call not found");
-          const before=chunk.slice(Math.max(0,pos-2400),pos+1200).replace(/\s+/g," ");
-          const searchMethodPos=chunk.indexOf("search(e){",Math.max(0,pos-200));
-          const payloadHits=[];
-          for(const token of ["pageSize","pageNumber","sort","PUBLICATION_DATE_DESC","fullTextSearch","archived"]){
-            let p=0;
-            while((p=chunk.indexOf(token,p))>=0 && payloadHits.length<60){
-              const ex=chunk.slice(Math.max(0,p-260),Math.min(chunk.length,p+480)).replace(/\s+/g," ");
-              if(/search|page|sort|criteria|form|request/i.test(ex)) payloadHits.push({token,excerpt:ex.slice(0,740)});
-              p+=token.length;
+          const endpoint="https://ec.europa.eu/safety-gate-alerts/public/api/search";
+          const headers={
+            "Accept":"application/json",
+            "Content-Type":"application/json",
+            "language":"es",
+            "lang":"es"
+          };
+          const base={
+            criteria:{year:[2026]},
+            searchCriteriaForNotification:false,
+            isLaunched:true,
+            searchResults:[],
+            displayDefaultResults:false,
+            displayTagsWithSelectedCriteria:[],
+            isForMostRecent:false,
+            language:"es",
+            fullTextSearch:""
+          };
+          const variants=[
+            {name:"size",pagination:{size:100,page:0,sortField:"PUBLICATION_DATE",sortOrder:"DESC"}},
+            {name:"pageSize",pagination:{pageSize:100,page:0,sortField:"PUBLICATION_DATE",sortOrder:"DESC"}},
+            {name:"size-sortBy",pagination:{size:100,page:0,sortBy:"PUBLICATION_DATE",sortOrder:"DESC"}},
+            {name:"ui-default",pagination:{size:9,page:0,sortField:"PUBLICATION_DATE",sortOrder:"DESC"}}
+          ];
+          const results=[];
+          for(const variant of variants){
+            const response=await fetch(endpoint,{
+              method:"POST",headers,
+              body:JSON.stringify({...base,pagination:variant.pagination})
+            });
+            const text=await response.text();
+            const row={
+              name:variant.name,status:response.status,
+              contentType:response.headers.get("content-type"),
+              bytes:new TextEncoder().encode(text).byteLength
+            };
+            try{
+              const body=JSON.parse(text);
+              row.keys=body&&typeof body==="object"?Object.keys(body).slice(0,30):[];
+              row.contentCount=Array.isArray(body?.content)?body.content.length:null;
+              row.totalElements=Number.isFinite(Number(body?.totalElements))?Number(body.totalElements):null;
+              row.totalPages=Number.isFinite(Number(body?.totalPages))?Number(body.totalPages):null;
+              row.number=Number.isFinite(Number(body?.number))?Number(body.number):null;
+              row.size=Number.isFinite(Number(body?.size))?Number(body.size):null;
+              row.firstRefs=Array.isArray(body?.content)?body.content.slice(0,8).map(x=>x?.reference??null):[];
+              row.error=body?.message??body?.error??null;
+            }catch{
+              row.bodyPrefix=text.slice(0,300).replace(/\s+/g," ");
             }
+            results.push(row);
           }
-          console.log("SOURCE_RELIABILITY_F2A_SEARCH_CONTRACT "+JSON.stringify({
-            chunk:chunkName,
-            serviceExcerpt:before.slice(0,3500),
-            payloadHits
-          }));
+          console.log("SOURCE_RELIABILITY_F2A_SEARCH_PROBE "+JSON.stringify(results));
           NODE
               ;;
             source-reliability-f2a-delta-preview)
