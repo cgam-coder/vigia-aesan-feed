@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","home-f7-build-log","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -153,6 +153,44 @@ jobs:
             leaseReleased:true
           }));
           NODE
+              ;;
+            source-reliability-f2a-preview-zero-write-cert)
+              test -n "$VIGIA_SYNC_TOKEN"
+              base="https://61d84537-vigia-runtime.c-gamiz93.workers.dev"
+              for mode in delta-preview delta-shadow; do
+                out="$RUNNER_TEMP/safety-gate-$mode-preview158.json"
+                code="$(curl --silent --show-error --location --request POST --max-time 240 \
+                  --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
+                  --output "$out" --write-out '%{http_code}' \
+                  "$base/api/safety-gate/sync?mode=$mode")"
+                MODE="$mode" HTTP_CODE="$code" OUT="$out" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const text=readFileSync(process.env.OUT,"utf8");
+          let body;
+          try { body=JSON.parse(text); }
+          catch { throw new Error(process.env.MODE+" returned non-JSON HTTP "+process.env.HTTP_CODE+" bytes="+text.length); }
+          const safe={
+            mode:process.env.MODE,
+            http:Number(process.env.HTTP_CODE),
+            code:body?.code??null,
+            phase:body?.phase??null,
+            zeroWrite:body?.zeroWrite??null,
+            pass:body?.pass??null,
+            hydrationComplete:body?.hydrationComplete??null,
+            detailRequests:body?.detailRequests??null,
+            detailFailures:body?.detailFailures??null,
+            falseNegativeCount:body?.falseNegativeCount??null,
+            discovery:body?.discovery??null
+          };
+          console.log("SOURCE_RELIABILITY_F2A_PREVIEW158_ZERO_WRITE "+JSON.stringify(safe));
+          if(Number(process.env.HTTP_CODE)!==503) throw new Error(process.env.MODE+" expected HTTP 503");
+          if(body?.code!=="SAFETY_GATE_DISCOVERY_UNVERIFIED"||body?.phase!=="discovery") throw new Error(process.env.MODE+" discovery error contract mismatch");
+          if(body?.zeroWrite!==true||body?.pass!==false||body?.hydrationComplete!==false) throw new Error(process.env.MODE+" fail-closed contract mismatch");
+          if(body?.detailRequests!==0||body?.detailFailures!==null||body?.falseNegativeCount!==null) throw new Error(process.env.MODE+" unmeasured metrics contract mismatch");
+          if(body?.discovery?.coverage!=="unverified"||body?.discovery?.fallbackUsed!==false) throw new Error(process.env.MODE+" discovery metadata mismatch");
+          NODE
+              done
+              echo "SOURCE_RELIABILITY_F2A_PREVIEW158_ZERO_WRITE_ALL status=PASS"
               ;;
             source-reliability-f2a-delta-shadow)
               test -n "$VIGIA_SYNC_TOKEN"
