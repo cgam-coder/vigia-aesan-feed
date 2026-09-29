@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","home-f7-build-log","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f3-build-log","source-reliability-f3-live-cycle-cert","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f3-rapna-duplicate-detail","source-reliability-f3-rapna-operational-diff","source-reliability-f3-preview-observe","source-reliability-f3-production-build","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f3-build-log","source-reliability-f3-live-cycle-cert","source-reliability-f3-live-delta-audit","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f3-rapna-duplicate-detail","source-reliability-f3-rapna-operational-diff","source-reliability-f3-preview-observe","source-reliability-f3-production-build","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -3369,6 +3369,106 @@ jobs:
             legacyReconcile:body.legacyReconcile?.status??null,
             currentCertification:body.currentRevisionCertification?.auditStatus??null,
             legacyCertification:body.legacyRevisionCertification?.auditStatus??null
+          }));
+          NODE
+              ;;
+            source-reliability-f3-live-delta-audit)
+              summary="$(wrangler d1 execute "$CF_D1" --remote --command "
+                SELECT
+                  COUNT(*) AS rapna_alerts,
+                  COALESCE(SUM(version_count),0) AS rapna_version_sum,
+                  (SELECT COUNT(*) FROM alert_versions v INNER JOIN alerts a ON a.id=v.alert_id WHERE a.source='RAPNA') AS rapna_versions,
+                  COALESCE(SUM(CASE WHEN source='RAPNA' AND json_extract(canonical_json,'$.sourceRecord.archive')='legacy' THEN 1 ELSE 0 END),0) AS legacy_alerts,
+                  COALESCE(SUM(CASE WHEN source='RAPNA' AND json_extract(canonical_json,'$.sourceRecord.archive')='legacy' AND version_count>1 THEN 1 ELSE 0 END),0) AS legacy_versioned_alerts
+                FROM alerts;
+                SELECT source,mode,status,cursor,total_units AS total_units,pages_scanned AS pages_scanned,
+                  records_observed AS records_observed,records_persisted AS records_persisted,
+                  new_count AS new_count,updated_count AS updated_count,detail_failures AS detail_failures,
+                  page_errors AS page_errors,coverage,last_error AS last_error,completed_at AS completed_at,
+                  lease_owner_id AS lease_owner_id,lease_mode AS lease_mode,lease_expires_at AS lease_expires_at
+                FROM source_sync_state WHERE source='RAPNA' AND mode='legacy-reconcile';
+              " --json)"
+              versions="$(wrangler d1 execute "$CF_D1" --remote --command "
+                SELECT a.reference,
+                  CAST(json_extract(a.canonical_json,'$.sourceRecord.record.ano') AS INTEGER) AS year,
+                  a.version_count AS version_count,
+                  v.id AS version_id,
+                  v.content_hash AS content_hash,
+                  v.snapshot AS snapshot
+                FROM alerts a
+                INNER JOIN alert_versions v ON v.alert_id=a.id
+                WHERE a.source='RAPNA'
+                  AND json_extract(a.canonical_json,'$.sourceRecord.archive')='legacy'
+                  AND a.version_count>1
+                  AND CAST(json_extract(a.canonical_json,'$.sourceRecord.record.ano') AS INTEGER)>=2020
+                ORDER BY a.reference,v.id;
+              " --json)"
+              SUMMARY="$summary" VERSIONS="$versions" node --input-type=module - <<'NODE'
+          const flatten=(raw)=>(Array.isArray(JSON.parse(raw||"[]"))?JSON.parse(raw||"[]"):[]).flatMap(x=>x?.results??[]);
+          const summary=flatten(process.env.SUMMARY);
+          const counts=summary.find(r=>"rapna_alerts" in r)??{};
+          const state=summary.find(r=>r?.mode==="legacy-reconcile")??null;
+          const rows=flatten(process.env.VERSIONS);
+          const byRef=new Map();
+          for(const row of rows){
+            const list=byRef.get(String(row.reference))??[];
+            let snapshot=null;
+            try{snapshot=JSON.parse(String(row.snapshot??"{}"));}catch{}
+            list.push({...row,snapshot});
+            byRef.set(String(row.reference),list);
+          }
+          const stable=(v)=>Array.isArray(v)?v.map(stable):v&&typeof v==="object"
+            ?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b)).map(([k,x])=>[k,stable(x)])):v;
+          const stripTechnical=(value)=>{
+            const v=structuredClone(value??{});
+            if(v&&typeof v==="object"){
+              delete v.versionCount;
+              if(v.canonical?.dates) delete v.canonical.dates.detectedAt;
+              if(v.canonical?.sourceRecord && typeof v.canonical.sourceRecord==="object") {
+                // retain sourceRecord except raw equality is measured separately
+              }
+            }
+            return v;
+          };
+          const diff=(a,b,path="")=>{
+            if(JSON.stringify(stable(a))===JSON.stringify(stable(b))) return [];
+            if(Array.isArray(a)&&Array.isArray(b)){
+              const out=[]; const n=Math.max(a.length,b.length);
+              for(let i=0;i<n;i++){const p=`${path}[${i}]`; if(i>=a.length||i>=b.length)out.push(p); else out.push(...diff(a[i],b[i],p));}
+              return out;
+            }
+            if(a&&b&&typeof a==="object"&&typeof b==="object"&&!Array.isArray(a)&&!Array.isArray(b)){
+              const out=[]; const keys=[...new Set([...Object.keys(a),...Object.keys(b)])].sort();
+              for(const k of keys){const p=path?`${path}.${k}`:k; if(!(k in a)||!(k in b))out.push(p); else out.push(...diff(a[k],b[k],p));}
+              return out;
+            }
+            return [path||"$root"];
+          };
+          const top=new Map(); const samples=[]; let rawRecordChanged=0; let metadataOnly=0; let semanticChanged=0;
+          for(const [reference,list] of byRef){
+            list.sort((a,b)=>Number(a.version_id)-Number(b.version_id));
+            const first=list[0]?.snapshot??{}; const last=list.at(-1)?.snapshot??{};
+            const paths=diff(stripTechnical(first),stripTechnical(last));
+            for(const p of paths){const root=p.split(".").slice(0,3).join(".");top.set(root,(top.get(root)??0)+1);}
+            const firstRecord=first?.canonical?.sourceRecord?.record??null;
+            const lastRecord=last?.canonical?.sourceRecord?.record??null;
+            const rawEqual=JSON.stringify(stable(firstRecord))===JSON.stringify(stable(lastRecord));
+            if(!rawEqual) rawRecordChanged++;
+            const nonSourcePaths=paths.filter(p=>!p.startsWith("canonical.sourceRecord") && p!=="updatedAt" && !p.startsWith("updatedAt"));
+            if(rawEqual&&nonSourcePaths.length===0) metadataOnly++;
+            if(nonSourcePaths.length>0) semanticChanged++;
+            if(samples.length<25) samples.push({reference,year:Number(list[0]?.year),versions:list.length,rawEqual,paths:paths.slice(0,40)});
+          }
+          const frequency=[...top].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
+          console.log("SOURCE_RELIABILITY_F3_LIVE_DELTA_AUDIT "+JSON.stringify({
+            counts:{
+              rapnaAlerts:Number(counts.rapna_alerts??0),rapnaVersionSum:Number(counts.rapna_version_sum??0),
+              rapnaVersions:Number(counts.rapna_versions??0),legacyAlerts:Number(counts.legacy_alerts??0),
+              legacyVersionedAlerts:Number(counts.legacy_versioned_alerts??0)
+            },
+            state,
+            changedReferences:byRef.size,rawRecordChanged,metadataOnly,semanticChanged,
+            frequency:frequency.slice(0,30),samples
           }));
           NODE
               ;;
