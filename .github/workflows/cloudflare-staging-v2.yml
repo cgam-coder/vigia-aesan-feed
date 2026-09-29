@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","home-f7-build-log","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f3-build-log","source-reliability-f3-live-cycle-cert","source-reliability-f3-live-delta-audit","source-reliability-f3-false-version-repair-audit","source-reliability-f3-false-version-repair","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f3-rapna-duplicate-detail","source-reliability-f3-rapna-operational-diff","source-reliability-f3-preview-observe","source-reliability-f3-production-build","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f3-build-log","source-reliability-f3-live-cycle-cert","source-reliability-f3-live-delta-audit","source-reliability-f3-false-version-repair-audit","source-reliability-f3-false-version-repair","source-reliability-f3-live-step-cert","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f3-rapna-duplicate-detail","source-reliability-f3-rapna-operational-diff","source-reliability-f3-preview-observe","source-reliability-f3-production-build","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -3753,6 +3753,104 @@ jobs:
             legacyVersionedAlerts:Number(counts.legacy_versioned_alerts),cursor:Number(state.cursor),
             recordsObserved:Number(state.records_observed),recordsPersisted:Number(state.records_persisted),
             updatedCount:Number(state.updated_count),payloadFingerprint:fingerprint
+          }));
+          NODE
+              ;;
+            source-reliability-f3-live-step-cert)
+              test -n "$VIGIA_SYNC_TOKEN"
+              base="https://vigia-runtime.c-gamiz93.workers.dev"
+              before="$(wrangler d1 execute "$CF_D1" --remote --command "
+                SELECT COUNT(*) AS alerts,COALESCE(SUM(version_count),0) AS version_sum
+                  FROM alerts WHERE source='RAPNA';
+                SELECT COUNT(*) AS versions FROM alert_versions v INNER JOIN alerts a ON a.id=v.alert_id WHERE a.source='RAPNA';
+                SELECT source,mode,status,cursor,total_units AS total_units,pages_scanned AS pages_scanned,
+                  records_observed AS records_observed,records_persisted AS records_persisted,
+                  new_count AS new_count,updated_count AS updated_count,detail_failures AS detail_failures,
+                  page_errors AS page_errors,coverage,last_error AS last_error,plan_version AS plan_version,
+                  cursor_key AS cursor_key,lease_owner_id AS lease_owner_id,lease_mode AS lease_mode,lease_expires_at AS lease_expires_at
+                  FROM source_sync_state WHERE source='RAPNA' AND mode='legacy-reconcile';
+              " --json)"
+              out="$RUNNER_TEMP/rapna-f3-live-step.json"
+              code="$(curl --silent --show-error --location --request POST --max-time 420 \
+                --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
+                --output "$out" --write-out '%{http_code}' \
+                "$base/api/rapna/sync?mode=legacy-reconcile&batchSize=3")"
+              after="$(wrangler d1 execute "$CF_D1" --remote --command "
+                SELECT COUNT(*) AS alerts,COALESCE(SUM(version_count),0) AS version_sum
+                  FROM alerts WHERE source='RAPNA';
+                SELECT COUNT(*) AS versions FROM alert_versions v INNER JOIN alerts a ON a.id=v.alert_id WHERE a.source='RAPNA';
+                SELECT source,mode,status,cursor,total_units AS total_units,pages_scanned AS pages_scanned,
+                  records_observed AS records_observed,records_persisted AS records_persisted,
+                  new_count AS new_count,updated_count AS updated_count,detail_failures AS detail_failures,
+                  page_errors AS page_errors,coverage,last_error AS last_error,plan_version AS plan_version,
+                  cursor_key AS cursor_key,lease_owner_id AS lease_owner_id,lease_mode AS lease_mode,lease_expires_at AS lease_expires_at
+                  FROM source_sync_state WHERE source='RAPNA' AND mode='legacy-reconcile';
+                SELECT source,mode,cycle_id AS cycle_id,completed_at AS completed_at,total_units AS total_units,
+                  records_observed AS records_observed,coverage,audit_status AS audit_status,evidence_json AS evidence_json
+                  FROM source_revision_certifications WHERE source='RAPNA' AND mode='legacy-reconcile';
+              " --json)"
+              HTTP_CODE="$code" BEFORE="$before" AFTER="$after" OUT="$out" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const flatten=(raw)=>(Array.isArray(JSON.parse(raw||"[]"))?JSON.parse(raw||"[]"):[]).flatMap(x=>x?.results??[]);
+          const before=flatten(process.env.BEFORE);
+          const after=flatten(process.env.AFTER);
+          const body=JSON.parse(readFileSync(process.env.OUT,"utf8"));
+          const state=body?.state;
+          const bCounts=before.find(r=>"alerts" in r)??{};
+          const bVersions=before.find(r=>"versions" in r)??{};
+          const bState=before.find(r=>r?.mode==="legacy-reconcile")??{};
+          const aCounts=after.find(r=>"alerts" in r)??{};
+          const aVersions=after.find(r=>"versions" in r)??{};
+          const aState=after.find(r=>r?.mode==="legacy-reconcile"&&"cursor" in r)??{};
+          const cert=after.find(r=>r?.mode==="legacy-reconcile"&&"cycle_id" in r)??null;
+          const http=Number(process.env.HTTP_CODE);
+          if(http!==200) throw new Error("RAPNA F3 step HTTP "+http+": "+String(state?.lastError??body?.error??"unknown"));
+          if(!state||state.source!=="RAPNA"||state.mode!=="legacy-reconcile") throw new Error("RAPNA F3 step state missing");
+          if(!["partial","completed"].includes(state.status)||state.lastError!==null||
+             Number(state.pageErrors)!==0||Number(state.detailFailures)!==0) {
+            throw new Error("RAPNA F3 step not clean: "+JSON.stringify(state));
+          }
+          const beforeCursor=Number(bState.cursor);
+          const cursor=Number(state.cursor);
+          const expected=Math.min(17,beforeCursor+3);
+          if(cursor!==expected||Number(aState.cursor)!==expected||Number(state.totalUnits)!==17) {
+            throw new Error("RAPNA F3 step cursor mismatch: "+JSON.stringify({beforeCursor,cursor,expected,aState}));
+          }
+          if(Number(state.recordsPersisted)!==0||Number(state.newCount)!==0||Number(state.updatedCount)!==0||
+             Number(aState.records_persisted)!==0||Number(aState.new_count)!==0||Number(aState.updated_count)!==0) {
+            throw new Error("RAPNA F3 step created material changes");
+          }
+          const alertDelta=Number(aCounts.alerts??0)-Number(bCounts.alerts??0);
+          const versionSumDelta=Number(aCounts.version_sum??0)-Number(bCounts.version_sum??0);
+          const versionsDelta=Number(aVersions.versions??0)-Number(bVersions.versions??0);
+          if(alertDelta!==0||versionSumDelta!==0||versionsDelta!==0) {
+            throw new Error("RAPNA F3 step altered alerts/versions: "+JSON.stringify({alertDelta,versionSumDelta,versionsDelta}));
+          }
+          if(aState.lease_owner_id!==null||aState.lease_mode!==null||aState.lease_expires_at!==null) {
+            throw new Error("RAPNA F3 step did not release lease");
+          }
+          if(state.status==="completed"){
+            if(state.coverage!=="official-index-complete"||cursor!==17) throw new Error("RAPNA F3 terminal state mismatch");
+            if(!cert||cert.audit_status!=="passed"||cert.coverage!=="official-index-complete") {
+              throw new Error("RAPNA F3 terminal certificate missing");
+            }
+            const evidence=JSON.parse(String(cert.evidence_json??"{}"));
+            const official=evidence?.officialCoverage??{};
+            for(const key of ["operationalDuplicateReferences","currentOverlapReferences","missingOperationalReferences",
+              "unexpectedOperationalReferences","contentMismatchReferences"]){
+              if(!Array.isArray(official[key])||official[key].length!==0) throw new Error("RAPNA F3 terminal "+key+" mismatch");
+            }
+            if(Number(official.operationalReferences)!==1087||Number(official.d1LegacyReferences)!==1087||
+               Number(official.rawRowsObserved)!==9703||Number(official.uniqueOfficialReferences)!==9683||
+               Number(official.duplicateRows)!==20||Number(official.undeterminedReferences)!==0) {
+              throw new Error("RAPNA F3 terminal official coverage metrics mismatch");
+            }
+          }
+          console.log("SOURCE_RELIABILITY_F3_LIVE_STEP_CERT "+JSON.stringify({
+            http,status:state.status,beforeCursor,cursor,totalUnits:Number(state.totalUnits),
+            pagesScanned:Number(state.pagesScanned),recordsObserved:Number(state.recordsObserved),
+            recordsPersisted:Number(state.recordsPersisted),newCount:Number(state.newCount),updatedCount:Number(state.updatedCount),
+            alertDelta,versionsDelta,versionSumDelta,terminalCertificate:state.status==="completed"
           }));
           NODE
               ;;
