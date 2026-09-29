@@ -1,4 +1,4 @@
 {
-  "operation": "source-reliability-f3-preview-observe",
-  "nonce": "source-reliability-f3-preview-observe-20260929"
+  "operation": "worker-status",
+  "nonce": "source-reliability-f3-post-merge-worker-status-20260929"
 }
