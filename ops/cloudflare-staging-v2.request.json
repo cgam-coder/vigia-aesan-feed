@@ -1,4 +1,4 @@
 {
-  "operation": "oecd-observe-readonly",
-  "nonce": "oecd-f3b-final-cert"
+  "operation": "worker-versions",
+  "nonce": "home-f7-prod-preflight-versions-20260929"
 }
