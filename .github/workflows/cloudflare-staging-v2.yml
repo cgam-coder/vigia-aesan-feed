@@ -85,7 +85,7 @@ jobs:
               test -n "$VIGIA_SYNC_TOKEN"
               base="https://vigia-runtime.c-gamiz93.workers.dev"
               out="$RUNNER_TEMP/safety-gate-delta-preview.json"
-              code="$(curl --silent --show-error --location --max-time 180 \
+              code="$(curl --silent --show-error --location --request POST --max-time 180 \
                 --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
                 --output "$out" --write-out '%{http_code}' \
                 "$base/api/safety-gate/sync?mode=delta-preview")"
