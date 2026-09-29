@@ -158,46 +158,35 @@ jobs:
           NODE
               ;;
             source-reliability-f2a-source-probe)
-              d1_updated="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT reference, updated_at AS updatedAt FROM alerts WHERE source='SAFETY GATE' ORDER BY COALESCE(updated_at,published_at,detected_at) DESC, id DESC LIMIT 305" --json)"
-              D1_UPDATED="$d1_updated" node --input-type=module - <<'NODE'
-          const parseRows=(raw)=>{
-            const value=JSON.parse(raw||"[]");
-            return (Array.isArray(value)?value:[]).flatMap((x)=>x?.results??[]);
-          };
-          const d1Rows=parseRows(process.env.D1_UPDATED);
-          const d1Order=d1Rows.map((r)=>String(r.reference??"").trim()).filter(Boolean);
-          const d1Refs=new Set(d1Order);
-          const endpoint="https://ec.europa.eu/safety-gate-alerts/public/api/notification/mostRecent/?";
-          const headers={"Accept":"application/json","Content-Type":"application/json","language":"es"};
-          const healthyOrder=[];
-          let totalElements=null;
-          for(let page=1;page<=3;page+=1){
-            const response=await fetch(endpoint,{method:"POST",headers,body:JSON.stringify({language:"es",page:String(page),pageSize:"100"})});
-            if(!response.ok) throw new Error("healthy page "+page+" HTTP "+response.status);
-            const body=await response.json();
-            totalElements??=Number(body?.totalElements);
-            for(const item of Array.isArray(body?.content)?body.content:[]) healthyOrder.push(String(item.reference));
+              node --input-type=module - <<'NODE'
+          const pageUrl="https://ec.europa.eu/safety-gate-alerts/screen/search?resetSearch=true";
+          const pageResponse=await fetch(pageUrl,{headers:{"Accept":"text/html"}});
+          const html=await pageResponse.text();
+          if(!pageResponse.ok) throw new Error("Safety Gate search page HTTP "+pageResponse.status);
+          const srcs=[...new Set([...html.matchAll(/<script[^>]+src=["']([^"']+)["']/g)].map((m)=>m[1]))]
+            .map((src)=>new URL(src,pageUrl).href);
+          const hits=[];
+          for(const src of srcs){
+            const response=await fetch(src);
+            if(!response.ok) continue;
+            const text=await response.text();
+            for(const needle of ["mostRecent","public/api/notification","notification/search","searchNotification","webReport"]){
+              let pos=0;
+              while((pos=text.indexOf(needle,pos))>=0 && hits.length<80){
+                hits.push({
+                  script:src.split("/").at(-1),
+                  needle,
+                  excerpt:text.slice(Math.max(0,pos-280),Math.min(text.length,pos+520))
+                    .replace(/\s+/g," ").slice(0,900)
+                });
+                pos+=needle.length;
+              }
+            }
           }
-          const healthyRefs=new Set(healthyOrder);
-          const overlap=healthyOrder.filter((ref)=>d1Refs.has(ref)).length;
-          const d1Missing=d1Order.filter((ref)=>!healthyRefs.has(ref));
-          const expectedMissing=Number(totalElements)-healthyOrder.length;
-          const positions=healthyOrder.slice(0,30).map((ref,index)=>({
-            healthyIndex:index,
-            ref,
-            d1Index:d1Order.indexOf(ref)
-          }));
-          const exactTailMatches=healthyOrder.reduce((n,ref,index)=>n+(d1Order[100+index]===ref?1:0),0);
-          console.log("SOURCE_RELIABILITY_F2A_UPDATED_ORDER "+JSON.stringify({
-            totalElements,
-            d1Rows:d1Order.length,
-            healthy:healthyOrder.length,
-            overlap,
-            expectedMissing,
-            d1Missing:d1Missing.length,
-            exactTailMatches,
-            first30Positions:positions,
-            d1MissingRefs:d1Missing.slice(0,120)
+          console.log("SOURCE_RELIABILITY_F2A_FRONTEND_ENDPOINTS "+JSON.stringify({
+            pageStatus:pageResponse.status,
+            scripts:srcs.length,
+            hits
           }));
           NODE
               ;;
