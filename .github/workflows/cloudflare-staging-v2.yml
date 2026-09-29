@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","home-f7-build-log","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -80,6 +80,56 @@ jobs:
               test "$CF_D1" = "nagamealert-staging-db"
               sql="CREATE TABLE IF NOT EXISTS cf_chat_control_probe (nonce TEXT PRIMARY KEY, created_at TEXT NOT NULL); INSERT OR REPLACE INTO cf_chat_control_probe (nonce, created_at) VALUES ('$NONCE', datetime('now'));"
               wrangler d1 execute "$CF_D1" --remote --command "$sql" --yes --json >/dev/null
+              ;;
+            source-reliability-f2a-delta-shadow)
+              test -n "$VIGIA_SYNC_TOKEN"
+              base="https://vigia-runtime.c-gamiz93.workers.dev"
+              out="$RUNNER_TEMP/safety-gate-delta-shadow.json"
+              code="$(curl --silent --show-error --location --request POST --max-time 240 \
+                --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
+                --output "$out" --write-out '%{http_code}' \
+                "$base/api/safety-gate/sync?mode=delta-shadow")"
+              echo "SOURCE_RELIABILITY_F2A_SHADOW_HTTP code=$code bytes=$(wc -c < "$out")"
+              HTTP_CODE="$code" node --input-type=module - "$out" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.argv[2],"utf8"));
+          const shadow=body?.shadow;
+          if(shadow){
+            const safe={
+              http:Number(process.env.HTTP_CODE),
+              zeroWrite:shadow.zeroWrite,
+              pass:shadow.pass,
+              hydrationComplete:shadow.hydrationComplete,
+              pagesScanned:shadow.pagesScanned,
+              recordsObserved:shadow.recordsObserved,
+              recordsDeduplicated:shadow.recordsDeduplicated,
+              storedMatched:shadow.storedMatched,
+              detailFailures:shadow.detailFailures,
+              hydratedCount:shadow.hydratedCount,
+              materialChangeCount:shadow.materialChangeCount,
+              candidateCount:shadow.candidateCount,
+              truePositiveCount:shadow.truePositiveCount,
+              falsePositiveCount:shadow.falsePositiveCount,
+              falseNegativeCount:shadow.falseNegativeCount,
+              trueNegativeCount:shadow.trueNegativeCount,
+              materialChangeReferences:shadow.materialChangeReferences,
+              falsePositiveReferences:shadow.falsePositiveReferences,
+              falseNegativeReferences:shadow.falseNegativeReferences
+            };
+            console.log("SOURCE_RELIABILITY_F2A_SHADOW "+JSON.stringify(safe));
+            if(Number(process.env.HTTP_CODE)!==200||shadow.zeroWrite!==true||shadow.pass!==true||
+              shadow.hydrationComplete!==true||shadow.detailFailures!==0||shadow.falseNegativeCount!==0){
+              process.exit(1);
+            }
+          } else {
+            console.log("SOURCE_RELIABILITY_F2A_SHADOW_BLOCKED "+JSON.stringify({
+              http:Number(process.env.HTTP_CODE),
+              error:body?.error??"unknown",
+              leaseMode:body?.leaseMode??null
+            }));
+            process.exit(2);
+          }
+          NODE
               ;;
             source-reliability-f2a-delta-preview)
               test -n "$VIGIA_SYNC_TOKEN"
