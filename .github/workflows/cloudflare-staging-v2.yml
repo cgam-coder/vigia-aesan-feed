@@ -44,7 +44,7 @@ jobs:
           const allowed=new Set([
             "probe","d1-canary-write","d1-canary-read",
             "worker-secret-list","worker-bootstrap-secrets",
-            "worker-versions","worker-status","worker-rollback",
+            "worker-versions","worker-status","worker-rollback","worker-build-trigger-inspect",
             "staging-bootstrap-status","staging-bootstrap-apply",
             "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
@@ -2561,6 +2561,35 @@ jobs:
               cursor_secret="$(openssl rand -hex 32)"
               printf '%s' "$cursor_secret" | wrangler secret put VIGIA_QUERY_CURSOR_SECRET --name "$CF_WORKER" >/dev/null
               unset cursor_secret
+              ;;
+            worker-build-trigger-inspect)
+              account_id="9c1807c68493f14259248b5f5782cc6f"
+              scripts_json="$(curl --silent --show-error --fail-with-body                 "https://api.cloudflare.com/client/v4/accounts/$account_id/workers/scripts"                 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN")"
+              worker_tag="$(SCRIPTS_JSON="$scripts_json" CF_WORKER="$CF_WORKER" node --input-type=module - <<'NODE'
+          const body=JSON.parse(process.env.SCRIPTS_JSON||"{}");
+          const row=(body?.result??[]).find((x)=>x?.id===process.env.CF_WORKER);
+          if(!row?.tag) throw new Error("worker tag unavailable");
+          process.stdout.write(row.tag);
+          NODE
+              )"
+              triggers_json="$(curl --silent --show-error --fail-with-body                 "https://api.cloudflare.com/client/v4/accounts/$account_id/builds/workers/$worker_tag/triggers"                 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN")"
+              TRIGGERS_JSON="$triggers_json" node --input-type=module - <<'NODE'
+          const body=JSON.parse(process.env.TRIGGERS_JSON||"{}");
+          if(body?.success!==true||!Array.isArray(body?.result)) throw new Error("invalid triggers response");
+          const safe=body.result.map((x)=>({
+            trigger_uuid:x.trigger_uuid,
+            trigger_name:x.trigger_name,
+            build_command:x.build_command,
+            deploy_command:x.deploy_command,
+            root_directory:x.root_directory,
+            branch_includes:x.branch_includes,
+            branch_excludes:x.branch_excludes,
+            path_includes:x.path_includes,
+            path_excludes:x.path_excludes,
+            build_caching_enabled:x.build_caching_enabled
+          }));
+          console.log("WORKER_BUILD_TRIGGERS "+JSON.stringify(safe));
+          NODE
               ;;
             worker-versions)
               versions_json="$(wrangler versions list --name "$CF_WORKER" --json)"
