@@ -1,4 +1,4 @@
 {
-  "operation": "worker-versions-api-detailed",
-  "nonce": "home-f7-prod-worker-version-annotations-20260929"
+  "operation": "worker-build-trigger-inspect",
+  "nonce": "home-f7-prod-build-trigger-retry-20260929"
 }
