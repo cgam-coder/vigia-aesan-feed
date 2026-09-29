@@ -1,4 +1,4 @@
 {
-  "operation": "source-reliability-f2a-delta-preview",
-  "nonce": "source-reliability-f2a-delta-measurement-retry-20260929"
+  "operation": "worker-builds-list",
+  "nonce": "source-reliability-f2a-shadow-build-history-20260929"
 }
