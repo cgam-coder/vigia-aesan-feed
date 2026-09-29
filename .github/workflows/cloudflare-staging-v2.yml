@@ -160,30 +160,38 @@ jobs:
             source-reliability-f2a-source-probe)
               node --input-type=module - <<'NODE'
           const endpoint="https://ec.europa.eu/safety-gate-alerts/public/api/notification/mostRecent/?";
-          const response=await fetch(endpoint,{
-            method:"POST",
-            headers:{
-              "Accept":"application/json",
-              "Content-Type":"application/json",
-              "language":"es"
-            },
-            body:JSON.stringify({language:"es",page:"0",pageSize:"100"})
-          });
-          const text=await response.text();
-          const safe={
-            status:response.status,
-            contentType:response.headers.get("content-type"),
-            bytes:new TextEncoder().encode(text).byteLength
+          const headers={
+            "Accept":"application/json",
+            "Content-Type":"application/json",
+            "language":"es"
           };
-          if(response.ok){
-            const body=JSON.parse(text);
-            safe.contentCount=Array.isArray(body?.content)?body.content.length:null;
-            safe.totalPages=Number.isFinite(Number(body?.totalPages))?Number(body.totalPages):null;
-          } else {
-            safe.bodyPrefix=text.slice(0,180).replace(/\s+/g," ");
+          const sizes=[1,2,5,10,20,50,100];
+          const results=[];
+          for(const size of sizes){
+            const response=await fetch(endpoint,{
+              method:"POST",
+              headers,
+              body:JSON.stringify({language:"es",page:"0",pageSize:String(size)})
+            });
+            const text=await response.text();
+            const row={
+              page:0,
+              pageSize:size,
+              status:response.status,
+              contentType:response.headers.get("content-type"),
+              bytes:new TextEncoder().encode(text).byteLength
+            };
+            if(response.ok){
+              const body=JSON.parse(text);
+              row.contentCount=Array.isArray(body?.content)?body.content.length:null;
+              row.totalPages=Number.isFinite(Number(body?.totalPages))?Number(body.totalPages):null;
+              row.references=Array.isArray(body?.content)?body.content.slice(0,5).map((x)=>x?.reference??null):[];
+            } else {
+              row.bodyPrefix=text.slice(0,180).replace(/\s+/g," ");
+            }
+            results.push(row);
           }
-          console.log("SOURCE_RELIABILITY_F2A_SOURCE_PROBE "+JSON.stringify(safe));
-          if(!response.ok) process.exit(2);
+          console.log("SOURCE_RELIABILITY_F2A_SOURCE_MATRIX "+JSON.stringify(results));
           NODE
               ;;
             source-reliability-f2a-delta-preview)
