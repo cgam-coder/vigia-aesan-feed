@@ -97,6 +97,17 @@ test("an active persisted revision cycle outranks a merely stale source", () => 
   assert.deepEqual(plan.candidates.map((item) => item.source), ["RASFF", "OECD"]);
 });
 
+test("a fresh terminal RASFF zero cursor is not mistaken for an active cycle", () => {
+  const rasff = view("RASFF");
+  rasff.revision.cycleStartedAt = "2026-09-29T14:00:00.000Z";
+  rasff.revision.progress = 0;
+  rasff.revision.total = 1000;
+  const plan = buildRevisionShadowPlan(payload({ RASFF:rasff }), observations(), { now });
+  assert.equal(plan.selected, null);
+  assert.equal(plan.idle.some((item) => item.source === "RASFF"), true);
+  assert.equal(plan.idle.find((item) => item.source === "RASFF").cycleActive, false);
+});
+
 test("recent freshness always has priority over historical revision", () => {
   const oecd = view("OECD");
   oecd.revision.status = "stale";
