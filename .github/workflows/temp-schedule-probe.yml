@@ -1,17 +1,48 @@
 name: TEMP schedule event probe
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/temp-schedule-probe.yml"
   schedule:
     - cron: "51 * * * *"
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   probe:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Report schedule event only
+      - name: Report trigger
         run: |
           echo "TEMP_SCHEDULE_PROBE event=$GITHUB_EVENT_NAME sha=$GITHUB_SHA run_id=$GITHUB_RUN_ID"
+      - name: Read workflow states
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows?per_page=100" \
+            > "$RUNNER_TEMP/workflows.json"
+          node - "$RUNNER_TEMP/workflows.json" <<'NODE'
+          const fs = require("node:fs");
+          const body = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const wanted = new Set([
+            ".github/workflows/safety-gate-sync.yml",
+            ".github/workflows/rapna-sync.yml",
+            ".github/workflows/rasff-control.yml",
+            ".github/workflows/oecd-historical-reconcile.yml",
+            ".github/workflows/freshness-watchdog.yml",
+            ".github/workflows/temp-schedule-probe.yml",
+          ]);
+          for (const w of body.workflows ?? []) {
+            if (wanted.has(w.path)) console.log(JSON.stringify({id:w.id,name:w.name,path:w.path,state:w.state}));
+          }
+          NODE
