@@ -2940,7 +2940,7 @@ jobs:
             source-reliability-f2a-production-build)
               account_id="9c1807c68493f14259248b5f5782cc6f"
               trigger_uuid="00310c5e-c497-46d3-8556-f84cf245a25a"
-              expected_commit="bd7acecf1dd242c40b2394bee02ac1af0a2b1a02"
+              expected_commit="bf6d8b6af67eb8a881ceac736fb5b241050a8f17"
               payload="$(node --input-type=module -e 'console.log(JSON.stringify({branch:"main",commit_hash:process.argv[1]}))' "$expected_commit")"
               start_json="$(curl --silent --show-error --fail-with-body \
                 "https://api.cloudflare.com/client/v4/accounts/$account_id/builds/triggers/$trigger_uuid/builds" \
