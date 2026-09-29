@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","home-f7-build-log","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f3-rapna-duplicate-detail","source-reliability-f3-rapna-operational-diff","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f3-rapna-duplicate-detail","source-reliability-f3-rapna-operational-diff","source-reliability-f3-preview-observe","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -3318,6 +3318,36 @@ jobs:
             missing:missing.slice(0,30),
             unexpected:unexpected.slice(0,30),
             changed:changed.slice(0,80)
+          }));
+          NODE
+              ;;
+            source-reliability-f3-preview-observe)
+              test -n "$VIGIA_SYNC_TOKEN"
+              preview_name="work-source-reliability-v2-f3-rapna-legacy"
+              base="https://work-source-reliability-v2-f3-rapna-legacy-vigia-runtime.c-gamiz93.workers.dev"
+              printf '%s' "$VIGIA_SYNC_TOKEN" | wrangler preview secret put VIGIA_SYNC_TOKEN --name "$preview_name" --worker-name "$CF_WORKER" --message "F3 RAPNA LEGACY read-only Preview cert $NONCE" >/dev/null
+              out="$RUNNER_TEMP/f3-rapna-preview-observe.json"
+              code="$(curl --silent --show-error --location --get --max-time 120 \
+                --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
+                --data-urlencode "observe=1" \
+                --output "$out" --write-out '%{http_code}' \
+                "$base/api/rapna/sync")"
+              HTTP_CODE="$code" OUT="$out" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.env.OUT,"utf8"));
+          if(Number(process.env.HTTP_CODE)!==200) throw new Error("RAPNA F3 Preview observe HTTP "+process.env.HTTP_CODE);
+          if(!Object.prototype.hasOwnProperty.call(body,"legacyReconcile") ||
+             !Object.prototype.hasOwnProperty.call(body,"currentRevisionCertification") ||
+             !Object.prototype.hasOwnProperty.call(body,"legacyRevisionCertification")) {
+            throw new Error("RAPNA F3 Preview observe contract missing");
+          }
+          console.log("SOURCE_RELIABILITY_F3_PREVIEW_OBSERVE "+JSON.stringify({
+            http:Number(process.env.HTTP_CODE),
+            recent:body.recent?.status??null,
+            currentParity:body.currentParity?.status??null,
+            legacyReconcile:body.legacyReconcile?.status??null,
+            currentCertification:body.currentRevisionCertification?.auditStatus??null,
+            legacyCertification:body.legacyRevisionCertification?.auditStatus??null
           }));
           NODE
               ;;
