@@ -95,3 +95,75 @@ jobs:
               throw new Error(`RAPNA CURRENT parity failed HTTP ${status}: ${JSON.stringify(state)}`);
             console.log("RAPNA_CURRENT_PARITY "+JSON.stringify(state));
           ' "$http_code" "$response_file"
+
+
+  legacy_revision:
+    needs: [writer_gate, runtime_target, current_parity]
+    if: needs.writer_gate.outputs.allowed == 'true' && needs.current_parity.result == 'success' && github.event_name == 'schedule' && github.event.schedule == '41 4 * * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Reconcile the complete RAPNA LEGACY index in bounded batches
+        env:
+          VIGIA_RAPNA_SYNC_URL: ${{ format('{0}/api/rapna/sync', needs.runtime_target.outputs.base_url) }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+          completed=0
+          for attempt in $(seq 1 8); do
+            response_file="$RUNNER_TEMP/rapna-legacy-${attempt}.json"
+            http_code="$(curl --silent --show-error --location --request POST \
+              --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" --retry 2 --retry-all-errors \
+              --max-time 1200 --output "$response_file" --write-out '%{http_code}' \
+              "$VIGIA_RAPNA_SYNC_URL?mode=legacy-reconcile&batchSize=3")"
+            result="$(HTTP_CODE="$http_code" RESPONSE_FILE="$response_file" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const http=Number(process.env.HTTP_CODE);
+          const body=JSON.parse(readFileSync(process.env.RESPONSE_FILE,"utf8"));
+          const state=body?.state;
+          if(http===401) throw new Error("RAPNA LEGACY authentication failed");
+          if(!state||state.source!=="RAPNA"||state.mode!=="legacy-reconcile") {
+            throw new Error("Unexpected RAPNA LEGACY response: "+JSON.stringify(body));
+          }
+          if(http>=500||state.lastError||state.pageErrors!==0||state.detailFailures!==0) {
+            throw new Error("RAPNA LEGACY reconcile failed: "+JSON.stringify(state));
+          }
+          if(state.status==="skipped"){
+            console.log(JSON.stringify({status:state.status,reason:state.lastSkipReason,attempt:Number(process.env.ATTEMPT??0)}));
+            process.stdout.write("retry");
+          }else if(state.status==="completed"){
+            if(state.coverage!=="official-index-complete"||state.cursor!==state.totalUnits||state.recordsObserved<=0) {
+              throw new Error("RAPNA LEGACY terminal certification preconditions failed: "+JSON.stringify(state));
+            }
+            const cert=body?.revisionCertification;
+            if(!cert||cert.source!=="RAPNA"||cert.mode!=="legacy-reconcile"||
+               cert.auditStatus!=="passed"||cert.coverage!=="official-index-complete") {
+              throw new Error("RAPNA LEGACY terminal certification missing: "+JSON.stringify(cert));
+            }
+            console.log(JSON.stringify({
+              status:state.status,cursor:state.cursor,totalUnits:state.totalUnits,pagesScanned:state.pagesScanned,
+              recordsObserved:state.recordsObserved,newCount:state.newCount,updatedCount:state.updatedCount,
+              coverage:state.coverage
+            }));
+            process.stdout.write("completed");
+          }else{
+            if(state.status!=="partial"||state.coverage!=="partial"||state.cursor<=0||state.cursor>state.totalUnits) {
+              throw new Error("RAPNA LEGACY bounded progress invalid: "+JSON.stringify(state));
+            }
+            console.log(JSON.stringify({
+              status:state.status,cursor:state.cursor,totalUnits:state.totalUnits,pagesScanned:state.pagesScanned,
+              recordsObserved:state.recordsObserved,newCount:state.newCount,updatedCount:state.updatedCount
+            }));
+            process.stdout.write("continue");
+          }
+          NODE
+            )"
+            case "$result" in
+              *completed) completed=1; break ;;
+              *retry) sleep 15 ;;
+              *continue) ;;
+              *) echo "Unexpected RAPNA LEGACY loop result: $result" >&2; exit 1 ;;
+            esac
+          done
+          test "$completed" = "1"
