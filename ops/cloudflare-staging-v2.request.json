@@ -1,4 +1,4 @@
 {
-  "operation": "source-reliability-f1-prod-audit",
-  "nonce": "source-reliability-f1-prod-audit-20260929"
+  "operation": "worker-status",
+  "nonce": "source-reliability-f1-postdeploy-status-20260929"
 }
