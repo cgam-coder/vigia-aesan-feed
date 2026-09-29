@@ -1,4 +1,4 @@
 {
-  "operation": "source-reliability-f3-build-log",
-  "nonce": "source-reliability-f3-parserbaseline-build-log-20260929"
+  "operation": "worker-status",
+  "nonce": "source-reliability-f3-legacy-baseline-main-status-20260929"
 }
