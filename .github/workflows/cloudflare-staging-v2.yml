@@ -2938,61 +2938,71 @@ jobs:
           NODE
               ;;
             source-reliability-f2a-production-build)
-              account_id="9c1807c68493f14259248b5f5782cc6f"
-              trigger_uuid="00310c5e-c497-46d3-8556-f84cf245a25a"
               expected_commit="bf6d8b6af67eb8a881ceac736fb5b241050a8f17"
-              payload="$(node --input-type=module -e 'console.log(JSON.stringify({branch:"main",commit_hash:process.argv[1]}))' "$expected_commit")"
-              start_json="$(curl --silent --show-error --fail-with-body \
-                "https://api.cloudflare.com/client/v4/accounts/$account_id/builds/triggers/$trigger_uuid/builds" \
-                --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-                --header "Content-Type: application/json" \
-                --request POST --data "$payload")"
-              build_uuid="$(START_JSON="$start_json" EXPECTED="$expected_commit" node --input-type=module - <<'NODE'
-          const body=JSON.parse(process.env.START_JSON||"{}");
-          if(body?.success!==true||!body?.result?.build_uuid) throw new Error("failed to start F2A production build");
-          const r=body.result;
-          const meta=r.build_trigger_metadata??{};
-          if(meta.commit_hash && meta.commit_hash!==process.env.EXPECTED) throw new Error("unexpected commit "+meta.commit_hash);
-          console.log("SOURCE_RELIABILITY_F2A_BUILD_STARTED "+JSON.stringify({
-            buildUuid:r.build_uuid,status:r.status??null,branch:meta.branch??null,
-            commitHash:meta.commit_hash??null,source:meta.build_trigger_source??null
-          }));
-          process.stdout.write(r.build_uuid);
-          NODE
-              )"
-              final_json=""
-              for attempt in $(seq 1 36); do
-                final_json="$(curl --silent --show-error --fail-with-body \
-                  "https://api.cloudflare.com/client/v4/accounts/$account_id/builds/builds/$build_uuid" \
-                  --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN")"
-                state="$(FINAL_JSON="$final_json" node --input-type=module -e 'const b=JSON.parse(process.env.FINAL_JSON||"{}"); process.stdout.write(String(b?.result?.status??"unknown"))')"
-                echo "SOURCE_RELIABILITY_F2A_BUILD_POLL attempt=$attempt status=$state"
-                if [ "$state" = "stopped" ]; then break; fi
-                sleep 10
-              done
-              FINAL_JSON="$final_json" EXPECTED="$expected_commit" node --input-type=module - <<'NODE'
-          const body=JSON.parse(process.env.FINAL_JSON||"{}");
-          if(body?.success!==true||!body?.result) throw new Error("invalid F2A final build response");
-          const r=body.result;
-          const meta=r.build_trigger_metadata??{};
-          const safe={
-            buildUuid:r.build_uuid??null,status:r.status??null,buildOutcome:r.build_outcome??null,
-            branch:meta.branch??null,commitHash:meta.commit_hash??null,
-            createdOn:r.created_on??null,runningOn:r.running_on??null,stoppedOn:r.stopped_on??null,
-            previewUrl:r.preview_url??null
+              pre_status="$(wrangler deployments status --name "$CF_WORKER" --json)"
+              PRE_STATUS="$pre_status" EXPECTED="$expected_commit" node --input-type=module - <<'NODE'
+          const account="9c1807c68493f14259248b5f5782cc6f";
+          const trigger="00310c5e-c497-46d3-8556-f84cf245a25a";
+          const expected=process.env.EXPECTED;
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          if(!token) throw new Error("Cloudflare token missing");
+          const headers={
+            "Authorization":`Bearer ${token}`,
+            "Content-Type":"application/json"
           };
-          console.log("SOURCE_RELIABILITY_F2A_BUILD_FINAL "+JSON.stringify(safe));
-          if(r.status!=="stopped"||r.build_outcome!=="success") throw new Error("F2A production build did not succeed");
-          if(meta.commit_hash!==process.env.EXPECTED||meta.branch!=="main") throw new Error("F2A production commit/branch mismatch");
+          const api=async (path,init={})=>{
+            const response=await fetch(`https://api.cloudflare.com/client/v4${path}`,{...init,headers:{...headers,...(init.headers??{})}});
+            const text=await response.text();
+            let body;
+            try{body=JSON.parse(text);}catch{throw new Error("Cloudflare API returned non-JSON HTTP "+response.status);}
+            if(!response.ok||body?.success!==true) {
+              const codes=Array.isArray(body?.errors)?body.errors.map(x=>x?.code??null):[];
+              throw new Error("Cloudflare API failure HTTP "+response.status+" codes="+JSON.stringify(codes));
+            }
+            return body.result;
+          };
+          const pre=JSON.parse(process.env.PRE_STATUS||"{}");
+          const preId=pre?.id??null;
+          const started=await api(`/accounts/${account}/builds/triggers/${trigger}/builds`,{
+            method:"POST",
+            body:JSON.stringify({branch:"main",commit_hash:expected})
+          });
+          const meta=started?.build_trigger_metadata??{};
+          if(meta.commit_hash&&meta.commit_hash!==expected) throw new Error("unexpected build commit "+meta.commit_hash);
+          console.log("SOURCE_RELIABILITY_F2A_BUILD_STARTED "+JSON.stringify({
+            buildUuid:started?.build_uuid??null,status:started?.status??null,
+            branch:meta.branch??null,commitHash:meta.commit_hash??null,preDeploymentId:preId
+          }));
+          const uuid=started?.build_uuid;
+          if(!uuid) throw new Error("Cloudflare build UUID missing");
+          let final=started;
+          for(let attempt=1;attempt<=36;attempt+=1){
+            final=await api(`/accounts/${account}/builds/builds/${uuid}`,{method:"GET"});
+            console.log("SOURCE_RELIABILITY_F2A_BUILD_POLL "+JSON.stringify({attempt,status:final?.status??null}));
+            if(final?.status==="stopped") break;
+            await new Promise(resolve=>setTimeout(resolve,10_000));
+          }
+          const finalMeta=final?.build_trigger_metadata??{};
+          console.log("SOURCE_RELIABILITY_F2A_BUILD_FINAL "+JSON.stringify({
+            buildUuid:final?.build_uuid??null,status:final?.status??null,buildOutcome:final?.build_outcome??null,
+            branch:finalMeta.branch??null,commitHash:finalMeta.commit_hash??null,
+            createdOn:final?.created_on??null,runningOn:final?.running_on??null,stoppedOn:final?.stopped_on??null,
+            preDeploymentId:preId
+          }));
+          if(final?.status!=="stopped"||final?.build_outcome!=="success") throw new Error("F2A production build did not succeed");
+          if(finalMeta.commit_hash!==expected||finalMeta.branch!=="main") throw new Error("F2A production commit/branch mismatch");
           NODE
-              status_json="$(wrangler deployments status --name "$CF_WORKER" --json)"
-              STATUS_JSON="$status_json" node --input-type=module - <<'NODE'
-          const d=JSON.parse(process.env.STATUS_JSON||"{}");
-          const versions=Array.isArray(d?.versions)?d.versions:[];
+              post_status="$(wrangler deployments status --name "$CF_WORKER" --json)"
+              PRE_STATUS="$pre_status" POST_STATUS="$post_status" node --input-type=module - <<'NODE'
+          const pre=JSON.parse(process.env.PRE_STATUS||"{}");
+          const post=JSON.parse(process.env.POST_STATUS||"{}");
+          const versions=Array.isArray(post?.versions)?post.versions:[];
           if(versions.length!==1||Number(versions[0]?.percentage)!==100) throw new Error("F2A deployment not singular at 100%");
+          if(!post?.id||post.id===pre?.id) throw new Error("F2A production build did not create a new deployment");
           console.log("SOURCE_RELIABILITY_F2A_POST_DEPLOY "+JSON.stringify({
-            deploymentId:d.id??null,versionId:versions[0]?.version_id??null,
-            percentage:Number(versions[0]?.percentage),createdOn:d.created_on??null
+            previousDeploymentId:pre?.id??null,deploymentId:post.id,
+            versionId:versions[0]?.version_id??null,percentage:Number(versions[0]?.percentage),
+            createdOn:post.created_on??null
           }));
           NODE
               ;;
