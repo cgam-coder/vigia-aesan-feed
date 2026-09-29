@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","home-f7-build-log","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f3-build-log","source-reliability-f3-live-cycle-cert","source-reliability-f3-live-delta-audit","source-reliability-f3-false-version-repair-audit","source-reliability-f3-false-version-repair","source-reliability-f3-live-step-cert","source-reliability-f3-freshness-diagnose","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f3-rapna-duplicate-detail","source-reliability-f3-rapna-operational-diff","source-reliability-f3-preview-observe","source-reliability-f3-production-build","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f3-build-log","source-reliability-f3-live-cycle-cert","source-reliability-f3-live-delta-audit","source-reliability-f3-false-version-repair-audit","source-reliability-f3-false-version-repair","source-reliability-f3-live-step-cert","source-reliability-f3-freshness-diagnose","source-reliability-f3-recent-refresh-cert","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f3-rapna-duplicate-detail","source-reliability-f3-rapna-operational-diff","source-reliability-f3-preview-observe","source-reliability-f3-production-build","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -4104,6 +4104,63 @@ jobs:
               error:freshness.error??null
             },
             sync,certifications:certs
+          }));
+          NODE
+              ;;
+            source-reliability-f3-recent-refresh-cert)
+              test -n "$VIGIA_SYNC_TOKEN"
+              base="https://vigia-runtime.c-gamiz93.workers.dev"
+              out="$RUNNER_TEMP/rapna-f3-recent-refresh.json"
+              code="$(curl --silent --show-error --location --request POST --max-time 420 \
+                --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
+                --output "$out" --write-out '%{http_code}' \
+                "$base/api/rapna/sync?mode=recent")"
+              HTTP_CODE="$code" OUT="$out" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.env.OUT,"utf8"));
+          const state=body?.state;
+          const http=Number(process.env.HTTP_CODE);
+          if(http!==200||!state||state.source!=="RAPNA"||state.mode!=="recent"||
+             state.status!=="completed"||state.lastError!==null||
+             Number(state.pageErrors)!==0||Number(state.detailFailures)!==0) {
+            throw new Error("RAPNA recent refresh failed: "+JSON.stringify({
+              http,status:state?.status??null,pageErrors:state?.pageErrors??null,
+              detailFailures:state?.detailFailures??null,lastError:state?.lastError??null
+            }));
+          }
+          console.log("SOURCE_RELIABILITY_F3_RECENT_REFRESH "+JSON.stringify({
+            http,status:state.status,pagesScanned:Number(state.pagesScanned),
+            recordsObserved:Number(state.recordsObserved),recordsPersisted:Number(state.recordsPersisted),
+            newCount:Number(state.newCount),updatedCount:Number(state.updatedCount),
+            lastSuccessAt:state.lastSuccessAt
+          }));
+          NODE
+              freshness="$RUNNER_TEMP/rapna-f3-freshness-post-refresh.json"
+              freshness_code="$(curl --silent --show-error --location --request POST --max-time 180 \
+                --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
+                --output "$freshness" --write-out '%{http_code}' \
+                "$base/api/freshness?audit=1&source=RAPNA")"
+              HTTP_CODE="$freshness_code" OUT="$freshness" node --input-type=module - <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.env.OUT,"utf8"));
+          const state=Array.isArray(body?.states)?body.states[0]:null;
+          const view=Array.isArray(body?.reliability)?body.reliability[0]:null;
+          if(Number(process.env.HTTP_CODE)!==200||body?.allFresh!==true||state?.source!=="RAPNA"||
+             state?.status!=="fresh"||state?.revisionStatus!=="fresh"||
+             view?.recent?.status!=="fresh"||view?.revision?.status!=="fresh") {
+            throw new Error("RAPNA post-refresh aggregate freshness failed: "+JSON.stringify({
+              http:Number(process.env.HTTP_CODE),allFresh:body?.allFresh,
+              state:state?.status??null,revision:state?.revisionStatus??null,
+              recent:view?.recent?.status??null,viewRevision:view?.revision?.status??null,
+              syncAgeMinutes:state?.syncAgeMinutes??null,error:state?.error??null
+            }));
+          }
+          console.log("SOURCE_RELIABILITY_F3_POST_REFRESH_FRESH "+JSON.stringify({
+            http:Number(process.env.HTTP_CODE),status:state.status,
+            syncAgeMinutes:state.syncAgeMinutes,lagMinutes:state.lagMinutes,
+            revisionStatus:state.revisionStatus,
+            revisionLastSuccessAt:state.revisionLastSuccessAt,
+            recentStatus:view.recent.status,revisionScope:view.revision.scope
           }));
           NODE
               ;;
