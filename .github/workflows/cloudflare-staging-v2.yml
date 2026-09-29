@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","home-f7-build-log","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f3-build-log","source-reliability-f3-live-cycle-cert","source-reliability-f3-live-delta-audit","source-reliability-f3-false-version-repair-audit","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f3-rapna-duplicate-detail","source-reliability-f3-rapna-operational-diff","source-reliability-f3-preview-observe","source-reliability-f3-production-build","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f3-build-log","source-reliability-f3-live-cycle-cert","source-reliability-f3-live-delta-audit","source-reliability-f3-false-version-repair-audit","source-reliability-f3-false-version-repair","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f3-rapna-duplicate-detail","source-reliability-f3-rapna-operational-diff","source-reliability-f3-preview-observe","source-reliability-f3-production-build","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -3582,6 +3582,178 @@ jobs:
             throw new Error("RAPNA F3 repair state mismatch: "+JSON.stringify(safe));
           }
           console.log("SOURCE_RELIABILITY_F3_FALSE_VERSION_REPAIR_AUDIT "+JSON.stringify(safe));
+          NODE
+              ;;
+            source-reliability-f3-false-version-repair)
+              work="$RUNNER_TEMP/f3-false-version-repair"
+              rm -rf "$work"
+              mkdir -p "$work"
+              wrangler d1 execute "$CF_D1" --remote --command "
+                SELECT source,owner_id AS owner_id,mode,expires_at AS expires_at
+                FROM source_sync_locks WHERE source='RAPNA';
+                SELECT source,mode,status,cursor,total_units AS total_units,pages_scanned AS pages_scanned,
+                  records_observed AS records_observed,records_persisted AS records_persisted,
+                  new_count AS new_count,updated_count AS updated_count,detail_failures AS detail_failures,
+                  page_errors AS page_errors,coverage,last_error AS last_error,completed_at AS completed_at
+                FROM source_sync_state WHERE source='RAPNA' AND mode='legacy-reconcile';
+                SELECT
+                  (SELECT COUNT(*) FROM alerts WHERE source='RAPNA') AS rapna_alerts,
+                  (SELECT COALESCE(SUM(version_count),0) FROM alerts WHERE source='RAPNA') AS rapna_version_sum,
+                  (SELECT COUNT(*) FROM alert_versions v INNER JOIN alerts a ON a.id=v.alert_id WHERE a.source='RAPNA') AS rapna_versions,
+                  (SELECT COUNT(*) FROM alerts a WHERE a.source='RAPNA'
+                    AND json_extract(a.canonical_json,'$.sourceRecord.archive')='legacy' AND a.version_count>1) AS legacy_versioned_alerts;
+              " --json > "$work/pre-summary.json"
+              wrangler d1 execute "$CF_D1" --remote --command "
+                SELECT
+                  a.id AS alert_id,a.reference,
+                  CAST(json_extract(a.canonical_json,'$.sourceRecord.record.ano') AS INTEGER) AS year,
+                  a.content_hash AS current_hash,a.canonical_json AS canonical_json,
+                  a.version_count AS declared_versions,
+                  json_extract(a.canonical_json,'$.sourceRecord.record') AS current_raw,
+                  v.id AS version_id,v.content_hash AS version_hash,
+                  json_extract(v.snapshot,'$.canonical.sourceRecord.record') AS version_raw
+                FROM alerts a
+                INNER JOIN alert_versions v ON v.alert_id=a.id
+                WHERE a.source='RAPNA'
+                  AND json_extract(a.canonical_json,'$.sourceRecord.archive')='legacy'
+                  AND a.version_count>1
+                  AND CAST(json_extract(a.canonical_json,'$.sourceRecord.record.ano') AS INTEGER)>=2020
+                ORDER BY a.reference,v.id;
+              " --json > "$work/pre-rows.json"
+              node --input-type=module - "$work/pre-summary.json" "$work/pre-rows.json" "$work/repair.sql" "$work/manifest.json" <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          import { createHash } from "node:crypto";
+          const flatten=(value)=>(Array.isArray(value)?value:[]).flatMap(x=>x?.results??[]);
+          const summary=flatten(JSON.parse(readFileSync(process.argv[2],"utf8")));
+          const locks=summary.filter(r=>r?.source==="RAPNA"&&"owner_id" in r);
+          const activeLocks=locks.filter(r=>typeof r.expires_at==="string"&&Date.parse(r.expires_at)>Date.now());
+          if(activeLocks.length) throw new Error("RAPNA repair refused with active lease");
+          const state=summary.find(r=>r?.mode==="legacy-reconcile");
+          const counts=summary.find(r=>"rapna_alerts" in r)??{};
+          if(!state||state.status!=="partial"||Number(state.cursor)!==3||Number(state.total_units)!==17||
+             Number(state.records_observed)!==886||Number(state.records_persisted)!==53||
+             Number(state.new_count)!==0||Number(state.updated_count)!==53||
+             Number(state.detail_failures)!==0||Number(state.page_errors)!==0||state.last_error!==null) {
+            throw new Error("RAPNA repair pre-state mismatch: "+JSON.stringify(state));
+          }
+          if(Number(counts.rapna_alerts)!==2567||Number(counts.rapna_version_sum)!==2621||
+             Number(counts.rapna_versions)!==2621||Number(counts.legacy_versioned_alerts)!==53) {
+            throw new Error("RAPNA repair pre-count mismatch: "+JSON.stringify(counts));
+          }
+          const rows=flatten(JSON.parse(readFileSync(process.argv[3],"utf8")));
+          const stable=(v)=>Array.isArray(v)?v.map(stable):v&&typeof v==="object"
+            ?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b)).map(([k,x])=>[k,stable(x)])):v;
+          const stableText=(value)=>{
+            try{return JSON.stringify(stable(typeof value==="string"?JSON.parse(value):value));}
+            catch{return String(value??"");}
+          };
+          const byAlert=new Map();
+          for(const row of rows){const list=byAlert.get(String(row.alert_id))??[];list.push(row);byAlert.set(String(row.alert_id),list);}
+          const deletions=[]; const alerts=[]; const fingerprintRows=[];
+          for(const [alertId,list] of byAlert){
+            list.sort((a,b)=>Number(a.version_id)-Number(b.version_id));
+            const first=list[0];
+            const currentHash=String(first.current_hash);
+            const matches=list.filter(r=>String(r.version_hash)===currentHash);
+            const raws=new Set(list.map(r=>stableText(r.version_raw)));
+            const currentRaw=stableText(first.current_raw);
+            if(Number(first.declared_versions)!==2||list.length!==2||matches.length!==1||raws.size!==1||[...raws][0]!==currentRaw) {
+              throw new Error("RAPNA repair candidate invariant failed for "+first.reference);
+            }
+            deletions.push(Number(matches[0].version_id));
+            alerts.push(alertId);
+            fingerprintRows.push({
+              alertId,reference:String(first.reference),currentHash,canonicalJson:String(first.canonical_json)
+            });
+          }
+          if(deletions.length!==53||new Set(deletions).size!==53||alerts.length!==53||new Set(alerts).size!==53) {
+            throw new Error("RAPNA repair candidate cardinality mismatch");
+          }
+          const quote=(v)=>"'"+String(v).replaceAll("'","''")+"'";
+          const sql=[
+            "DELETE FROM alert_versions WHERE id IN ("+deletions.join(",")+");",
+            "UPDATE alerts SET version_count=(SELECT COUNT(*) FROM alert_versions v WHERE v.alert_id=alerts.id) "+
+              "WHERE id IN ("+alerts.map(quote).join(",")+");",
+            "UPDATE source_sync_state SET records_persisted=0, updated_count=0, updated_at=datetime('now') "+
+              "WHERE source='RAPNA' AND mode='legacy-reconcile' AND status='partial' AND cursor=3 "+
+              "AND records_observed=886 AND records_persisted=53 AND new_count=0 AND updated_count=53 "+
+              "AND detail_failures=0 AND page_errors=0 AND last_error IS NULL;"
+          ].join("\n");
+          writeFileSync(process.argv[4],sql);
+          const fingerprint=createHash("sha256").update(JSON.stringify(fingerprintRows.sort((a,b)=>a.alertId.localeCompare(b.alertId)))).digest("hex");
+          writeFileSync(process.argv[5],JSON.stringify({deletions,alerts,fingerprint}));
+          console.log("SOURCE_RELIABILITY_F3_FALSE_VERSION_REPAIR_PLAN "+JSON.stringify({
+            candidates:alerts.length,deleteVersionIds:deletions,fingerprint
+          }));
+          NODE
+              wrangler d1 execute "$CF_D1" --remote --file="$work/repair.sql" --yes --json > "$work/apply.json"
+              wrangler d1 execute "$CF_D1" --remote --command "
+                SELECT source,mode,status,cursor,total_units AS total_units,pages_scanned AS pages_scanned,
+                  records_observed AS records_observed,records_persisted AS records_persisted,
+                  new_count AS new_count,updated_count AS updated_count,detail_failures AS detail_failures,
+                  page_errors AS page_errors,coverage,last_error AS last_error,completed_at AS completed_at
+                FROM source_sync_state WHERE source='RAPNA' AND mode='legacy-reconcile';
+                SELECT
+                  (SELECT COUNT(*) FROM alerts WHERE source='RAPNA') AS rapna_alerts,
+                  (SELECT COALESCE(SUM(version_count),0) FROM alerts WHERE source='RAPNA') AS rapna_version_sum,
+                  (SELECT COUNT(*) FROM alert_versions v INNER JOIN alerts a ON a.id=v.alert_id WHERE a.source='RAPNA') AS rapna_versions,
+                  (SELECT COUNT(*) FROM alerts a WHERE a.source='RAPNA'
+                    AND json_extract(a.canonical_json,'$.sourceRecord.archive')='legacy' AND a.version_count>1) AS legacy_versioned_alerts;
+              " --json > "$work/post-summary.json"
+              MANIFEST="$work/manifest.json" wrangler d1 execute "$CF_D1" --remote --command "
+                SELECT id AS alert_id,reference,content_hash AS current_hash,canonical_json AS canonical_json,version_count AS version_count
+                FROM alerts WHERE source='RAPNA'
+                  AND id IN (
+                    SELECT DISTINCT alert_id FROM alert_versions
+                    WHERE alert_id IN (
+                      SELECT id FROM alerts WHERE source='RAPNA'
+                        AND json_extract(canonical_json,'$.sourceRecord.archive')='legacy'
+                        AND CAST(json_extract(canonical_json,'$.sourceRecord.record.ano') AS INTEGER)>=2020
+                    )
+                  )
+                ORDER BY id;
+              " --json > "$work/post-alerts-all.json"
+              node --input-type=module - "$work/pre-rows.json" "$work/post-summary.json" "$work/manifest.json" "$work/post-alerts-all.json" <<'NODE'
+          import { readFileSync } from "node:fs";
+          import { createHash } from "node:crypto";
+          const flatten=(value)=>(Array.isArray(value)?value:[]).flatMap(x=>x?.results??[]);
+          const stateRows=flatten(JSON.parse(readFileSync(process.argv[3],"utf8")));
+          const state=stateRows.find(r=>r?.mode==="legacy-reconcile");
+          const counts=stateRows.find(r=>"rapna_alerts" in r)??{};
+          if(!state||state.status!=="partial"||Number(state.cursor)!==3||Number(state.records_observed)!==886||
+             Number(state.records_persisted)!==0||Number(state.new_count)!==0||Number(state.updated_count)!==0||
+             Number(state.detail_failures)!==0||Number(state.page_errors)!==0||state.last_error!==null) {
+            throw new Error("RAPNA repair post-state mismatch: "+JSON.stringify(state));
+          }
+          if(Number(counts.rapna_alerts)!==2567||Number(counts.rapna_version_sum)!==2568||
+             Number(counts.rapna_versions)!==2568||Number(counts.legacy_versioned_alerts)!==0) {
+            throw new Error("RAPNA repair post-count mismatch: "+JSON.stringify(counts));
+          }
+          const manifest=JSON.parse(readFileSync(process.argv[4],"utf8"));
+          const pre=flatten(JSON.parse(readFileSync(process.argv[2],"utf8")));
+          const preByAlert=new Map();
+          for(const row of pre){
+            if(!preByAlert.has(String(row.alert_id))) preByAlert.set(String(row.alert_id),{
+              alertId:String(row.alert_id),reference:String(row.reference),currentHash:String(row.current_hash),canonicalJson:String(row.canonical_json)
+            });
+          }
+          const postAll=flatten(JSON.parse(readFileSync(process.argv[5],"utf8")));
+          const postById=new Map(postAll.map(r=>[String(r.alert_id),r]));
+          const postRows=manifest.alerts.map(id=>{
+            const row=postById.get(String(id));
+            if(!row) throw new Error("RAPNA repair post alert missing "+id);
+            if(Number(row.version_count)!==1) throw new Error("RAPNA repair version_count not 1 for "+row.reference);
+            return {alertId:String(row.alert_id),reference:String(row.reference),currentHash:String(row.current_hash),canonicalJson:String(row.canonical_json)};
+          });
+          const fingerprint=createHash("sha256").update(JSON.stringify(postRows.sort((a,b)=>a.alertId.localeCompare(b.alertId)))).digest("hex");
+          if(fingerprint!==manifest.fingerprint) throw new Error("RAPNA repair altered current alert payloads");
+          console.log("SOURCE_RELIABILITY_F3_FALSE_VERSION_REPAIR_PASS "+JSON.stringify({
+            deletedVersions:manifest.deletions.length,alertsRepaired:manifest.alerts.length,
+            rapnaVersions:Number(counts.rapna_versions),rapnaVersionSum:Number(counts.rapna_version_sum),
+            legacyVersionedAlerts:Number(counts.legacy_versioned_alerts),cursor:Number(state.cursor),
+            recordsObserved:Number(state.records_observed),recordsPersisted:Number(state.records_persisted),
+            updatedCount:Number(state.updated_count),payloadFingerprint:fingerprint
+          }));
           NODE
               ;;
             source-reliability-f3-live-cycle-cert)
