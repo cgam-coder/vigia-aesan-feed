@@ -1,4 +1,4 @@
 {
-  "operation": "worker-build-env-inspect",
-  "nonce": "home-f7-prod-build-env-20260929"
+  "operation": "home-f7-production-build",
+  "nonce": "home-f7-production-exact-main-20260929"
 }
