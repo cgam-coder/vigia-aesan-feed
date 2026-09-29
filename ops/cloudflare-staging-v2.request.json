@@ -1,4 +1,4 @@
 {
-  "operation": "source-reliability-f1-build-log",
-  "nonce": "source-reliability-f2a-shadow-build-log-20260929"
+  "operation": "source-reliability-f2a-delta-shadow",
+  "nonce": "source-reliability-f2a-delta-shadow-final-gate-20260929"
 }
