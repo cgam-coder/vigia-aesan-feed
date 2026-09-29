@@ -177,7 +177,7 @@ jobs:
             source-reliability-f2a-preview-zero-write-cert)
               test -n "$VIGIA_SYNC_TOKEN"
               preview_name="work-source-reliability-v2-f2a-discovery-cert"
-              base="https://61d84537-vigia-runtime.c-gamiz93.workers.dev"
+              base="https://work-source-reliability-v2-f2a-discovery-cert-vigia-runtime.c-gamiz93.workers.dev"
               printf '%s' "$VIGIA_SYNC_TOKEN" | wrangler preview secret put VIGIA_SYNC_TOKEN --name "$preview_name" --worker-name "$CF_WORKER" --message "F2A PR158 zero-write cert $NONCE" >/dev/null
               preview_secrets="$(wrangler preview secret list --name "$preview_name" --worker-name "$CF_WORKER" --json)"
               PREVIEW_SECRETS="$preview_secrets" node --input-type=module - <<'NODE'
