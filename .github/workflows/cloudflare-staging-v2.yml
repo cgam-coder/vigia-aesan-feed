@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","home-f7-build-log","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -80,6 +80,65 @@ jobs:
               test "$CF_D1" = "nagamealert-staging-db"
               sql="CREATE TABLE IF NOT EXISTS cf_chat_control_probe (nonce TEXT PRIMARY KEY, created_at TEXT NOT NULL); INSERT OR REPLACE INTO cf_chat_control_probe (nonce, created_at) VALUES ('$NONCE', datetime('now'));"
               wrangler d1 execute "$CF_D1" --remote --command "$sql" --yes --json >/dev/null
+              ;;
+            source-reliability-f1-prod-audit)
+              test -n "$VIGIA_SYNC_TOKEN"
+              aesan_json="$(wrangler d1 execute "$CF_D1" --remote --command "
+                SELECT
+                  (SELECT COUNT(*) FROM alerts WHERE source='AESAN') AS aesanAlerts,
+                  (SELECT COUNT(DISTINCT reference) FROM alerts WHERE source='AESAN') AS aesanUniqueReferences,
+                  (SELECT COUNT(*) FROM alert_source_identities WHERE source='AESAN') AS aesanSourceIdentities,
+                  (SELECT COUNT(*) FROM alert_versions v INNER JOIN alerts a ON a.id=v.alert_id WHERE a.source='AESAN') AS aesanVersions,
+                  (SELECT COALESCE(SUM(version_count),0) FROM alerts WHERE source='AESAN') AS aesanVersionCountSum,
+                  (SELECT COUNT(*) FROM (SELECT reference FROM alerts WHERE source='AESAN' GROUP BY reference HAVING COUNT(*)>1)) AS duplicateReferenceGroups,
+                  (SELECT COUNT(*) FROM alerts a WHERE a.source='AESAN' AND NOT EXISTS (
+                    SELECT 1 FROM alert_source_identities i WHERE i.alert_id=a.id AND i.source='AESAN'
+                  )) AS missingSourceIdentities,
+                  (SELECT COUNT(*) FROM alerts a WHERE a.source='AESAN' AND
+                    (a.canonical_json IS NULL OR a.canonical_json='' OR a.canonical_json='{}')) AS emptyCanonicalRows,
+                  (SELECT COUNT(*) FROM alerts a WHERE a.source='AESAN' AND (
+                    json_extract(a.canonical_json,'$.identity.source')<>'AESAN' OR
+                    json_extract(a.canonical_json,'$.identity.internalId')<>a.id OR
+                    json_extract(a.canonical_json,'$.identity.officialReference')<>a.reference OR
+                    json_extract(a.canonical_json,'$.identity.officialUrl')<>a.url
+                  )) AS canonicalIdentityMismatches,
+                  (SELECT COUNT(*) FROM alerts a WHERE a.source='AESAN' AND NOT (
+                    a.url LIKE 'https://www.aesan.gob.es/%' OR a.url LIKE 'https://aesan.gob.es/%'
+                  )) AS invalidOfficialUrls,
+                  (SELECT COUNT(*) FROM alerts a WHERE a.source='AESAN' AND
+                    (LENGTH(a.content_hash)<>64 OR a.content_hash GLOB '*[^0-9a-f]*')) AS invalidContentHashes,
+                  (SELECT COUNT(*) FROM alert_versions v INNER JOIN alerts a ON a.id=v.alert_id WHERE a.source='AESAN' AND
+                    (LENGTH(v.content_hash)<>64 OR v.content_hash GLOB '*[^0-9a-f]*')) AS invalidVersionHashes,
+                  (SELECT COUNT(*) FROM alerts a WHERE a.source='AESAN' AND a.version_count<>(
+                    SELECT COUNT(*) FROM alert_versions v WHERE v.alert_id=a.id
+                  )) AS versionCountMismatches;
+              " --json)"
+              AESAN_JSON="$aesan_json" node --input-type=module - <<'NODE'
+          const raw=JSON.parse(process.env.AESAN_JSON||"[]");
+          const row=(Array.isArray(raw)?raw:[]).flatMap((x)=>x.results??[])[0];
+          if(!row) throw new Error("AESAN D1 audit returned no row");
+          console.log("SOURCE_RELIABILITY_F1_PROD_AUDIT "+JSON.stringify({source:"AESAN",row}));
+          NODE
+              base="https://vigia-runtime.c-gamiz93.workers.dev"
+              for endpoint in rapna rasff oecd; do
+                out="$RUNNER_TEMP/reliability-prod-$endpoint.json"
+                code="$(curl --silent --show-error --location --max-time 180 \
+                  --header "Authorization: Bearer $VIGIA_SYNC_TOKEN" \
+                  --output "$out" --write-out '%{http_code}' \
+                  "$base/api/$endpoint/sync?audit=1")"
+                echo "SOURCE_RELIABILITY_F1_PROD_HTTP endpoint=$endpoint code=$code bytes=$(wc -c < "$out")"
+                test "$code" = "200"
+                ENDPOINT="$endpoint" node --input-type=module - "$out" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const body=JSON.parse(readFileSync(process.argv[2],"utf8"));
+          const audit=body?.audit;
+          if(!audit?.checkedAt||!audit?.counts||!audit?.integrity) throw new Error(process.env.ENDPOINT+" audit shape invalid");
+          console.log("SOURCE_RELIABILITY_F1_PROD_AUDIT "+JSON.stringify({
+            source:process.env.ENDPOINT,checkedAt:audit.checkedAt,counts:audit.counts,integrity:audit.integrity
+          }));
+          NODE
+              done
+              echo "SOURCE_RELIABILITY_F1_PROD_AUDIT_ALL status=PASS"
               ;;
             source-reliability-f1-audit)
               test -n "$VIGIA_SYNC_TOKEN"
