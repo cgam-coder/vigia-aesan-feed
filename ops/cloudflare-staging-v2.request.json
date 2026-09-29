@@ -1,4 +1,4 @@
 {
-  "operation": "source-reliability-f2a-preview-zero-write-cert",
-  "nonce": "source-reliability-f2a-preview158-zero-write-cert-alias-20260929"
+  "operation": "worker-status",
+  "nonce": "source-reliability-f2a-post-merge-worker-status-20260929"
 }
