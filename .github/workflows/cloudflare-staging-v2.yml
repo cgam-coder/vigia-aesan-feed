@@ -44,7 +44,7 @@ jobs:
           const allowed=new Set([
             "probe","d1-canary-write","d1-canary-read",
             "worker-secret-list","worker-bootstrap-secrets",
-            "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","home-f7-production-build","worker-settings-readonly",
+            "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
             "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
@@ -2650,6 +2650,35 @@ jobs:
           const v=JSON.parse(process.env.VERSIONS_JSON||"[]");
           const rows=Array.isArray(v)?v:[];
           console.log("HOME_F7_POST_DEPLOY_VERSIONS "+JSON.stringify(rows.slice(-3).map((x)=>({id:x.id,metadata:x.metadata??null,annotations:x.annotations??null}))));
+          NODE
+              ;;
+            worker-builds-list)
+              account_id="9c1807c68493f14259248b5f5782cc6f"
+              scripts_json="$(curl --silent --show-error --fail-with-body \
+                "https://api.cloudflare.com/client/v4/accounts/$account_id/workers/scripts" \
+                --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN")"
+              worker_tag="$(SCRIPTS_JSON="$scripts_json" CF_WORKER="$CF_WORKER" node --input-type=module - <<'NODE'
+          const body=JSON.parse(process.env.SCRIPTS_JSON||"{}");
+          const row=(body?.result??[]).find((x)=>x?.id===process.env.CF_WORKER);
+          if(!row?.tag) throw new Error("worker tag unavailable");
+          process.stdout.write(row.tag);
+          NODE
+              )"
+              builds_json="$(curl --silent --show-error --fail-with-body \
+                "https://api.cloudflare.com/client/v4/accounts/$account_id/builds/workers/$worker_tag/builds" \
+                --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN")"
+              BUILDS_JSON="$builds_json" node --input-type=module - <<'NODE'
+          const body=JSON.parse(process.env.BUILDS_JSON||"{}");
+          if(body?.success!==true||!Array.isArray(body?.result)) throw new Error("invalid builds response");
+          const safe=body.result.slice(0,12).map((r)=>({
+            build_uuid:r.build_uuid??null,status:r.status??null,build_outcome:r.build_outcome??null,
+            created_on:r.created_on??null,running_on:r.running_on??null,stopped_on:r.stopped_on??null,
+            branch:r?.build_trigger_metadata?.branch??null,
+            commit_hash:r?.build_trigger_metadata?.commit_hash??null,
+            source:r?.build_trigger_metadata?.build_trigger_source??null,
+            trigger_uuid:r?.trigger?.trigger_uuid??null
+          }));
+          console.log("WORKER_BUILDS_LIST "+JSON.stringify(safe));
           NODE
               ;;
             worker-build-env-inspect)
