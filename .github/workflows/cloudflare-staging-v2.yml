@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","home-f7-build-log","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -80,6 +80,68 @@ jobs:
               test "$CF_D1" = "nagamealert-staging-db"
               sql="CREATE TABLE IF NOT EXISTS cf_chat_control_probe (nonce TEXT PRIMARY KEY, created_at TEXT NOT NULL); INSERT OR REPLACE INTO cf_chat_control_probe (nonce, created_at) VALUES ('$NONCE', datetime('now'));"
               wrangler d1 execute "$CF_D1" --remote --command "$sql" --yes --json >/dev/null
+              ;;
+            source-reliability-f2a-d1-size-audit)
+              work="$RUNNER_TEMP/source-reliability-f2a-d1-size"
+              mkdir -p "$work"
+              node --input-type=module - "$work/refs.json" <<'NODE'
+          import { writeFileSync } from "node:fs";
+          const endpoint="https://ec.europa.eu/safety-gate-alerts/public/api/notification/mostRecent/?";
+          const items=[];
+          for(let page=0; page<20; page+=1){
+            const response=await fetch(endpoint,{
+              method:"POST",
+              headers:{"Content-Type":"application/json",language:"es"},
+              body:JSON.stringify({language:"es",page:String(page),pageSize:"100"})
+            });
+            if(!response.ok) throw new Error("Safety Gate index HTTP "+response.status);
+            const body=await response.json();
+            const content=Array.isArray(body?.content)?body.content:[];
+            items.push(...content);
+            const totalPages=Number(body?.totalPages);
+            if(!content.length||body?.last===true||(Number.isFinite(totalPages)&&page+1>=totalPages)) break;
+          }
+          const refs=[...new Set(items.map((item)=>String(item?.reference??"").trim()).filter(Boolean))];
+          if(!refs.length) throw new Error("Safety Gate recent index empty");
+          writeFileSync(process.argv[2],JSON.stringify({observed:items.length,references:refs}));
+          console.log("SOURCE_RELIABILITY_F2A_D1_INDEX "+JSON.stringify({observed:items.length,references:refs.length}));
+          NODE
+              node --input-type=module - "$work/refs.json" "$work/chunks.sql" <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          const input=JSON.parse(readFileSync(process.argv[2],"utf8"));
+          const refs=input.references;
+          const quote=(v)=>"'"+String(v).replaceAll("'","''")+"'";
+          const statements=[];
+          for(let i=0;i<refs.length;i+=75){
+            const chunk=refs.slice(i,i+75);
+            statements.push(
+              "SELECT "+(i/75)+" AS chunk, COUNT(*) AS rows, "+
+              "SUM(LENGTH(canonical_json)) AS canonical_bytes, MAX(LENGTH(canonical_json)) AS max_canonical_bytes, "+
+              "SUM(CASE WHEN json_valid(canonical_json)=1 THEN 0 ELSE 1 END) AS invalid_json, "+
+              "SUM(CASE WHEN LENGTH(canonical_json)>50000 THEN 1 ELSE 0 END) AS gt50k, "+
+              "SUM(CASE WHEN LENGTH(canonical_json)>100000 THEN 1 ELSE 0 END) AS gt100k "+
+              "FROM alerts WHERE source='SAFETY GATE' AND reference IN ("+chunk.map(quote).join(",")+");"
+            );
+          }
+          writeFileSync(process.argv[3],statements.join("\n"));
+          NODE
+              chunks="$(wrangler d1 execute "$CF_D1" --remote --file="$work/chunks.sql" --yes --json)"
+              top="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT reference, LENGTH(canonical_json) AS canonical_bytes, version_count AS version_count FROM alerts WHERE source='SAFETY GATE' ORDER BY LENGTH(canonical_json) DESC LIMIT 12" --json)"
+              CHUNKS="$chunks" TOP="$top" node --input-type=module - <<'NODE'
+          const parseRows=(raw)=>(Array.isArray(JSON.parse(raw||"[]"))?JSON.parse(raw||"[]"):[]).flatMap((x)=>x?.results??[]);
+          const chunks=parseRows(process.env.CHUNKS);
+          const top=parseRows(process.env.TOP);
+          if(!chunks.length) throw new Error("D1 chunk audit returned no rows");
+          const safeChunks=chunks.map((r)=>({
+            chunk:Number(r.chunk),rows:Number(r.rows),canonicalBytes:Number(r.canonical_bytes??0),
+            maxCanonicalBytes:Number(r.max_canonical_bytes??0),invalidJson:Number(r.invalid_json??0),
+            gt50k:Number(r.gt50k??0),gt100k:Number(r.gt100k??0)
+          }));
+          console.log("SOURCE_RELIABILITY_F2A_D1_CHUNKS "+JSON.stringify(safeChunks));
+          console.log("SOURCE_RELIABILITY_F2A_D1_TOP "+JSON.stringify(top.map((r)=>({
+            reference:String(r.reference),canonicalBytes:Number(r.canonical_bytes??0),versionCount:Number(r.version_count??0)
+          }))));
+          NODE
               ;;
             source-reliability-f2a-delta-shadow)
               test -n "$VIGIA_SYNC_TOKEN"
