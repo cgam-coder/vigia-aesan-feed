@@ -44,7 +44,7 @@ jobs:
           const allowed=new Set([
             "probe","d1-canary-write","d1-canary-read",
             "worker-secret-list","worker-bootstrap-secrets",
-            "worker-versions","worker-status","worker-rollback","worker-build-trigger-inspect","worker-settings-readonly",
+            "worker-versions","worker-versions-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
             "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
@@ -2617,6 +2617,23 @@ jobs:
             build_caching_enabled:x.build_caching_enabled
           }));
           console.log("WORKER_BUILD_TRIGGERS "+JSON.stringify(safe));
+          NODE
+              ;;
+            worker-versions-detailed)
+              versions_json="$(wrangler versions list --name "$CF_WORKER" --json)"
+              VERSIONS_JSON="$versions_json" node --input-type=module - <<'NODE'
+          const v=JSON.parse(process.env.VERSIONS_JSON||"[]");
+          const rows=Array.isArray(v)?v:[];
+          const safe=rows.map((x)=>({
+            id:x.id??null,
+            created_on:x.created_on??null,
+            source:x.source??null,
+            tag:x.tag??null,
+            message:x.message??null,
+            annotations:x.annotations??null,
+            metadata:x.metadata??null
+          }));
+          console.log("WORKER_VERSIONS_DETAILED "+JSON.stringify(safe));
           NODE
               ;;
             worker-versions)
