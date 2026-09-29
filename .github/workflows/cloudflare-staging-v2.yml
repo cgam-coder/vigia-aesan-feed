@@ -158,51 +158,37 @@ jobs:
           NODE
               ;;
             source-reliability-f2a-source-probe)
-              d1_recent="$(wrangler d1 execute "$CF_D1" --remote --command "SELECT reference FROM alerts WHERE source='SAFETY GATE' ORDER BY COALESCE(published_at,detected_at) DESC, id DESC LIMIT 298" --json)"
-              D1_RECENT="$d1_recent" node --input-type=module - <<'NODE'
-          const parseRows=(raw)=>{
-            const value=JSON.parse(raw||"[]");
-            return (Array.isArray(value)?value:[]).flatMap((x)=>x?.results??[]);
-          };
-          const d1Refs=new Set(parseRows(process.env.D1_RECENT).map((r)=>String(r.reference??"").trim()).filter(Boolean));
-          const indexUrl="https://ec.europa.eu/safety-gate-alerts/api/download/weeklyReport/list/xml/en";
-          const indexResponse=await fetch(indexUrl,{headers:{"Accept":"application/xml,text/xml"}});
-          const indexText=await indexResponse.text();
-          if(!indexResponse.ok) throw new Error("weekly index HTTP "+indexResponse.status);
-          const reports=[...indexText.matchAll(/<weeklyReport>([\s\S]*?)<\/weeklyReport>/g)].flatMap((m)=>{
-            const xml=m[1];
-            const ref=xml.match(/<reference>([^<]+)<\/reference>/)?.[1]?.trim();
-            const year=Number(xml.match(/<year>([^<]+)<\/year>/)?.[1]);
-            const week=Number(xml.match(/<week>([^<]+)<\/week>/)?.[1]);
-            const rawUrl=xml.match(/<URL>([^<]+)<\/URL>/)?.[1]?.trim().replaceAll("&amp;","&");
-            if(!ref||!Number.isFinite(year)||!Number.isFinite(week)||!rawUrl) return [];
-            return [{ref,year,week,url:rawUrl}];
-          }).sort((a,b)=>a.year-b.year||a.week-b.week);
-          const latest=reports.slice(-4);
-          const reportStats=[];
-          const union=new Set();
-          for(const report of latest){
-            const response=await fetch(report.url,{headers:{"Accept":"application/xml,text/xml"}});
+              node --input-type=module - <<'NODE'
+          const endpoint="https://ec.europa.eu/safety-gate-alerts/public/api/notification/mostRecent/?";
+          const headers={"Accept":"application/json","Content-Type":"application/json","language":"es"};
+          const results=[];
+          for(let page=0;page<5;page+=1){
+            const response=await fetch(endpoint,{
+              method:"POST",
+              headers,
+              body:JSON.stringify({language:"es",page:String(page),pageSize:"100"})
+            });
             const text=await response.text();
-            if(!response.ok) throw new Error(report.ref+" HTTP "+response.status);
-            const refs=[...new Set([...text.matchAll(/<caseNumber>([^<]+)<\/caseNumber>/g)]
-              .map((m)=>String(m[1]??"").trim()).filter(Boolean))];
-            refs.forEach((ref)=>union.add(ref));
-            reportStats.push({ref:report.ref,references:refs.length,bytes:new TextEncoder().encode(text).byteLength});
+            const row={page,status:response.status,bytes:new TextEncoder().encode(text).byteLength};
+            if(response.ok){
+              const body=JSON.parse(text);
+              const content=Array.isArray(body?.content)?body.content:[];
+              Object.assign(row,{
+                contentCount:content.length,
+                totalElements:Number.isFinite(Number(body?.totalElements))?Number(body.totalElements):null,
+                totalPages:Number.isFinite(Number(body?.totalPages))?Number(body.totalPages):null,
+                number:Number.isFinite(Number(body?.number))?Number(body.number):null,
+                size:Number.isFinite(Number(body?.size))?Number(body.size):null,
+                last:body?.last??null,
+                firstReferences:content.slice(0,5).map((x)=>x?.reference??null),
+                lastReferences:content.slice(-5).map((x)=>x?.reference??null)
+              });
+            }else{
+              row.bodyPrefix=text.slice(0,180).replace(/\s+/g," ");
+            }
+            results.push(row);
           }
-          const weeklyOnly=[...union].filter((ref)=>!d1Refs.has(ref)).sort();
-          const d1Only=[...d1Refs].filter((ref)=>!union.has(ref)).sort();
-          const overlap=[...union].filter((ref)=>d1Refs.has(ref)).length;
-          console.log("SOURCE_RELIABILITY_F2A_WEEKLY_PARITY "+JSON.stringify({
-            reports:reportStats,
-            weeklyUnion:union.size,
-            d1Recent:d1Refs.size,
-            overlap,
-            weeklyOnlyCount:weeklyOnly.length,
-            d1OnlyCount:d1Only.length,
-            weeklyOnly:weeklyOnly.slice(0,25),
-            d1Only:d1Only.slice(0,25)
-          }));
+          console.log("SOURCE_RELIABILITY_F2A_PAGE100_MATRIX "+JSON.stringify(results));
           NODE
               ;;
             source-reliability-f2a-delta-preview)
