@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","home-f7-build-log","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f3-rapna-duplicate-detail","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f3-rapna-duplicate-detail","source-reliability-f3-rapna-operational-diff","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -3232,6 +3232,92 @@ jobs:
               reference:d.reference,distinctHashes:d.distinctHashes,anyOperational:d.anyOperational,
               rows:d.rows.map(r=>({year:r.year,id:r.id,fechaAlta:r.fechaAlta,operational:r.operational,hash:r.hash.slice(0,16)}))
             }))
+          }));
+          NODE
+              ;;
+            source-reliability-f3-rapna-operational-diff)
+              work="$RUNNER_TEMP/f3-rapna-operational-diff"
+              rm -rf "$work"
+              mkdir -p "$work"
+              wrangler d1 execute "$CF_D1" --remote --command "
+                SELECT reference, canonical_json AS canonicalJson
+                FROM alerts
+                WHERE source='RAPNA' AND json_extract(canonical_json,'$.sourceRecord.archive')='legacy'
+                ORDER BY reference;
+              " --json > "$work/d1.json"
+              node --input-type=module - "$work/d1.json" <<'NODE'
+          import { readFileSync } from "node:fs";
+          import { createHash } from "node:crypto";
+          const raw=JSON.parse(readFileSync(process.argv[2],"utf8"));
+          const d1Rows=(Array.isArray(raw)?raw:[]).flatMap(x=>x?.results??[]);
+          const stable=(v)=>Array.isArray(v)?v.map(stable):v&&typeof v==="object"
+            ?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b)).map(([k,x])=>[k,stable(x)])):v;
+          const digest=(v)=>createHash("sha256").update(JSON.stringify(stable(v))).digest("hex");
+          const d1=new Map();
+          for(const row of d1Rows){
+            const canonical=JSON.parse(String(row.canonicalJson??"{}"));
+            d1.set(String(row.reference),canonical?.sourceRecord?.record??null);
+          }
+          const endpoint="https://servicios.consumo.gob.es/rapnaBEPublic/listadoPublico/notificacionAntigua";
+          const headers={"Accept":"application/json","Content-Type":"application/json"};
+          const post=async(body)=>{
+            const response=await fetch(endpoint,{method:"POST",headers,body:JSON.stringify(body)});
+            if(!response.ok) throw new Error("RAPNA legacy HTTP "+response.status);
+            const json=await response.json();
+            if(!Array.isArray(json?.content)) throw new Error("RAPNA legacy invalid page");
+            return json;
+          };
+          const asc=await post({pageNumber:0,pageSize:1,sortBy:"ano",sortOrder:"asc"});
+          const desc=await post({pageNumber:0,pageSize:1,sortBy:"ano",sortOrder:"desc"});
+          const min=Number(asc.content?.[0]?.ano), max=Number(desc.content?.[0]?.ano);
+          const official=new Map();
+          for(let year=max;year>=min;year-=1){
+            for(let pageNumber=0;pageNumber<100;pageNumber+=1){
+              const page=await post({pageNumber,pageSize:250,sortBy:"identificador",sortOrder:"asc",anoAntigua:String(year)});
+              for(const row of page.content){
+                const ref=String(row?.identificador??"").trim();
+                if(!ref) throw new Error("RAPNA legacy row without reference");
+                const fecha=String(row?.fechaAlta??"").trim();
+                const parsed=Date.parse(fecha);
+                if(!Number.isFinite(parsed)||new Date(parsed).toISOString()<"2020-01-01T00:00:00.000Z") continue;
+                const previous=official.get(ref);
+                if(!previous){
+                  official.set(ref,row);
+                  continue;
+                }
+                const prevDate=Date.parse(String(previous?.fechaAlta??""));
+                if(!Number.isFinite(prevDate)||parsed>prevDate||(parsed===prevDate&&Number(row?.id??0)>Number(previous?.id??0))) {
+                  official.set(ref,row);
+                }
+              }
+              if(page.last===true||page.content.length===0||pageNumber+1>=Number(page.totalPages)) break;
+              if(pageNumber===99) throw new Error("RAPNA legacy page budget exceeded");
+            }
+          }
+          const missing=[...official.keys()].filter(ref=>!d1.has(ref)).sort((a,b)=>a.localeCompare(b,"es",{numeric:true}));
+          const unexpected=[...d1.keys()].filter(ref=>!official.has(ref)).sort((a,b)=>a.localeCompare(b,"es",{numeric:true}));
+          const changed=[];
+          let unchanged=0;
+          for(const [ref,row] of official){
+            if(!d1.has(ref)) continue;
+            const stored=d1.get(ref);
+            const a=digest(row), b=digest(stored);
+            if(a===b){unchanged++; continue;}
+            const keys=[...new Set([...Object.keys(row??{}),...Object.keys(stored??{})])].sort();
+            const changedKeys=keys.filter(k=>JSON.stringify(stable(row?.[k]))!==JSON.stringify(stable(stored?.[k])));
+            changed.push({reference:ref,officialHash:a.slice(0,16),storedHash:b.slice(0,16),changedKeys});
+          }
+          changed.sort((a,b)=>a.reference.localeCompare(b.reference,"es",{numeric:true}));
+          console.log("SOURCE_RELIABILITY_F3_RAPNA_OPERATIONAL_DIFF "+JSON.stringify({
+            officialOperational:official.size,
+            storedLegacy:d1.size,
+            missingCount:missing.length,
+            unexpectedCount:unexpected.length,
+            unchanged,
+            changedCount:changed.length,
+            missing:missing.slice(0,30),
+            unexpected:unexpected.slice(0,30),
+            changed:changed.slice(0,80)
           }));
           NODE
               ;;
