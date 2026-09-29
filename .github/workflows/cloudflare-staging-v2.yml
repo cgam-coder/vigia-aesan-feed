@@ -162,43 +162,32 @@ jobs:
           const pageUrl="https://ec.europa.eu/safety-gate-alerts/screen/search?resetSearch=true";
           const pageResponse=await fetch(pageUrl);
           const html=await pageResponse.text();
-          if(!pageResponse.ok) throw new Error("search page HTTP "+pageResponse.status);
-          const scriptSrcs=[...new Set([...html.matchAll(/<script[^>]+src=["']([^"']+)["']/g)].map((m)=>new URL(m[1],pageUrl).href))];
-          const assets=new Map();
-          for(const src of scriptSrcs){
-            const response=await fetch(src);
-            if(response.ok) assets.set(src,await response.text());
-          }
-          const dynamicNames=new Set();
-          for(const text of assets.values()){
-            for(const m of text.matchAll(/import\(["']\.\/(chunk-[A-Z0-9]+\.js)["']\)/g)) dynamicNames.add(m[1]);
-          }
-          for(const name of dynamicNames){
-            const src=new URL(name,pageUrl).href;
-            const response=await fetch(src);
-            if(response.ok) assets.set(src,await response.text());
-          }
-          const hits=[];
-          const endpointTokens=new Set();
-          for(const [src,text] of assets){
-            for(const needle of ["mostRecent","notification","search","criteria","pageSize","webReport"]){
-              let pos=0;
-              while((pos=text.indexOf(needle,pos))>=0 && hits.length<160){
-                const excerpt=text.slice(Math.max(0,pos-420),Math.min(text.length,pos+720)).replace(/\s+/g," ");
-                if(/api|notification|search|mostRecent/i.test(excerpt)) hits.push({script:src.split("/").at(-1),needle,excerpt:excerpt.slice(0,1150)});
-                pos+=needle.length;
-              }
-            }
-            for(const m of text.matchAll(/["'`]([^"'\`]{0,120}\/(?:api|public\/api)\/[^"'\`]{0,180})["'`]/g)){
-              endpointTokens.add(m[1]);
+          const mainSrc=[...html.matchAll(/<script[^>]+src=["']([^"']*main-[^"']+\.js)["']/g)]
+            .map((m)=>new URL(m[1],pageUrl).href)[0];
+          if(!mainSrc) throw new Error("main bundle not found");
+          const main=await (await fetch(mainSrc)).text();
+          const chunkName=main.match(/import\(["']\.\/(chunk-LT65EEDW\.js)["']\)/)?.[1];
+          if(!chunkName) throw new Error("search chunk not found");
+          const chunkUrl=new URL(chunkName,pageUrl).href;
+          const chunk=await (await fetch(chunkUrl)).text();
+          const needle='this.http.post(this.baseUrl+"search"';
+          const pos=chunk.indexOf(needle);
+          if(pos<0) throw new Error("search service call not found");
+          const before=chunk.slice(Math.max(0,pos-2400),pos+1200).replace(/\s+/g," ");
+          const searchMethodPos=chunk.indexOf("search(e){",Math.max(0,pos-200));
+          const payloadHits=[];
+          for(const token of ["pageSize","pageNumber","sort","PUBLICATION_DATE_DESC","fullTextSearch","archived"]){
+            let p=0;
+            while((p=chunk.indexOf(token,p))>=0 && payloadHits.length<60){
+              const ex=chunk.slice(Math.max(0,p-260),Math.min(chunk.length,p+480)).replace(/\s+/g," ");
+              if(/search|page|sort|criteria|form|request/i.test(ex)) payloadHits.push({token,excerpt:ex.slice(0,740)});
+              p+=token.length;
             }
           }
-          console.log("SOURCE_RELIABILITY_F2A_SEARCH_CHUNK "+JSON.stringify({
-            scripts:scriptSrcs.map((x)=>x.split("/").at(-1)),
-            dynamic:[...dynamicNames],
-            fetched:[...assets.keys()].map((x)=>x.split("/").at(-1)),
-            endpointTokens:[...endpointTokens].slice(0,100),
-            hits
+          console.log("SOURCE_RELIABILITY_F2A_SEARCH_CONTRACT "+JSON.stringify({
+            chunk:chunkName,
+            serviceExcerpt:before.slice(0,3500),
+            payloadHits
           }));
           NODE
               ;;
