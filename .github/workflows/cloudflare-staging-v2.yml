@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","home-f7-build-log","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f3-rapna-duplicate-detail","source-reliability-f3-rapna-operational-diff","source-reliability-f3-preview-observe","source-reliability-f3-production-build","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f3-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f3-rapna-duplicate-detail","source-reliability-f3-rapna-operational-diff","source-reliability-f3-preview-observe","source-reliability-f3-production-build","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -351,6 +351,27 @@ jobs:
             reductionPercent:p.reductionPercent,
             reasons:p.reasons,
             candidateReferences:p.candidateReferences
+          }));
+          NODE
+              ;;
+            source-reliability-f3-build-log)
+              account_id="9c1807c68493f14259248b5f5782cc6f"
+              build_uuid="84ba9934-a7ec-4515-82e9-729b2f14acb5"
+              logs_json="$(curl --silent --show-error --fail-with-body \
+                "https://api.cloudflare.com/client/v4/accounts/$account_id/builds/builds/$build_uuid/logs" \
+                --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN")"
+              LOGS_JSON="$logs_json" BUILD_UUID="$build_uuid" node --input-type=module - <<'NODE'
+          const body=JSON.parse(process.env.LOGS_JSON||"{}");
+          if(body?.success!==true||!body?.result) throw new Error("invalid build logs response");
+          const raw=Array.isArray(body.result.lines)?body.result.lines:[];
+          const lines=raw.map((entry)=>Array.isArray(entry)?String(entry.at(-1)??""):String(entry));
+          const redacted=lines.map((line)=>line
+            .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+/giu,"Bearer [REDACTED]")
+            .replace(/(TOKEN|SECRET|PASSWORD)=\S+/giu,"$1=[REDACTED]"));
+          const interesting=redacted.filter((line)=>/(error|fail|ERR!|typescript|tsc|lint|test|assert|exit code|build-verified|artifact|source-reliability|rapna|npm)/iu.test(line));
+          console.log("SOURCE_RELIABILITY_F3_BUILD_LOG "+JSON.stringify({
+            buildUuid:process.env.BUILD_UUID,totalLines:lines.length,
+            interesting:interesting.slice(-320),tail:redacted.slice(-180)
           }));
           NODE
               ;;
