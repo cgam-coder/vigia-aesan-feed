@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","home-f7-build-log","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -3002,6 +3002,89 @@ jobs:
             totalLines:lines.length,
             interesting:interesting.slice(-220),
             tail:redacted.slice(-120)
+          }));
+          NODE
+              ;;
+            source-reliability-f3-rapna-discovery)
+              rapna_archive="$(wrangler d1 execute "$CF_D1" --remote --command "
+                SELECT
+                  COALESCE(json_extract(canonical_json,'$.sourceRecord.archive'),'unknown') AS archive,
+                  COUNT(*) AS alerts,
+                  COUNT(DISTINCT reference) AS unique_refs,
+                  COALESCE(SUM(version_count),0) AS version_sum,
+                  MIN(COALESCE(published_at,detected_at)) AS oldest,
+                  MAX(COALESCE(published_at,detected_at)) AS newest
+                FROM alerts
+                WHERE source='RAPNA'
+                GROUP BY COALESCE(json_extract(canonical_json,'$.sourceRecord.archive'),'unknown')
+                ORDER BY archive;
+              " --json)"
+              rapna_legacy_years="$(wrangler d1 execute "$CF_D1" --remote --command "
+                SELECT
+                  CAST(json_extract(canonical_json,'$.sourceRecord.record.ano') AS INTEGER) AS year,
+                  COUNT(*) AS alerts,
+                  COUNT(DISTINCT reference) AS unique_refs,
+                  COALESCE(SUM(version_count),0) AS version_sum
+                FROM alerts
+                WHERE source='RAPNA'
+                  AND json_extract(canonical_json,'$.sourceRecord.archive')='legacy'
+                GROUP BY CAST(json_extract(canonical_json,'$.sourceRecord.record.ano') AS INTEGER)
+                ORDER BY year DESC;
+              " --json)"
+              rapna_states="$(wrangler d1 execute "$CF_D1" --remote --command "
+                SELECT source,mode,status,cursor,plan_version AS planVersion,cursor_key AS cursorKey,
+                  total_units AS totalUnits,pages_scanned AS pagesScanned,records_observed AS recordsObserved,
+                  records_persisted AS recordsPersisted,new_count AS newCount,updated_count AS updatedCount,
+                  detail_failures AS detailFailures,page_errors AS pageErrors,coverage,
+                  started_at AS startedAt,last_success_at AS lastSuccessAt,completed_at AS completedAt,
+                  last_error AS lastError,updated_at AS updatedAt
+                FROM source_sync_state WHERE source='RAPNA' ORDER BY mode;
+              " --json)"
+              rapna_certs="$(wrangler d1 execute "$CF_D1" --remote --command "
+                SELECT source,mode,cycle_id AS cycleId,completed_at AS completedAt,total_units AS totalUnits,
+                  records_observed AS recordsObserved,coverage,audit_status AS auditStatus,
+                  audit_checked_at AS auditCheckedAt,updated_at AS updatedAt
+                FROM source_revision_certifications WHERE source='RAPNA' ORDER BY mode;
+              " --json)"
+              ARCHIVE="$rapna_archive" LEGACY_YEARS="$rapna_legacy_years" STATES="$rapna_states" CERTS="$rapna_certs" node --input-type=module - <<'NODE'
+          const rows=(raw)=>{
+            const v=JSON.parse(raw||"[]");
+            return (Array.isArray(v)?v:[]).flatMap(x=>x?.results??[]);
+          };
+          const out={
+            archives:rows(process.env.ARCHIVE),
+            legacyYears:rows(process.env.LEGACY_YEARS),
+            states:rows(process.env.STATES),
+            certifications:rows(process.env.CERTS)
+          };
+          console.log("SOURCE_RELIABILITY_F3_RAPNA_D1 "+JSON.stringify(out));
+          NODE
+
+              node --input-type=module - <<'NODE'
+          const endpoint="https://servicios.consumo.gob.es/rapnaBEPublic/listadoPublico/notificacionAntigua";
+          const headers={"Accept":"application/json","Content-Type":"application/json"};
+          const post=async(body)=>{
+            const response=await fetch(endpoint,{method:"POST",headers,body:JSON.stringify(body)});
+            const text=await response.text();
+            if(!response.ok) throw new Error("RAPNA legacy HTTP "+response.status+" "+text.slice(0,160));
+            const json=JSON.parse(text);
+            if(!Array.isArray(json?.content) || !Number.isFinite(Number(json?.totalElements))) {
+              throw new Error("RAPNA legacy invalid page contract");
+            }
+            return json;
+          };
+          const asc=await post({pageNumber:0,pageSize:1,sortBy:"ano",sortOrder:"asc"});
+          const desc=await post({pageNumber:0,pageSize:1,sortBy:"ano",sortOrder:"desc"});
+          const yearOf=(page)=>Number(page.content?.[0]?.ano);
+          const min=yearOf(asc), max=yearOf(desc);
+          if(!Number.isSafeInteger(min)||!Number.isSafeInteger(max)||min>max) throw new Error("RAPNA legacy year bounds invalid");
+          const years=[];
+          for(let year=max;year>=min;year-=1){
+            const page=await post({pageNumber:0,pageSize:1,sortBy:"identificador",sortOrder:"asc",anoAntigua:String(year)});
+            years.push({year,totalElements:Number(page.totalElements),totalPages:Number(page.totalPages)});
+          }
+          console.log("SOURCE_RELIABILITY_F3_RAPNA_OFFICIAL "+JSON.stringify({
+            minYear:min,maxYear:max,years,total:years.reduce((s,x)=>s+x.totalElements,0)
           }));
           NODE
               ;;
