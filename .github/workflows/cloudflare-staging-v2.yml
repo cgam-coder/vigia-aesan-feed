@@ -159,16 +159,13 @@ jobs:
               ;;
             source-reliability-f2a-source-probe)
               node --input-type=module - <<'NODE'
-          const origin="https://ec.europa.eu";
-          const paths=[
-            "/safety-gate-alerts/public/api/search",
-            "/safety-gate-alerts/public/api/search/",
-            "/safety-gate-alerts/api/search",
-            "/safety-gate-alerts/api/search/",
-            "/safety-gate-alerts/screen/public/api/search",
-            "/safety-gate-alerts/screen/public/api/search/",
-            "/safety-gate-alerts/api/public/api/search",
-            "/safety-gate-alerts/api/public/api/search/"
+          const pageUrl="https://ec.europa.eu/safety-gate-alerts/screen/search?resetSearch=true";
+          const pageResponse=await fetch(pageUrl);
+          const html=await pageResponse.text();
+          const baseHref=html.match(/<base\s+href=["']([^"']+)["']/i)?.[1]??null;
+          const candidates=[
+            "https://ec.europa.eu/safety-gate-alerts/public/api/search",
+            "https://ec.europa.eu/safety-gate-alerts/public/api/search/"
           ];
           const body=JSON.stringify({
             criteria:{year:[2026]},
@@ -177,24 +174,26 @@ jobs:
             pagination:{size:9,page:0,sortField:"PUBLICATION_DATE",sortOrder:"DESC"}
           });
           const results=[];
-          for(const path of paths){
+          for(const url of candidates){
             for(const method of ["GET","POST"]){
-              const response=await fetch(origin+path,{
-                method,
+              const response=await fetch(url,{
+                method,redirect:"manual",
                 headers:{"Accept":"application/json","Content-Type":"application/json","language":"es","lang":"es"},
-                ...(method==="POST"?{body}: {})
+                ...(method==="POST"?{body}:{})
               });
               const text=await response.text();
               results.push({
-                path,method,status:response.status,
+                url,method,status:response.status,statusText:response.statusText,
+                responseUrl:response.url,redirected:response.redirected,
+                location:response.headers.get("location"),
                 allow:response.headers.get("allow"),
                 contentType:response.headers.get("content-type"),
                 bytes:new TextEncoder().encode(text).byteLength,
-                prefix:text.slice(0,160).replace(/\s+/g," ")
+                prefix:text.slice(0,220).replace(/\s+/g," ")
               });
             }
           }
-          console.log("SOURCE_RELIABILITY_F2A_SEARCH_ROUTE_MATRIX "+JSON.stringify(results));
+          console.log("SOURCE_RELIABILITY_F2A_SEARCH_REDIRECTS "+JSON.stringify({baseHref,results}));
           NODE
               ;;
             source-reliability-f2a-delta-preview)
