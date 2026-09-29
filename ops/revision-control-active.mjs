@@ -8,7 +8,7 @@ const assert = (ok, reason) => { if (!ok) throw new Error(reason); };
 const sourceRecord = (plan) => [...plan.candidates, ...plan.blocked, ...plan.idle].find((r) => r.source === SOURCE);
 const component = (r) => r?.components?.find((c) => c.mode === MODE);
 
-export function stagedBlocker(plan, now) {
+export function stagedBlocker(plan, now, postBudgetMs = POST_BUDGET_MS) {
   const r = sourceRecord(plan);
   if (!r) return "missing-stage-source";
   if (r.blockedReason) return r.blockedReason;
@@ -21,7 +21,7 @@ export function stagedBlocker(plan, now) {
   if (!c.state.planVersion?.startsWith("oecd-historical-reconcile-v2:")) return "stage-plan-not-supported";
   // Reserve enough recent freshness for the entire bounded request budget.
   const remaining = r.policy.recent.freshMaxAgeMinutes * 60_000 - (now - Date.parse(r.recent.lastSuccessAt));
-  if (!Number.isFinite(remaining) || remaining <= POST_BUDGET_MS) return "recent-budget-priority";
+  if (!Number.isFinite(remaining) || remaining <= postBudgetMs) return "recent-budget-priority";
   return null;
 }
 
@@ -31,15 +31,16 @@ function fingerprint(r) {
 }
 
 export async function runBoundedRevisionWake({ base, token, active = false, fetchImpl = fetch,
-  clock = Date.now, legacyGuard = async () => { throw Error("legacy-guard-required"); } } = {}) {
+  clock = Date.now, postBudgetMs = POST_BUDGET_MS,
+  legacyGuard = async () => { throw Error("legacy-guard-required"); } } = {}) {
   const initial = await runRevisionShadow({ base, token, fetchImpl, clock });
   const report = { stage:"F4C-1-OECD-continuation", activeRequested:active, zeroWrite:true,
-    mutatingRequests:0, maxMutatingRequests:1, batchSize:BATCH_SIZE, selected:initial.plan.selected,
+    mutatingRequests:0, maxMutatingRequests:1, batchSize:BATCH_SIZE, postBudgetMs, selected:initial.plan.selected,
     initial, before:null, response:null, after:null, delta:null, parity:"NOT_EXECUTED", blockedReason:null,
     legacyComparison:{ workflow:"oecd-historical-reconcile.yml", lane:MODE, batchSize:2,
       basis:"existing-workflow-contract", observedBusy:null },
     schedulerChanges:[], retirementAuthorized:false };
-  report.blockedReason = stagedBlocker(initial.plan, clock());
+  report.blockedReason = stagedBlocker(initial.plan, clock(), postBudgetMs);
   if (report.blockedReason || !active) return report;
   try { report.legacyComparison.observedBusy = await legacyGuard(); }
   catch { report.blockedReason = "legacy-activity-unavailable"; return report; }
@@ -49,7 +50,7 @@ export async function runBoundedRevisionWake({ base, token, active = false, fetc
   // Re-read all control inputs immediately before a possible mutation.
   const fresh = await runRevisionShadow({ base, token, fetchImpl, clock });
   report.before = sourceRecord(fresh.plan);
-  report.blockedReason = stagedBlocker(fresh.plan, clock());
+  report.blockedReason = stagedBlocker(fresh.plan, clock(), postBudgetMs);
   if (report.blockedReason) return report;
   if (fingerprint(sourceRecord(initial.plan)) !== fingerprint(report.before)) {
     report.blockedReason = "control-evidence-changed"; return report;
@@ -60,7 +61,7 @@ export async function runBoundedRevisionWake({ base, token, active = false, fetc
     report.blockedReason = "legacy-scheduler-active"; return report;
   }
   // Account for time spent observing diagnostics and scheduler activity.
-  report.blockedReason = stagedBlocker(fresh.plan, clock());
+  report.blockedReason = stagedBlocker(fresh.plan, clock(), postBudgetMs);
   if (report.blockedReason) return report;
   const requestedAt = new Date(clock()).toISOString();
   report.zeroWrite = false; // A submitted request may write even if its response is lost.
@@ -69,7 +70,7 @@ export async function runBoundedRevisionWake({ base, token, active = false, fetc
   try {
     response = await fetchImpl(new URL("/api/oecd/sync?mode=historical-reconcile&batchSize=1", base), {
       method:"POST", headers:{ Authorization:`Bearer ${token}` }, redirect:"error", cache:"no-store",
-      signal:AbortSignal.timeout(POST_BUDGET_MS),
+      signal:AbortSignal.timeout(postBudgetMs),
     });
     body = JSON.parse(await response.text());
   } catch {
