@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","home-f7-build-log","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f3-rapna-duplicate-detail","source-reliability-f3-rapna-operational-diff","source-reliability-f3-preview-observe","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f3-rapna-duplicate-detail","source-reliability-f3-rapna-operational-diff","source-reliability-f3-preview-observe","source-reliability-f3-production-build","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -3348,6 +3348,75 @@ jobs:
             legacyReconcile:body.legacyReconcile?.status??null,
             currentCertification:body.currentRevisionCertification?.auditStatus??null,
             legacyCertification:body.legacyRevisionCertification?.auditStatus??null
+          }));
+          NODE
+              ;;
+            source-reliability-f3-production-build)
+              expected_commit="1147b2cf896358fc8c3263a77142210bf723b29a"
+              pre_status="$(wrangler deployments status --name "$CF_WORKER" --json)"
+              PRE_STATUS="$pre_status" EXPECTED="$expected_commit" node --input-type=module - <<'NODE'
+          const account="9c1807c68493f14259248b5f5782cc6f";
+          const trigger="00310c5e-c497-46d3-8556-f84cf245a25a";
+          const expected=process.env.EXPECTED;
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          if(!token) throw new Error("Cloudflare token missing");
+          const headers={
+            "Authorization":`Bearer ${token}`,
+            "Content-Type":"application/json"
+          };
+          const api=async (path,init={})=>{
+            const response=await fetch(`https://api.cloudflare.com/client/v4${path}`,{...init,headers:{...headers,...(init.headers??{})}});
+            const text=await response.text();
+            let body;
+            try{body=JSON.parse(text);}catch{throw new Error("Cloudflare API returned non-JSON HTTP "+response.status);}
+            if(!response.ok||body?.success!==true) {
+              const codes=Array.isArray(body?.errors)?body.errors.map(x=>x?.code??null):[];
+              throw new Error("Cloudflare API failure HTTP "+response.status+" codes="+JSON.stringify(codes));
+            }
+            return body.result;
+          };
+          const pre=JSON.parse(process.env.PRE_STATUS||"{}");
+          const preId=pre?.id??null;
+          const started=await api(`/accounts/${account}/builds/triggers/${trigger}/builds`,{
+            method:"POST",
+            body:JSON.stringify({branch:"main",commit_hash:expected})
+          });
+          const meta=started?.build_trigger_metadata??{};
+          if(meta.commit_hash&&meta.commit_hash!==expected) throw new Error("unexpected build commit "+meta.commit_hash);
+          console.log("SOURCE_RELIABILITY_F3_BUILD_STARTED "+JSON.stringify({
+            buildUuid:started?.build_uuid??null,status:started?.status??null,
+            branch:meta.branch??null,commitHash:meta.commit_hash??null,preDeploymentId:preId
+          }));
+          const uuid=started?.build_uuid;
+          if(!uuid) throw new Error("Cloudflare build UUID missing");
+          let final=started;
+          for(let attempt=1;attempt<=36;attempt+=1){
+            final=await api(`/accounts/${account}/builds/builds/${uuid}`,{method:"GET"});
+            console.log("SOURCE_RELIABILITY_F3_BUILD_POLL "+JSON.stringify({attempt,status:final?.status??null}));
+            if(final?.status==="stopped") break;
+            await new Promise(resolve=>setTimeout(resolve,10_000));
+          }
+          const finalMeta=final?.build_trigger_metadata??{};
+          console.log("SOURCE_RELIABILITY_F3_BUILD_FINAL "+JSON.stringify({
+            buildUuid:final?.build_uuid??null,status:final?.status??null,buildOutcome:final?.build_outcome??null,
+            branch:finalMeta.branch??null,commitHash:finalMeta.commit_hash??null,
+            createdOn:final?.created_on??null,runningOn:final?.running_on??null,stoppedOn:final?.stopped_on??null,
+            preDeploymentId:preId
+          }));
+          if(final?.status!=="stopped"||final?.build_outcome!=="success") throw new Error("F3 production build did not succeed");
+          if(finalMeta.commit_hash!==expected||finalMeta.branch!=="main") throw new Error("F3 production commit/branch mismatch");
+          NODE
+              post_status="$(wrangler deployments status --name "$CF_WORKER" --json)"
+              PRE_STATUS="$pre_status" POST_STATUS="$post_status" node --input-type=module - <<'NODE'
+          const pre=JSON.parse(process.env.PRE_STATUS||"{}");
+          const post=JSON.parse(process.env.POST_STATUS||"{}");
+          const versions=Array.isArray(post?.versions)?post.versions:[];
+          if(versions.length!==1||Number(versions[0]?.percentage)!==100) throw new Error("F2A deployment not singular at 100%");
+          if(!post?.id||post.id===pre?.id) throw new Error("F3 production build did not create a new deployment");
+          console.log("SOURCE_RELIABILITY_F3_POST_DEPLOY "+JSON.stringify({
+            previousDeploymentId:pre?.id??null,deploymentId:post.id,
+            versionId:versions[0]?.version_id??null,percentage:Number(versions[0]?.percentage),
+            createdOn:post.created_on??null
           }));
           NODE
               ;;
