@@ -9,6 +9,9 @@ The shadow reads AESAN, RAPNA, RASFF and OECD `observe=1` independently.
 It stamps each successful response with a local `observedAt` after receipt,
 and rejects observations older than five minutes or from the future.
 An individual read failure blocks only that source; an invalid policy blocks all.
+After deciding, a diagnostic-only watchdog GET records persisted `checkedAt`
+and its age for comparison. `decisionInput:false` is explicit: diagnostic
+failure, stale timestamps or payload cannot change any live decision.
 There is no dependency on `freshness.checkedAt`, stored aggregate status, or
 watchdog recency. The decision proves readiness from live persisted adapter
 state, not a new comparison against the official upstream index.
@@ -28,7 +31,10 @@ day is blocked: its existing adapter would otherwise reset on a date rollover.
 RASFF completed cursor 0 is terminal. OECD and RAPNA required missing/invalid
 certificates produce candidates, while semantic/cursor/state errors block.
 Unrecognized persisted errors are conservatively blocked; no transient error
-allowlist is introduced in this stage. AESAN remains an external full-archive
+allowlist is introduced in this stage. Accumulated revision `pageErrors` and
+RASFF recent `pageErrors` remain visible but do not imply an unresolved error:
+the adapters retain these counters after successful recovery. Current
+`lastError`, failed status and unresolved detail failures still block. AESAN remains an external full-archive
 producer. Safety Gate is always `revision-not-required`; a policy attempting
 to enable it is rejected while F2 remains HOLD.
 

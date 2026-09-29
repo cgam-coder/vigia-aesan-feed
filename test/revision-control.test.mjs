@@ -77,7 +77,7 @@ test("expired certificate is a candidate and required missing certificate cannot
   }
 });
 test("semantic errors and structural cursor failures fail closed", () => {
-  for (const changes of [{ status:"failed", lastError:"plan drift" }, { pageErrors:1 }, { detailFailures:1 },
+  for (const changes of [{ status:"failed", lastError:"plan drift" }, { pageErrors:1, lastError:"unresolved fetch failure" }, { detailFailures:1 },
     { cursor:11 }, { cursorKey:null }, { planVersion:null }]) {
     const o = observations(); partial(o.OECD.body.historicalReconcile); Object.assign(o.OECD.body.historicalReconcile, changes);
     const r = record(plan(o), "OECD"); assert.ok(r.blockedReason); assert.equal(r.actionable, false);
@@ -131,6 +131,7 @@ test("GET-only independently timed observations ignore arbitrarily old watchdog 
   const fetchImpl = async (url, options) => {
     const path = new URL(url).pathname; calls.push({ url, options });
     if (path === "/api/freshness") {
+      if (!new URL(url).searchParams.has("policy")) return { status:200, text:async () => JSON.stringify({ states:[{ source:"RASFF", checkedAt:"2000-01-01T00:00:00Z" }] }) };
       assert.equal(new URL(url).searchParams.get("policy"), "1");
       return { status:200, text:async () => JSON.stringify({ ...policy(), checkedAt:"2000-01-01T00:00:00Z", reliability:[] }) };
     }
@@ -140,7 +141,9 @@ test("GET-only independently timed observations ignore arbitrarily old watchdog 
   const result = await runRevisionShadow({ base:"https://runtime.example", token:"test-only", fetchImpl, clock:() => clock });
   assert.equal(result.plan.idle.length, 3); assert.equal(result.plan.zeroWrite, true);
   assert.ok(result.plan.idle.every((r) => Date.parse(r.observedAt) > now));
-  assert.equal(calls.length, 5);
+  assert.equal(calls.length, 6);
+  assert.equal(result.watchdogComparison.decisionInput, false);
+  assert.ok(result.watchdogComparison.snapshots[0].ageMinutes > 1_000_000);
   assert.ok(calls.every(({ options }) => options.method === "GET" && options.redirect === "error" && options.cache === "no-store" && options.headers.Authorization === "Bearer test-only"));
 });
 test("one failed observe endpoint blocks only that source and suppresses upstream payload", async () => {
@@ -153,4 +156,41 @@ test("one failed observe endpoint blocks only that source and suppresses upstrea
   };
   const { plan:p } = await runRevisionShadow({ base:"https://runtime.example", token:"test-only", fetchImpl, clock:() => now });
   assert.equal(record(p, "RASFF").blockedReason, "observe-http-503"); assert.equal(p.idle.length, 2);
+});
+
+test("RASFF recovered recent page errors are historical; current failures still block", () => {
+  const o = observations(); o.RASFF.body.recent.pageErrors = 5;
+  assert.equal(record(plan(o), "RASFF").recentReady, true);
+  for (const change of [{ lastError:"current failure" }, { status:"failed" }, { detailFailures:1 }]) {
+    const bad = structuredClone(o); Object.assign(bad.RASFF.body.recent, change);
+    assert.equal(record(plan(bad), "RASFF").blockedReason, "recent-priority");
+  }
+  o.OECD.body.recent.pageErrors = 1;
+  assert.equal(record(plan(o), "OECD").recentReady, false);
+});
+test("recovered revision batches preserve accumulated errors without losing continuation", () => {
+  for (const [source, key] of [["RASFF", "reconcile"], ["OECD", "historicalReconcile"],
+    ["RAPNA", "currentParity"], ["RAPNA", "legacyReconcile"]]) {
+    const o = observations(); partial(o[source].body[key]); o[source].body[key].pageErrors = 2;
+    const r = record(plan(o), source);
+    assert.equal(r.actionable, true); assert.equal(r.structuralError, null);
+    assert.equal(r.components.find((c) => c.mode === o[source].body[key].mode).cursor, 3);
+    o[source].body[key].lastError = "unresolved failure";
+    assert.equal(record(plan(o), source).blockedReason, "revision-semantic-error");
+  }
+});
+test("watchdog diagnostic failure cannot affect live decisions", async () => {
+  const o = observations();
+  const fetchImpl = async (url) => {
+    const u = new URL(url);
+    if (u.pathname === "/api/freshness") {
+      if (!u.searchParams.has("policy")) throw Error("unavailable diagnostics");
+      return { status:200, text:async () => JSON.stringify(policy()) };
+    }
+    return { status:200, text:async () => JSON.stringify(o[u.pathname.split("/")[2].toUpperCase()].body) };
+  };
+  const result = await runRevisionShadow({ base:"https://runtime.example", token:"test-only", fetchImpl, clock:() => now });
+  assert.deepEqual(result.plan, plan(o));
+  assert.equal(result.watchdogComparison.decisionInput, false);
+  assert.equal(result.watchdogComparison.readError, "watchdog-diagnostic-unavailable");
 });

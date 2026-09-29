@@ -2,7 +2,7 @@
 const ADAPTERS = Object.freeze({
   AESAN:{ path:"/api/aesan/sync?observe=1", lane:"full-archive-producer", modes:{ "historical-reconcile":["historicalReconcile", "revisionCertification"] } },
   RAPNA:{ path:"/api/rapna/sync?observe=1", lane:"current+legacy", modes:{ "current-parity":["currentParity", "currentRevisionCertification"], "legacy-reconcile":["legacyReconcile", "legacyRevisionCertification"] } },
-  RASFF:{ path:"/api/rasff/sync?observe=1", lane:"reconcile", modes:{ reconcile:["reconcile", "revisionCertification"] } },
+  RASFF:{ recentPageErrorsCumulative:true, path:"/api/rasff/sync?observe=1", lane:"reconcile", modes:{ reconcile:["reconcile", "revisionCertification"] } },
   OECD:{ path:"/api/oecd/sync?observe=1", lane:"historical-reconcile", modes:{ "historical-reconcile":["historicalReconcile", "revisionCertification"] } },
 });
 const SOURCES = ["AESAN", "RAPNA", "RASFF", "SAFETY GATE", "OECD"];
@@ -73,7 +73,9 @@ function componentEvidence(p, c, body, now) {
   let error = (state?.lastError || state?.status === "failed") ? "revision-semantic-error" : null;
   if (!state && cert) error = "missing-persisted-revision-state";
   if (state?.status === "skipped") error = "ambiguous-persisted-skip";
-  if (state && (state.pageErrors > 0 || state.detailFailures > 0)) error ??= "revision-errors";
+  // Revision pageErrors accumulate across recovered batches. The adapters clear
+  // lastError after successful recovery; unresolved detail failures still block.
+  if (state && state.detailFailures > 0) error ??= "revision-errors";
   if (state && [state.startedAt, state.completedAt, state.lastSuccessAt].some((at) => at && Date.parse(at) > now)) error = "future-state-timestamp";
   if (state && ["running", "partial"].includes(state.status) && !inProgress) error = "invalid-persisted-cycle";
   if (inProgress && (!text(state.planVersion) || (state.cursor > 0 && !text(state.cursorKey)))) error = "invalid-persisted-cursor";
@@ -115,7 +117,7 @@ export function buildLiveSourceEvidence(p, observation, now) {
     const recent = body.recent;
     const recentAgeMinutes = age(recent?.lastSuccessAt, now);
     base.recentReady = Boolean(recent && ["completed", "partial"].includes(recent.status) &&
-      !recent.lastError && recent.pageErrors === 0 && recent.detailFailures === 0 &&
+      !recent.lastError && (recent.pageErrors === 0 || ADAPTERS[p.source].recentPageErrorsCumulative) && recent.detailFailures === 0 &&
       within(recent.lastSuccessAt, p.recent.freshMaxAgeMinutes, now));
     const components = (p.revision.components ?? [p.revision]).map((c) => componentEvidence(p, c, body, now));
     const error = components.find((c) => c.error)?.error ?? null;
@@ -188,7 +190,20 @@ export async function runRevisionShadow({ base, token, fetchImpl = fetch, clock 
     }
   }));
   const plan = buildRevisionShadowPlan(policyPayload, observations, { now:clock() });
-  return { observedAt:plan.observedAt, plan };
+  // Diagnostic only, read AFTER the decision. Its age, payload or availability
+  // cannot affect readiness or candidate selection.
+  let watchdogComparison;
+  try {
+    const snapshot = await fetchJson(fetchImpl, root.origin + "/api/freshness?observe=1", token);
+    assert(Array.isArray(snapshot.states), "invalid-watchdog-diagnostic");
+    const observedAt = new Date(clock()).toISOString();
+    watchdogComparison = { decisionInput:false, observedAt, snapshots:snapshot.states.map((s) => ({
+      source:s.source, checkedAt:s.checkedAt, ageMinutes:age(s.checkedAt, Date.parse(observedAt)),
+    })) };
+  } catch {
+    watchdogComparison = { decisionInput:false, readError:"watchdog-diagnostic-unavailable" };
+  }
+  return { observedAt:plan.observedAt, plan, watchdogComparison };
 }
 
 async function main() {
