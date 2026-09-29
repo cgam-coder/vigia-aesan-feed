@@ -1,4 +1,4 @@
 {
-  "operation": "worker-versions",
-  "nonce": "home-f7-post-build-versions-20260929"
+  "operation": "worker-settings-readonly",
+  "nonce": "home-f7-prod-worker-settings-20260929"
 }
