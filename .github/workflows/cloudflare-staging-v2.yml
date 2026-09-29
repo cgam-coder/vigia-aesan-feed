@@ -3373,7 +3373,10 @@ jobs:
           NODE
               ;;
             source-reliability-f3-live-delta-audit)
-              summary="$(wrangler d1 execute "$CF_D1" --remote --command "
+              work="$RUNNER_TEMP/f3-live-delta-audit"
+              rm -rf "$work"
+              mkdir -p "$work"
+              wrangler d1 execute "$CF_D1" --remote --command "
                 SELECT
                   COUNT(*) AS rapna_alerts,
                   COALESCE(SUM(version_count),0) AS rapna_version_sum,
@@ -3387,8 +3390,8 @@ jobs:
                   page_errors AS page_errors,coverage,last_error AS last_error,completed_at AS completed_at,
                   lease_owner_id AS lease_owner_id,lease_mode AS lease_mode,lease_expires_at AS lease_expires_at
                 FROM source_sync_state WHERE source='RAPNA' AND mode='legacy-reconcile';
-              " --json)"
-              versions="$(wrangler d1 execute "$CF_D1" --remote --command "
+              " --json > "$work/summary.json"
+              wrangler d1 execute "$CF_D1" --remote --command "
                 SELECT a.reference,
                   CAST(json_extract(a.canonical_json,'$.sourceRecord.record.ano') AS INTEGER) AS year,
                   a.version_count AS version_count,
@@ -3402,13 +3405,14 @@ jobs:
                   AND a.version_count>1
                   AND CAST(json_extract(a.canonical_json,'$.sourceRecord.record.ano') AS INTEGER)>=2020
                 ORDER BY a.reference,v.id;
-              " --json)"
-              SUMMARY="$summary" VERSIONS="$versions" node --input-type=module - <<'NODE'
-          const flatten=(raw)=>(Array.isArray(JSON.parse(raw||"[]"))?JSON.parse(raw||"[]"):[]).flatMap(x=>x?.results??[]);
-          const summary=flatten(process.env.SUMMARY);
+              " --json > "$work/versions.json"
+              node --input-type=module - "$work/summary.json" "$work/versions.json" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const flatten=(raw)=>(Array.isArray(raw)?raw:[]).flatMap(x=>x?.results??[]);
+          const summary=flatten(JSON.parse(readFileSync(process.argv[2],"utf8")));
           const counts=summary.find(r=>"rapna_alerts" in r)??{};
           const state=summary.find(r=>r?.mode==="legacy-reconcile")??null;
-          const rows=flatten(process.env.VERSIONS);
+          const rows=flatten(JSON.parse(readFileSync(process.argv[3],"utf8")));
           const byRef=new Map();
           for(const row of rows){
             const list=byRef.get(String(row.reference))??[];
@@ -3424,9 +3428,6 @@ jobs:
             if(v&&typeof v==="object"){
               delete v.versionCount;
               if(v.canonical?.dates) delete v.canonical.dates.detectedAt;
-              if(v.canonical?.sourceRecord && typeof v.canonical.sourceRecord==="object") {
-                // retain sourceRecord except raw equality is measured separately
-              }
             }
             return v;
           };
