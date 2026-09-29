@@ -1,4 +1,4 @@
 {
-  "operation": "home-f7-build-log",
-  "nonce": "home-f7-production-failed-build-log-20260929"
+  "operation": "worker-builds-list",
+  "nonce": "home-f7-prod-build-history-after-fix-20260929"
 }
