@@ -160,32 +160,44 @@ jobs:
             source-reliability-f2a-source-probe)
               node --input-type=module - <<'NODE'
           const pageUrl="https://ec.europa.eu/safety-gate-alerts/screen/search?resetSearch=true";
-          const pageResponse=await fetch(pageUrl,{headers:{"Accept":"text/html"}});
+          const pageResponse=await fetch(pageUrl);
           const html=await pageResponse.text();
-          if(!pageResponse.ok) throw new Error("Safety Gate search page HTTP "+pageResponse.status);
-          const srcs=[...new Set([...html.matchAll(/<script[^>]+src=["']([^"']+)["']/g)].map((m)=>m[1]))]
-            .map((src)=>new URL(src,pageUrl).href);
-          const hits=[];
-          for(const src of srcs){
+          if(!pageResponse.ok) throw new Error("search page HTTP "+pageResponse.status);
+          const scriptSrcs=[...new Set([...html.matchAll(/<script[^>]+src=["']([^"']+)["']/g)].map((m)=>new URL(m[1],pageUrl).href))];
+          const assets=new Map();
+          for(const src of scriptSrcs){
             const response=await fetch(src);
-            if(!response.ok) continue;
-            const text=await response.text();
-            for(const needle of ["mostRecent","public/api/notification","notification/search","searchNotification","webReport"]){
+            if(response.ok) assets.set(src,await response.text());
+          }
+          const dynamicNames=new Set();
+          for(const text of assets.values()){
+            for(const m of text.matchAll(/import\(["']\.\/(chunk-[A-Z0-9]+\.js)["']\)/g)) dynamicNames.add(m[1]);
+          }
+          for(const name of dynamicNames){
+            const src=new URL(name,pageUrl).href;
+            const response=await fetch(src);
+            if(response.ok) assets.set(src,await response.text());
+          }
+          const hits=[];
+          const endpointTokens=new Set();
+          for(const [src,text] of assets){
+            for(const needle of ["mostRecent","notification","search","criteria","pageSize","webReport"]){
               let pos=0;
-              while((pos=text.indexOf(needle,pos))>=0 && hits.length<80){
-                hits.push({
-                  script:src.split("/").at(-1),
-                  needle,
-                  excerpt:text.slice(Math.max(0,pos-280),Math.min(text.length,pos+520))
-                    .replace(/\s+/g," ").slice(0,900)
-                });
+              while((pos=text.indexOf(needle,pos))>=0 && hits.length<160){
+                const excerpt=text.slice(Math.max(0,pos-420),Math.min(text.length,pos+720)).replace(/\s+/g," ");
+                if(/api|notification|search|mostRecent/i.test(excerpt)) hits.push({script:src.split("/").at(-1),needle,excerpt:excerpt.slice(0,1150)});
                 pos+=needle.length;
               }
             }
+            for(const m of text.matchAll(/["'`]([^"'\`]{0,120}\/(?:api|public\/api)\/[^"'\`]{0,180})["'`]/g)){
+              endpointTokens.add(m[1]);
+            }
           }
-          console.log("SOURCE_RELIABILITY_F2A_FRONTEND_ENDPOINTS "+JSON.stringify({
-            pageStatus:pageResponse.status,
-            scripts:srcs.length,
+          console.log("SOURCE_RELIABILITY_F2A_SEARCH_CHUNK "+JSON.stringify({
+            scripts:scriptSrcs.map((x)=>x.split("/").at(-1)),
+            dynamic:[...dynamicNames],
+            fetched:[...assets.keys()].map((x)=>x.split("/").at(-1)),
+            endpointTokens:[...endpointTokens].slice(0,100),
             hits
           }));
           NODE
