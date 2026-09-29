@@ -109,7 +109,7 @@ function liveObservedLease(source, observation, now) {
 
 function activeRevisionCycle(revision) {
   return iso(revision.cycleStartedAt) &&
-    Number.isSafeInteger(revision.progress) && revision.progress >= 0 &&
+    Number.isSafeInteger(revision.progress) && revision.progress > 0 &&
     Number.isSafeInteger(revision.total) && revision.total > 0 &&
     revision.progress < revision.total;
 }
