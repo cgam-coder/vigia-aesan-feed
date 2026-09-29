@@ -44,7 +44,7 @@ jobs:
           const allowed=new Set([
             "probe","d1-canary-write","d1-canary-read",
             "worker-secret-list","worker-bootstrap-secrets",
-            "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-settings-readonly",
+            "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
             "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
@@ -2588,6 +2588,22 @@ jobs:
             logpush:r.logpush??null
           };
           console.log("WORKER_SETTINGS "+JSON.stringify(safe));
+          NODE
+              ;;
+            worker-build-env-inspect)
+              account_id="9c1807c68493f14259248b5f5782cc6f"
+              trigger_uuid="00310c5e-c497-46d3-8556-f84cf245a25a"
+              env_json="$(curl --silent --show-error --fail-with-body \
+                "https://api.cloudflare.com/client/v4/accounts/$account_id/builds/triggers/$trigger_uuid/environment_variables" \
+                --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN")"
+              ENV_JSON="$env_json" node --input-type=module - <<'NODE'
+          const body=JSON.parse(process.env.ENV_JSON||"{}");
+          if(body?.success!==true||!body?.result||typeof body.result!=="object") throw new Error("invalid build env response");
+          const safe={};
+          for(const [key,row] of Object.entries(body.result)){
+            safe[key]={is_secret:Boolean(row?.is_secret),value:row?.is_secret?"[secret]":row?.value??null};
+          }
+          console.log("WORKER_BUILD_ENV "+JSON.stringify(safe));
           NODE
               ;;
             worker-build-trigger-inspect)
