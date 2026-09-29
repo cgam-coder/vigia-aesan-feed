@@ -46,7 +46,7 @@ jobs:
             "worker-secret-list","worker-bootstrap-secrets",
             "worker-versions","worker-versions-detailed","worker-versions-api-detailed","worker-status","worker-rollback","worker-build-trigger-inspect","worker-build-env-inspect","worker-builds-list","home-f7-production-build","home-f7-build-log","worker-settings-readonly",
             "staging-bootstrap-status","staging-bootstrap-apply",
-            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
+            "staging-ledger-cert","staging-http-smoke","f1b-import-manifest","f1b-import-reset","f1b-import-canary","d1-info","postcutover-drop-import-state","p4-owner-stage1-preflight","p4-owner-lease-state","p4-owner-stage1-apply-audit","p4-owner-stage1-perf","p4-owner-taxonomy-semantic-snapshot","p4-owner-stage2-country-diagnose","p4-owner-stage2b-country-benchmark","preview-d1-create-or-inspect","preview-d1-bootstrap-aesan","preview-secret-bootstrap-smoke","f3b-b1-browser-matrix","perf-v2-preview-certification","terminal-default-geo-hydration-benchmark","terminal-perf-production-cert-current","terminal-perf-candidate-preview-cert","terminal-list-plan-benchmark","terminal-geo-plan-benchmark","terminal-perf-baseline-current","aesan-functional-recheck","f3b-production-certification","perf-f1-bind-limit-production-cert","perf-f1-bind-limit-preview-cert","rasff-integrity-readonly","oecd-observe-readonly","source-reliability-f1-audit","source-reliability-f1-prod-audit","source-reliability-f1-build-log","source-reliability-f2a-delta-preview","source-reliability-f2a-delta-shadow","source-reliability-f2a-d1-size-audit","source-reliability-f2a-source-probe","source-reliability-f2a-preview-zero-write-cert","source-reliability-f3-rapna-discovery","source-reliability-f3-rapna-overlap","source-reliability-f2a-production-build","source-reliability-f2a-fallback-live-cert","owner-runtime-readonly-smoke","owner-runtime-post-preflight"
           ]);
           if(!body || typeof body!=="object" || Array.isArray(body)) throw new Error("invalid request");
           if(typeof body.operation!=="string" || !allowed.has(body.operation)) throw new Error("operation not allowed");
@@ -3085,6 +3085,82 @@ jobs:
           }
           console.log("SOURCE_RELIABILITY_F3_RAPNA_OFFICIAL "+JSON.stringify({
             minYear:min,maxYear:max,years,total:years.reduce((s,x)=>s+x.totalElements,0)
+          }));
+          NODE
+              ;;
+            source-reliability-f3-rapna-overlap)
+              current_refs="$(wrangler d1 execute "$CF_D1" --remote --command "
+                SELECT reference FROM alerts
+                WHERE source='RAPNA' AND json_extract(canonical_json,'$.sourceRecord.archive')='current'
+                ORDER BY reference;
+              " --json)"
+              d1_legacy_refs="$(wrangler d1 execute "$CF_D1" --remote --command "
+                SELECT reference FROM alerts
+                WHERE source='RAPNA' AND json_extract(canonical_json,'$.sourceRecord.archive')='legacy'
+                ORDER BY reference;
+              " --json)"
+              CURRENT_REFS="$current_refs" D1_LEGACY_REFS="$d1_legacy_refs" node --input-type=module - <<'NODE'
+          const rows=(raw)=>{
+            const v=JSON.parse(raw||"[]");
+            return (Array.isArray(v)?v:[]).flatMap(x=>x?.results??[]);
+          };
+          const current=new Set(rows(process.env.CURRENT_REFS).map(r=>String(r.reference)));
+          const d1Legacy=new Set(rows(process.env.D1_LEGACY_REFS).map(r=>String(r.reference)));
+          const endpoint="https://servicios.consumo.gob.es/rapnaBEPublic/listadoPublico/notificacionAntigua";
+          const headers={"Accept":"application/json","Content-Type":"application/json"};
+          const post=async(body)=>{
+            const response=await fetch(endpoint,{method:"POST",headers,body:JSON.stringify(body)});
+            if(!response.ok) throw new Error("RAPNA legacy HTTP "+response.status);
+            const json=await response.json();
+            if(!Array.isArray(json?.content)) throw new Error("RAPNA legacy invalid page");
+            return json;
+          };
+          const asc=await post({pageNumber:0,pageSize:1,sortBy:"ano",sortOrder:"asc"});
+          const desc=await post({pageNumber:0,pageSize:1,sortBy:"ano",sortOrder:"desc"});
+          const min=Number(asc.content?.[0]?.ano), max=Number(desc.content?.[0]?.ano);
+          const all=new Map();
+          const perYear=[];
+          for(let year=max;year>=min;year-=1){
+            let pageNumber=0, observed=0, operational=0, overlaps=0;
+            while(true){
+              const page=await post({pageNumber,pageSize:250,sortBy:"identificador",sortOrder:"asc",anoAntigua:String(year)});
+              for(const row of page.content){
+                const ref=String(row?.identificador??"").trim();
+                if(!ref) throw new Error("RAPNA legacy row without reference");
+                const fecha=String(row?.fechaAlta??"").trim();
+                const parsed=Date.parse(fecha);
+                const isOperational=Number.isFinite(parsed) && new Date(parsed).toISOString() >= "2020-01-01T00:00:00.000Z";
+                if(all.has(ref)) throw new Error("duplicate legacy reference across pages/years: "+ref);
+                all.set(ref,{year,fecha,isOperational});
+                observed++;
+                if(isOperational) operational++;
+                if(current.has(ref)) overlaps++;
+              }
+              if(page.last===true || page.content.length===0 || pageNumber+1>=Number(page.totalPages)) break;
+              pageNumber++;
+              if(pageNumber>=100) throw new Error("RAPNA legacy page budget exceeded");
+            }
+            perYear.push({year,observed,operational,currentOverlap:overlaps});
+          }
+          const official=new Set(all.keys());
+          const operationalRefs=[...all].filter(([,v])=>v.isOperational).map(([ref])=>ref);
+          const overlap=[...official].filter(ref=>current.has(ref)).sort();
+          const operationalOverlap=operationalRefs.filter(ref=>current.has(ref)).sort();
+          const operationalMissing=operationalRefs.filter(ref=>!current.has(ref)&&!d1Legacy.has(ref)).sort();
+          const operationalStoredLegacy=operationalRefs.filter(ref=>d1Legacy.has(ref)).length;
+          console.log("SOURCE_RELIABILITY_F3_RAPNA_OVERLAP "+JSON.stringify({
+            officialLegacy:official.size,
+            operationalLegacy:operationalRefs.length,
+            d1Current:current.size,
+            d1Legacy:d1Legacy.size,
+            currentOverlap:overlap.length,
+            operationalCurrentOverlap:operationalOverlap.length,
+            operationalStoredLegacy,
+            operationalMissingCount:operationalMissing.length,
+            overlapSample:overlap.slice(0,30),
+            operationalOverlapSample:operationalOverlap.slice(0,30),
+            operationalMissingSample:operationalMissing.slice(0,30),
+            perYear
           }));
           NODE
               ;;
