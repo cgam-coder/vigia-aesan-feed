@@ -3006,7 +3006,7 @@ jobs:
           NODE
               ;;
             source-reliability-f2a-production-build)
-              expected_commit="bf6d8b6af67eb8a881ceac736fb5b241050a8f17"
+              expected_commit="02286d71619b5c1623b5385be544df7a7ca1b8b0"
               pre_status="$(wrangler deployments status --name "$CF_WORKER" --json)"
               PRE_STATUS="$pre_status" EXPECTED="$expected_commit" node --input-type=module - <<'NODE'
           const account="9c1807c68493f14259248b5f5782cc6f";
