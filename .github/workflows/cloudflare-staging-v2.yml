@@ -171,7 +171,7 @@ jobs:
             const window=indexText.slice(Math.max(0,latest.pos-1500),Math.min(indexText.length,latest.pos+3000));
             const absolute=window.match(/https:\/\/ec\.europa\.eu\/safety-gate-alerts\/api\/download\/weeklyReport\/detail\/xml\/[^<"'\s]+/);
             const relative=window.match(/\/safety-gate-alerts\/api\/download\/weeklyReport\/detail\/xml\/[^<"'\s]+/);
-            detailUrl=absolute?.[0]??(relative?new URL(relative[0],"https://ec.europa.eu").href:null);
+            detailUrl=(absolute?.[0]??(relative?new URL(relative[0],"https://ec.europa.eu").href:null))?.replaceAll("&amp;","&")??null;
           }
           const summary={
             indexStatus:indexResponse.status,
