@@ -1,0 +1,67 @@
+name: TEMP Safety Gate F2A upstream probe
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/temp-safety-gate-f2a-upstream-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe official Safety Gate recent index without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const endpoint = "https://ec.europa.eu/safety-gate-alerts/public/api/notification/mostRecent/?";
+          const cases = [
+            ...[100,50,20,10,1].flatMap(pageSize => ["es","en"].map(language => ({ page:0, pageSize, language }))),
+            ...[1,2,3].map(page => ({ page, pageSize:100, language:"es" })),
+          ];
+          const sanitize = (raw) => ({
+            entityId: raw.match(/Unable to find eu\.europa\.ec\.just\.sgrp\.domain\.Product with id (\d{1,20})/u)?.[1] ?? null,
+            bytes: Buffer.byteLength(raw),
+          });
+          for (const c of cases) {
+            let status = null, headers = {}, parsed = null, raw = "";
+            try {
+              const response = await fetch(endpoint, {
+                method:"POST",
+                headers:{ "content-type":"application/json", accept:"application/json", language:c.language },
+                body:JSON.stringify({ language:c.language, page:String(c.page), pageSize:String(c.pageSize) }),
+                redirect:"manual",
+                signal:AbortSignal.timeout(30_000),
+              });
+              status = response.status;
+              headers = {
+                contentType:response.headers.get("content-type"),
+                location:response.headers.get("location"),
+                date:response.headers.get("date"),
+              };
+              raw = await response.text();
+              try { parsed = JSON.parse(raw); } catch {}
+            } catch (error) {
+              console.log("PROBE "+JSON.stringify({ ...c, transportError:error instanceof Error ? error.message : String(error) }));
+              continue;
+            }
+            const content = Array.isArray(parsed?.content) ? parsed.content : null;
+            console.log("PROBE "+JSON.stringify({
+              ...c,status,headers,
+              totalElements:Number.isSafeInteger(parsed?.totalElements)?parsed.totalElements:null,
+              totalPages:Number.isSafeInteger(parsed?.totalPages)?parsed.totalPages:null,
+              number:Number.isSafeInteger(parsed?.number)?parsed.number:null,
+              size:Number.isSafeInteger(parsed?.size)?parsed.size:null,
+              last:typeof parsed?.last==="boolean"?parsed.last:null,
+              contentLength:content?.length ?? null,
+              first:content?.[0] ? {id:content[0].id,reference:content[0].reference} : null,
+              lastItem:content?.at(-1) ? {id:content.at(-1).id,reference:content.at(-1).reference} : null,
+              ...sanitize(raw),
+            }));
+          }
+          NODE
