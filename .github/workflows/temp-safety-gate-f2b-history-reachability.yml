@@ -130,3 +130,83 @@ jobs:
           }
           for(const value of [...interesting].slice(0,100))console.log("SAFETY_GATE_FRONTEND_ROUTE "+JSON.stringify(value));
           NODE
+
+
+      - name: Extract exact official search service contract
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const root="https://ec.europa.eu/safety-gate-alerts/";
+          const page=await (await fetch(root+"screen/search?resetSearch=true",{signal:AbortSignal.timeout(30_000)})).text();
+          const mainSrc=[...page.matchAll(/<script[^>]+src=["']([^"']*main-[^"']+\.js)["']/giu)]
+            .map((m)=>new URL(m[1],root).href)[0];
+          if(!mainSrc)throw new Error("main bundle missing");
+          const seen=new Map();
+          const queue=[mainSrc];
+          while(queue.length&&seen.size<180){
+            const url=queue.shift();
+            if(seen.has(url))continue;
+            const response=await fetch(url,{signal:AbortSignal.timeout(30_000)});
+            if(response.status!==200)continue;
+            const js=await response.text();
+            seen.set(url,js);
+            for(const m of js.matchAll(/(?:from\s*|import\()["'](\.\/chunk-[A-Z0-9]+\.js)["']/gu)){
+              const child=new URL(m[1],url).href;
+              if(!seen.has(child))queue.push(child);
+            }
+          }
+          let hit=null;
+          for(const [url,js] of seen){
+            const pos=js.indexOf('this.http.post(this.baseUrl+"search"');
+            if(pos>=0){hit={url,js,pos};break;}
+          }
+          if(!hit)throw new Error("official search service not found in reachable bundles");
+          const alias=hit.js.slice(hit.pos,hit.pos+500).match(/headers:\{\[([A-Za-z_$][A-Za-z0-9_$]*)\]:"lang"\}/u)?.[1]??null;
+          let importedFrom=null,sourceExport=null;
+          if(alias){
+            const importMatches=[...hit.js.matchAll(/import\{([^}]*)\}from["'](\.\/chunk-[A-Z0-9]+\.js)["']/gu)];
+            for(const im of importMatches){
+              const pairs=im[1].split(",");
+              for(const entry of pairs){
+                const mm=entry.trim().match(/^([A-Za-z_$][A-Za-z0-9_$]*)\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)$/u);
+                if(mm&&mm[2]===alias){
+                  sourceExport=mm[1];
+                  importedFrom=new URL(im[2],hit.url).href;
+                  break;
+                }
+              }
+              if(importedFrom)break;
+            }
+          }
+          let aliasSource=null;
+          if(importedFrom&&sourceExport&&seen.has(importedFrom)){
+            const src=seen.get(importedFrom);
+            const exportPos=src.lastIndexOf("export{");
+            const exportTail=exportPos>=0?src.slice(exportPos):"";
+            let mapped=sourceExport;
+            for(const entry of exportTail.replace(/^.*?export\{/su,"").split(",")){
+              const mm=entry.trim().match(/^([A-Za-z_$][A-Za-z0-9_$]*)\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)/u);
+              if(mm&&mm[2]===sourceExport){mapped=mm[1];break;}
+            }
+            const positions=[src.indexOf("var "+mapped+"="),src.indexOf("const "+mapped+"="),src.indexOf("let "+mapped+"=")].filter((v)=>v>=0);
+            const defPos=positions.length?Math.min(...positions):-1;
+            aliasSource=defPos>=0?src.slice(Math.max(0,defPos-300),Math.min(src.length,defPos+700)):exportTail.slice(0,1800);
+          }
+          const qPos=hit.js.indexOf("new Qs(9,0");
+          const qPositions=[hit.js.indexOf("var Qs="),hit.js.indexOf("class Qs"),hit.js.indexOf("Qs=class")].filter((v)=>v>=0);
+          const qDefPos=qPositions.length?Math.min(...qPositions):-1;
+          console.log("SAFETY_GATE_EXACT_SEARCH_CONTRACT "+JSON.stringify({
+            bundlesFetched:seen.size,
+            serviceChunk:new URL(hit.url).pathname.split("/").at(-1),
+            headerAlias:alias,
+            importedFrom:importedFrom?new URL(importedFrom).pathname.split("/").at(-1):null,
+            sourceExport,
+            aliasSource,
+            serviceExcerpt:hit.js.slice(Math.max(0,hit.pos-1700),Math.min(hit.js.length,hit.pos+1800)).replace(/\s+/gu," "),
+            paginationUse:qPos>=0?hit.js.slice(Math.max(0,qPos-500),Math.min(hit.js.length,qPos+700)).replace(/\s+/gu," "):null,
+            paginationDefinition:qDefPos>=0?hit.js.slice(Math.max(0,qDefPos-300),Math.min(hit.js.length,qDefPos+1300)).replace(/\s+/gu," "):null,
+            imports:hit.js.slice(0,2200).replace(/\s+/gu," "),
+          }));
+          NODE
