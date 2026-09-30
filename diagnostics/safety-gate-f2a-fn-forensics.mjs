@@ -31,6 +31,21 @@ const topDiffs=(a,b)=>{
   const B=b&&typeof b==="object"?b:{};
   return [...new Set([...Object.keys(A),...Object.keys(B)])].filter(k=>JSON.stringify(A[k])!==JSON.stringify(B[k])).sort();
 };
+const shape=(value)=>{
+  if(value===null) return {type:"null",keys:[]};
+  if(Array.isArray(value)) return {type:"array",keys:[]};
+  if(typeof value==="object") return {type:"object",keys:Object.keys(value).sort()};
+  return {type:typeof value,keys:[]};
+};
+const nestedDiffPaths=(a,b,prefix="",out=[])=>{
+  if(JSON.stringify(stable(a))===JSON.stringify(stable(b))) return out;
+  const ao=a&&typeof a==="object"&&!Array.isArray(a), bo=b&&typeof b==="object"&&!Array.isArray(b);
+  if(!ao||!bo){out.push(prefix||"<root>");return out;}
+  for(const key of [...new Set([...Object.keys(a),...Object.keys(b)])].sort()){
+    nestedDiffPaths(a[key],b[key],prefix?`${prefix}.${key}`:key,out);
+  }
+  return out;
+};
 const fetchJson=async(url,init={},timeout=60000)=>{
   const r=await fetch(url,{...init,signal:AbortSignal.timeout(timeout)});
   const raw=await r.text();
@@ -75,6 +90,7 @@ const rowByRef=new Map(rows.map(row=>[row.reference,row]));
 
 const histogram={};
 let currentJsonStored=0, weeklyStored=0, projectionChanged=0, projectionEqual=0, fetchFailures=0, missingRows=0;
+const singlePublication={storedShapes:{},currentShapes:{},changedPaths:{}};
 for(const ref of sampleRefs){
   const row=rowByRef.get(ref);
   if(!row){missingRows++;continue;}
@@ -88,6 +104,14 @@ for(const ref of sampleRefs){
     headers:{Accept:"application/json",language:"es"},
   },30_000);
   if(!official.r.ok||!official.body){fetchFailures++;continue;}
+  const storedShape=shape(storedDetail?.singlePublication);
+  const currentShape=shape(official.body?.singlePublication);
+  const storedKey=JSON.stringify(storedShape), currentKey=JSON.stringify(currentShape);
+  singlePublication.storedShapes[storedKey]=(singlePublication.storedShapes[storedKey]??0)+1;
+  singlePublication.currentShapes[currentKey]=(singlePublication.currentShapes[currentKey]??0)+1;
+  for(const path of nestedDiffPaths(storedDetail?.singlePublication,official.body?.singlePublication)){
+    singlePublication.changedPaths[path]=(singlePublication.changedPaths[path]??0)+1;
+  }
   const a=projection(storedDetail), b=projection(official.body);
   if(JSON.stringify(a)===JSON.stringify(b)){projectionEqual++;continue;}
   projectionChanged++;
@@ -117,6 +141,7 @@ const output={
     projectionEqual,
     officialFetchFailures:fetchFailures,
     changedTopLevelHistogram:histogram,
+    singlePublication,
   },
   interpretation:{
     projectionChangedMeans:"stored official detail differs from current official detail after the same material projection exclusions used by runtime",
