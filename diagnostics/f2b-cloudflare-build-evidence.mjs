@@ -1,111 +1,109 @@
 const ACCOUNT="9c1807c68493f14259248b5f5782cc6f";
 const API="https://api.cloudflare.com/client/v4";
 const SCRIPT="vigia-runtime";
-const TARGET="a9af3ec1ffd2de67ac5677754ab8a7d1d1bb1320";
-const EXPECTED_SCHEDULER_MODE="rapna-rasff-pilot";
-const PREVIOUS_VERSION="6cea920e-886f-47d1-8241-d586efc8c861";
-const token=process.env.CLOUDFLARE_API_TOKEN;
-if(!token) throw new Error("credential-not-configured");
+const BASE="https://vigia-runtime.c-gamiz93.workers.dev";
+const DEPLOYED_AT=Date.parse("2026-09-30T09:43:18.283Z");
+const cfToken=process.env.CLOUDFLARE_API_TOKEN;
+const syncToken=process.env.VIGIA_SYNC_TOKEN;
+if(!cfToken||!syncToken) throw new Error("credential-not-configured");
 
-async function get(path){
-  const response=await fetch(API+path,{
-    headers:{Authorization:`Bearer ${token}`,Accept:"application/json"},
-    signal:AbortSignal.timeout(30000),
-  });
-  const body=await response.json().catch(()=>null);
-  return {response,body};
-}
-const scripts=await get(`/accounts/${ACCOUNT}/workers/scripts`);
-const worker=(scripts.body?.result??[]).find((entry)=>entry?.id===SCRIPT);
-const tag=worker?.tag??null;
-if(!tag) throw new Error("worker-tag-missing");
-
-const [buildsR,deploymentsR,versionsR,settingsR]=await Promise.all([
-  get(`/accounts/${ACCOUNT}/builds/workers/${tag}/builds`),
-  get(`/accounts/${ACCOUNT}/workers/scripts/${SCRIPT}/deployments`),
-  get(`/accounts/${ACCOUNT}/workers/scripts/${SCRIPT}/versions`),
-  get(`/accounts/${ACCOUNT}/workers/scripts/${SCRIPT}/settings`),
-]);
-
-const buildList=Array.isArray(buildsR.body?.result)?buildsR.body.result:
-  Array.isArray(buildsR.body?.result?.items)?buildsR.body.result.items:
-  Array.isArray(buildsR.body?.result?.builds)?buildsR.body.result.builds:[];
-const safeBuild=(b)=>({
-  id:b?.build_uuid??b?.id??null,
-  status:b?.status??null,
-  outcome:b?.build_outcome??null,
-  createdOn:b?.created_on??null,
-  modifiedOn:b?.modified_on??null,
-  branch:b?.build_trigger_metadata?.branch??null,
-  commitHash:b?.build_trigger_metadata?.commit_hash??null,
-  buildCommand:b?.build_trigger_metadata?.build_command??null,
-  deployCommand:b?.build_trigger_metadata?.deploy_command??null,
-  previewUrl:typeof b?.preview_url==="string"?b.preview_url:null,
+const previewResponse=await fetch(BASE+"/api/safety-gate/sync?mode=delta-preview",{
+  method:"POST",
+  headers:{Authorization:`Bearer ${syncToken}`,Accept:"application/json"},
+  signal:AbortSignal.timeout(180000),
 });
-const builds=buildList.map(safeBuild);
-const targetBuilds=builds.filter((b)=>b.commitHash===TARGET);
-
-const deploymentList=deploymentsR.body?.result?.deployments??deploymentsR.body?.result??[];
-const deployments=(Array.isArray(deploymentList)?deploymentList:[]).slice(0,6).map((d)=>({
-  id:d?.id??null,
-  createdOn:d?.created_on??null,
-  source:d?.source??null,
-  strategy:d?.strategy??null,
-  versions:Array.isArray(d?.versions)?d.versions.map((v)=>({
-    versionId:v?.version_id??null,
-    percentage:Number(v?.percentage??0),
-  })):[],
-}));
-const active=deployments[0]??null;
-const activeVersion=active?.versions?.length===1?active.versions[0]?.versionId:null;
-const traffic=(active?.versions??[]).reduce((sum,v)=>sum+(Number(v.percentage)||0),0);
-
-const versionList=versionsR.body?.result?.items??versionsR.body?.result??[];
-const versions=(Array.isArray(versionList)?versionList:[]).slice(0,10).map((v)=>({
-  id:v?.id??null,
-  createdOn:v?.created_on??null,
-  source:v?.source??null,
-  message:typeof v?.annotations?.["workers/message"]==="string"?v.annotations["workers/message"].slice(0,240):null,
-  previewed:v?.annotations?.["workers/previewed"]??null,
-}));
-const activeVersionMeta=versions.find((v)=>v.id===activeVersion)??null;
-
-const bindings=Array.isArray(settingsR.body?.result?.bindings)?settingsR.body.result.bindings:[];
-const binding=(name)=>{
-  const b=bindings.find((x)=>x?.name===name);
-  return typeof b?.text==="string"?b.text:typeof b?.value==="string"?b.value:null;
+const previewBody=await previewResponse.json().catch(()=>null);
+const p=previewBody?.preview??null;
+const preview={
+  httpStatus:previewResponse.status,
+  zeroWrite:p?.zeroWrite??null,
+  coverage:p?.discovery?.coverage??null,
+  totalDeclared:p?.discovery?.totalDeclared??null,
+  pagesScanned:p?.pagesScanned??null,
+  recordsObserved:p?.recordsObserved??null,
+  recordsDeduplicated:p?.recordsDeduplicated??null,
+  storedMatched:p?.storedMatched??null,
+  baselineDetailRequests:p?.baselineDetailRequests??null,
+  candidateDetailRequests:p?.candidateDetailRequests??null,
+  savedDetailRequests:p?.savedDetailRequests??null,
+  reductionPercent:p?.reductionPercent??null,
+  reasons:p?.reasons??null,
 };
-const schedulerMode=binding("NAGAMEALERT_RECENT_SCHEDULER_MODE");
-const safetyGateMode=binding("NAGAMEALERT_SAFETY_GATE_RECENT_MODE");
+const previewPass=preview.httpStatus===200&&preview.zeroWrite===true&&preview.coverage==="complete"&&
+  Number.isInteger(preview.totalDeclared)&&preview.totalDeclared>0&&
+  preview.recordsObserved===preview.totalDeclared&&preview.recordsDeduplicated===preview.totalDeclared;
 
-const productionBuild=targetBuilds.find((b)=>
-  b.status==="stopped"&&b.outcome==="success"&&
-  b.branch==="main"&&b.deployCommand==="npx wrangler deploy")??null;
-const previousPreserved=deployments.slice(1).some((d)=>
-  d.versions.some((v)=>v.versionId===PREVIOUS_VERSION&&v.percentage===100));
-
-const pass=Boolean(
-  productionBuild&&active?.id&&activeVersion&&traffic===100&&
-  schedulerMode===EXPECTED_SCHEDULER_MODE&&
-  safetyGateMode!=="delta"&&previousPreserved
-);
+const query={
+  queryId:"f2a-postdeploy-s2",
+  dry:true,
+  view:"events",
+  limit:800,
+  timeframe:{from:DEPLOYED_AT,to:Date.now()+60000},
+  parameters:{
+    filterCombination:"and",
+    filters:[{key:"$metadata.service",operation:"eq",type:"string",value:SCRIPT}],
+    needle:{value:"recent-scheduler",isRegex:false,matchCase:true}
+  }
+};
+const telemetryResponse=await fetch(`${API}/accounts/${ACCOUNT}/workers/observability/telemetry/query`,{
+  method:"POST",
+  headers:{Authorization:`Bearer ${cfToken}`,"Content-Type":"application/json",Accept:"application/json"},
+  body:JSON.stringify(query),
+  signal:AbortSignal.timeout(45000),
+});
+const telemetryBody=await telemetryResponse.json().catch(()=>null);
+const pick=(o,keys)=>Object.fromEntries(Object.entries(o??{}).filter(([k,v])=>keys.has(k)&&
+  (v===null||typeof v==="boolean"||typeof v==="number"||typeof v==="string")));
+function extract(event){
+  const found=[];
+  function visit(v,d=0){
+    if(d>10)return;
+    if(typeof v==="string"&&v.startsWith("{")){try{visit(JSON.parse(v),d+1);}catch{}}
+    else if(v&&typeof v==="object"){
+      if(v.component==="recent-scheduler")found.push(v);
+      else for(const child of Object.values(v))visit(child,d+1);
+    }
+  }
+  visit(event);
+  const meta=pick(event.$metadata,new Set(["origin"]));
+  const workers=pick(event.$workers??event.source?.$workers,new Set(["eventType"]));
+  return found.map(record=>({record,meta,workers}));
+}
+const by=new Map();
+for(const item of (telemetryBody?.result?.events?.events??[]).flatMap(extract)){
+  const t=Number(item.record?.scheduledTime);
+  if(!Number.isFinite(t)||t<DEPLOYED_AT)continue;
+  const key=String(t);
+  const g=by.get(key)??{scheduledTime:t,s0Sources:[],s0:null,combined:null,origins:new Set(),eventTypes:new Set()};
+  if(item.record.stage==="S0"&&item.record.kind==="source")g.s0Sources.push(item.record);
+  if(item.record.stage==="S0"&&item.record.kind==="wake-up")g.s0=item.record;
+  if(item.record.stage==="S2-RAPNA-RASFF-COMBINED")g.combined=item.record;
+  if(typeof item.meta.origin==="string")g.origins.add(item.meta.origin);
+  if(typeof item.workers.eventType==="string")g.eventTypes.add(item.workers.eventType);
+  by.set(key,g);
+}
+const wakeups=[...by.values()].sort((a,b)=>a.scheduledTime-b.scheduledTime).map(g=>({
+  scheduledAt:new Date(g.scheduledTime).toISOString(),
+  s0SourceCount:new Set(g.s0Sources.map(s=>s.source)).size,
+  s0Outcome:g.s0?.outcome??null,
+  s0ReadErrors:g.s0?.readErrors??null,
+  combinedMode:g.combined?.mode??null,
+  combinedOutcome:g.combined?.outcome??null,
+  mutationAttempts:g.combined?.mutationAttempts??null,
+  origins:[...g.origins],
+  eventTypes:[...g.eventTypes],
+}));
+const validWakeups=wakeups.filter(w=>w.s0SourceCount===5&&w.s0Outcome==="shadow-observed"&&w.s0ReadErrors===0&&
+  w.combinedMode==="rapna-rasff-pilot"&&Number.isInteger(w.mutationAttempts)&&w.mutationAttempts>=0&&w.mutationAttempts<=1&&
+  w.origins.includes("scheduled")&&w.eventTypes.includes("scheduled"));
+const telemetryPass=telemetryResponse.ok&&validWakeups.length>=1;
 const out={
-  status:pass?"PASS":"HOLD",
-  targetCommit:TARGET,
-  workerTag:tag,
-  http:{builds:buildsR.response.status,deployments:deploymentsR.response.status,versions:versionsR.response.status,settings:settingsR.response.status},
-  targetBuilds,
-  productionBuild,
-  activeDeployment:active,
-  activeVersion,
-  activeVersionMeta,
-  traffic,
-  schedulerMode,
-  safetyGateMode,
-  previousVersion:PREVIOUS_VERSION,
-  previousPreserved,
-  recentDeployments:deployments,
-  recentVersions:versions,
+  status:previewPass&&telemetryPass?"PASS":"HOLD",
+  deployedAt:new Date(DEPLOYED_AT).toISOString(),
+  preview,
+  telemetryHttpStatus:telemetryResponse.status,
+  wakeups,
+  validWakeups:validWakeups.length,
 };
-console.log("F2A_PRODUCTION_GATE "+JSON.stringify(out));
-if(!pass) process.exit(1);
+console.log("F2A_POSTDEPLOY_EVIDENCE "+JSON.stringify(out));
+if(out.status!=="PASS") process.exit(1);
