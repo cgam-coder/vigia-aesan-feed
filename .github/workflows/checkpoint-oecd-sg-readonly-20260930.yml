@@ -1,0 +1,150 @@
+name: Checkpoint OECD S3 and Safety Gate read-only
+on:
+  push:
+    branches: [work/scheduler-reliability-s0-evidence]
+    paths: [".github/workflows/checkpoint-oecd-sg-readonly-20260930.yml"]
+permissions:
+  contents: read
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - name: Read current controls and shadow without production writes
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          
+          const base="https://vigia-runtime.c-gamiz93.workers.dev", cf="https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f";
+          const st=process.env.VIGIA_SYNC_TOKEN, ct=process.env.CLOUDFLARE_API_TOKEN;
+          const out={zeroWrite:true,observedAt:new Date().toISOString()};
+          async function read(url,token,body,timeout=60000){
+          const r=await fetch(url,{method:body?"POST":"GET",headers:{Authorization:"Bearer "+token,...(body?{"Content-Type":"application/json"}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:"error",signal:AbortSignal.timeout(timeout)});
+          const b=await r.json(); return {http:r.status,body:b};
+          }
+          for(const [name,path] of [["oecd","/api/oecd/sync?observe=1"],["rapna","/api/rapna/sync?observe=1"],["rasff","/api/rasff/sync?observe=1"],["freshness","/api/freshness?observe=1"],["policy","/api/freshness?observe=1&policy=1"],["safetyGate","/api/safety-gate/sync?observe=1"]]){
+          try{out[name]=await read(base+path,st);}catch(e){out[name]={error:e.message};}
+          }
+          for(const [name,path] of [["settings","/workers/scripts/vigia-runtime/settings"],["deployments","/workers/scripts/vigia-runtime/deployments"]]){
+          try{
+          const v=await read(cf+path,ct);
+          if(name==="settings"){out[name]={http:v.http,success:v.body.success,bindings:(v.body.result?.bindings||[]).filter(x=>["NAGAMEALERT_RECENT_SCHEDULER_MODE","NAGAMEALERT_SAFETY_GATE_RECENT_MODE"].includes(x.name)).map(x=>({name:x.name,text:x.text,type:x.type}))};}
+          else out[name]=v;
+          }catch(e){out[name]={error:e.message};}
+          }
+          console.log("CHECKPOINT_CONTROL "+JSON.stringify(out));
+          const lease=out.safetyGate?.body?.lease;
+          if(out.safetyGate?.http===200&&!(lease&&Date.parse(lease.expiresAt)>Date.now())){
+          try{
+          const v=await read(base+"/api/safety-gate/sync?mode=delta-shadow",st,{},300000);
+          const s=v.body.shadow;
+          console.log("CHECKPOINT_SHADOW "+JSON.stringify({http:v.http,...s}));
+          }catch(e){console.log("CHECKPOINT_SHADOW "+JSON.stringify({status:"HOLD",reason:e.message}));}
+          }else console.log("CHECKPOINT_SHADOW "+JSON.stringify({status:"HOLD",reason:"lease-or-observation-blocked"}));
+          
+          NODE
+      - name: Read natural S0 S1 S2 telemetry
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeFile } from "node:fs/promises";
+          
+          const ACCOUNT="9c1807c68493f14259248b5f5782cc6f";
+          const CUTOFF=Date.now()-30*60_000;
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          const endpoint=`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}/workers/observability/telemetry/query`;
+          const query={
+            queryId:"vigia-s3-dormant-postdeploy",
+            dry:true,
+            view:"events",
+            limit:700,
+            timeframe:{from:CUTOFF-60_000,to:Date.now()+60_000},
+            parameters:{
+              filterCombination:"and",
+              filters:[{key:"$metadata.service",operation:"eq",type:"string",value:"vigia-runtime"}],
+              needle:{value:"recent-scheduler",isRegex:false,matchCase:true}
+            }
+          };
+          const common=new Set("component schemaVersion stage triggerProvider scheduledTime cron zeroWrite requestExecuted mutationAttempts kind source blockedReason error observedAt outcome sourcesObserved readErrors retirementAuthorized leaseActiveAfter deferredDetailCount pageErrorDelta mode".split(" "));
+          const pick=(o,keys)=>Object.fromEntries(Object.entries(o??{}).filter(([k,v])=>keys.has(k)&&
+            (v===null||typeof v==="boolean"||typeof v==="number"||typeof v==="string")));
+          function sanitize(v){return pick(v,common);}
+          function extract(event){
+            const found=[];
+            function visit(v,d=0){
+              if(d>10)return;
+              if(typeof v==="string"&&v.startsWith("{")){try{visit(JSON.parse(v),d+1);}catch{}}
+              else if(v&&typeof v==="object"){
+                if(v.component==="recent-scheduler")found.push(sanitize(v));
+                else for(const child of Object.values(v))visit(child,d+1);
+              }
+            }
+            visit(event);
+            const meta=pick(event.$metadata,new Set(["origin"]));
+            const workers=pick(event.$workers??event.source?.$workers,new Set(["eventType"]));
+            return found.map(record=>({record,meta,workers}));
+          }
+          const out={status:"HOLD",operation:"s3-dormant-postdeploy-evidence",cutoff:new Date(CUTOFF).toISOString(),wakeups:[]};
+          try{
+            if(!token)throw new Error("credential-not-configured");
+            const r=await fetch(endpoint,{method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
+              body:JSON.stringify(query),signal:AbortSignal.timeout(45000)});
+            out.httpStatus=r.status;
+            if(!r.ok)throw new Error("observability-read-failed");
+            const body=await r.json();
+            const by=new Map();
+            for(const item of (body?.result?.events?.events??[]).flatMap(extract)){
+              const t=Number(item.record.scheduledTime);
+              if(!Number.isFinite(t)||t<CUTOFF)continue;
+              const g=by.get(String(t))??{
+                scheduledTime:t,s0Sources:[],s0Summary:null,rapna:null,rasff:null,combined:null,
+                s3Records:[],origins:new Set(),eventTypes:new Set()
+              };
+              if(item.record.stage==="S0"&&item.record.kind==="source")g.s0Sources.push(item.record);
+              if(item.record.stage==="S0"&&item.record.kind==="wake-up")g.s0Summary=item.record;
+              if(item.record.stage==="S1-RAPNA-PILOT")g.rapna=item.record;
+              if(item.record.stage==="S2-RASFF-PILOT")g.rasff=item.record;
+              if(item.record.stage==="S2-RAPNA-RASFF-COMBINED")g.combined=item.record;
+              if(String(item.record.stage??"").startsWith("S3-"))g.s3Records.push(item.record);
+              if(typeof item.meta.origin==="string")g.origins.add(item.meta.origin);
+              if(typeof item.workers.eventType==="string")g.eventTypes.add(item.workers.eventType);
+              by.set(String(t),g);
+            }
+            out.wakeups=[...by.values()].sort((a,b)=>a.scheduledTime-b.scheduledTime).map(g=>({
+              scheduledAt:new Date(g.scheduledTime).toISOString(),
+              s0:{
+                sourceCount:new Set(g.s0Sources.map(s=>s.source)).size,
+                outcome:g.s0Summary?.outcome??null,
+                readErrors:g.s0Summary?.readErrors??null,
+                mutationAttempts:g.s0Summary?.mutationAttempts??null,
+              },
+              rapna:g.rapna,
+              rasff:g.rasff,
+              combined:g.combined,
+              s3RecordCount:g.s3Records.length,
+              origins:[...g.origins],
+              eventTypes:[...g.eventTypes],
+            }));
+            const valid=out.wakeups.filter(w=>{
+              const attempts=Number(w.combined?.mutationAttempts??0);
+              return w.s0.sourceCount===5&&w.s0.outcome==="shadow-observed"&&w.s0.readErrors===0&&
+                w.s0.mutationAttempts===0&&
+                w.combined?.mode==="rapna-rasff-pilot"&&
+                ["idle","executed-rapna","attempted-rapna","executed-rasff","attempted-rasff"].includes(w.combined?.outcome)&&
+                Number.isFinite(attempts)&&attempts>=0&&attempts<=1&&
+                w.s3RecordCount===0&&w.origins.includes("scheduled")&&w.eventTypes.includes("scheduled");
+            });
+            out.validWakeups=valid.length;
+            out.status=valid.length>=1?"PASS_DORMANT_POSTDEPLOY":"HOLD";
+            if(out.status==="HOLD")out.reason="no-valid-postdeploy-s2-wakeup-yet";
+          }catch(e){out.reason=e instanceof Error?e.message:"bounded-read-failed";}
+          let txt=JSON.stringify(out,null,2)+"\n";
+          if(token&&txt.includes(token))txt=JSON.stringify({status:"HOLD",reason:"output-secret-guard"})+"\n";
+          await writeFile("scheduler-s3-dormant-postdeploy.json",txt);
+          console.log(txt);
+          if(out.status==="HOLD")process.exitCode=1;
+          
+          NODE
