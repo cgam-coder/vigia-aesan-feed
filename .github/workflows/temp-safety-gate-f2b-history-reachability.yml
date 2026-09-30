@@ -55,6 +55,15 @@ jobs:
             });
             const valid=identities.filter((x)=>x.reference&&Number.isSafeInteger(x.id)&&x.id>0);
             xmlIdentityFailures+=identities.length-valid.length;
+            if(valid.length===0&&notifications.length){
+              const first=notifications[0];
+              const fields=[...first.matchAll(/<([A-Za-z0-9_:-]+)>([^<]{1,300})<\/\1>/gu)]
+                .map((m)=>({key:m[1],value:m[2].trim().slice(0,180)}))
+                .filter(({value})=>value);
+              console.log("SAFETY_GATE_OLD_XML_FIELDS "+JSON.stringify({
+                report:report.reference,year:report.year,week:report.week,fields:fields.slice(0,80)
+              }));
+            }
             const pickIdx=[0,1,2,Math.floor(valid.length/2),valid.length-3,valid.length-2,valid.length-1]
               .filter((v,i,a)=>v>=0&&v<valid.length&&a.indexOf(v)===i);
             const sample=pickIdx.map((i)=>valid[i]);
