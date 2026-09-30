@@ -92,3 +92,41 @@ jobs:
             throw new Error("historical reachability sample is not clean");
           }
           NODE
+
+
+      - name: Discover official Safety Gate frontend API routes
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const base="https://ec.europa.eu";
+          const pageUrl=base+"/safety-gate-alerts/screen/search?resetSearch=true";
+          const response=await fetch(pageUrl,{headers:{"user-agent":"NagameAlert-F2B-ReadOnly-Probe/1.0"},signal:AbortSignal.timeout(30_000)});
+          const html=await response.text();
+          console.log("SAFETY_GATE_SEARCH_HTML "+JSON.stringify({status:response.status,bytes:Buffer.byteLength(html),finalUrl:response.url}));
+          const scripts=[...html.matchAll(/<script[^>]+src=["']([^"']+)["'][^>]*>/giu)].map((m)=>new URL(m[1],response.url).href);
+          console.log("SAFETY_GATE_SEARCH_SCRIPTS "+JSON.stringify(scripts));
+          const interesting=new Set();
+          for(const scriptUrl of scripts){
+            const jsResponse=await fetch(scriptUrl,{headers:{"user-agent":"NagameAlert-F2B-ReadOnly-Probe/1.0"},signal:AbortSignal.timeout(30_000)});
+            const js=await jsResponse.text();
+            const needles=["mostRecent","notification/search","/public/api/notification","searchCriteria","freeText","reference"];
+            for(const needle of needles){
+              let from=0;
+              while(true){
+                const i=js.indexOf(needle,from);
+                if(i<0)break;
+                const snippet=js.slice(Math.max(0,i-240),Math.min(js.length,i+500)).replace(/\s+/gu," ");
+                interesting.add(snippet);
+                from=i+needle.length;
+                if(interesting.size>=80)break;
+              }
+              if(interesting.size>=80)break;
+            }
+            const routeMatches=js.match(/(?:https:\/\/ec\.europa\.eu\/safety-gate-alerts)?\/(?:public\/)?api\/[A-Za-z0-9_?=&./:+%~-]{3,180}/gu) ?? [];
+            for(const route of routeMatches)interesting.add(route);
+            console.log("SAFETY_GATE_SCRIPT_META "+JSON.stringify({url:scriptUrl,status:jsResponse.status,bytes:Buffer.byteLength(js)}));
+          }
+          for(const value of [...interesting].slice(0,100))console.log("SAFETY_GATE_FRONTEND_ROUTE "+JSON.stringify(value));
+          NODE
