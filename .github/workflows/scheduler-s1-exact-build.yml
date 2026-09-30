@@ -22,9 +22,9 @@ jobs:
       ACCOUNT_ID: 9c1807c68493f14259248b5f5782cc6f
       SCRIPT: vigia-runtime
       TRIGGER_UUID: 00310c5e-c497-46d3-8556-f84cf245a25a
-      TARGET_COMMIT: aa6a6732a9361a849c37096c987860688ed133f8
-      ROLLBACK_VERSION: ed713770-2963-4107-b609-1a6d24a8af3b
-      EXPECTED_CRON: "*/5 * * * *"
+      TARGET_COMMIT: 76ce5422242cb11f1d451fc5f81a88f1d0f90384
+      ROLLBACK_VERSION: 7fd3e77f-1672-4f96-8fce-561b85936eb2
+      EXPECTED_CRON: "*/5 * * * *"\n      EXPECTED_MODE: rapna-pilot
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -142,7 +142,7 @@ jobs:
             const mode=modeBinding?.text??modeBinding?.value??null;
             const priorOk=(list??[]).slice(1,5).some(dep=>
               (dep?.versions??[]).some(v=>v?.version_id===rollbackVersion&&Number(v?.percentage)===100));
-            if(!cronOk||mode!=="shadow"||!priorOk) throw new Error("POST_DEPLOY_CONTRACT_FAILED");
+            if(!cronOk||mode!==process.env.EXPECTED_MODE||!priorOk) throw new Error("POST_DEPLOY_CONTRACT_FAILED");
             console.log(JSON.stringify({
               phase:"PASS",
               buildUuid,
