@@ -44,15 +44,17 @@ const out={status:"HOLD",operation:"scheduler-s3-dormant-control-evidence",scrip
 try{
   const token=process.env.CLOUDFLARE_API_TOKEN;
   if(!token) throw new Error("credential-not-configured");
-  const [deployments,schedules,versions]=await Promise.all([
+  const [deployments,schedules,versions,settings]=await Promise.all([
     cf(`/accounts/${ACCOUNT_ID}/workers/scripts/${SCRIPT}/deployments`,token),
     cf(`/accounts/${ACCOUNT_ID}/workers/scripts/${SCRIPT}/schedules`,token),
     cf(`/accounts/${ACCOUNT_ID}/workers/scripts/${SCRIPT}/versions`,token),
+    cf(`/accounts/${ACCOUNT_ID}/workers/scripts/${SCRIPT}/settings`,token),
   ]);
   out.deploymentsHttpStatus=deployments.status??null;
   out.schedulesHttpStatus=schedules.status??null;
   out.versionsHttpStatus=versions.status??null;
-  if(!deployments.ok||!schedules.ok||!versions.ok) throw new Error("control-read-failed");
+  out.settingsHttpStatus=settings.status??null;
+  if(!deployments.ok||!schedules.ok||!versions.ok||!settings.ok) throw new Error("control-read-failed");
   const deploymentList=deployments.body?.result?.deployments??deployments.body?.result??[];
   const scheduleList=schedules.body?.result?.schedules??schedules.body?.result??[];
   const versionList=versions.body?.result?.items??versions.body?.result??[];
@@ -64,9 +66,12 @@ try{
   const activeIds=new Set((out.activeDeployment?.versions??[]).map(v=>v.versionId).filter(Boolean));
   out.activeVersions=versionsSafe.filter(v=>activeIds.has(v.id));
   out.recentVersions=versionsSafe.slice(0,8);
+  const bindings=Array.isArray(settings.body?.result?.bindings)?settings.body.result.bindings:[];
+  const mode=bindings.find(b=>b?.name==="NAGAMEALERT_RECENT_SCHEDULER_MODE");
+  out.schedulerMode=typeof mode?.text==="string"?mode.text:typeof mode?.value==="string"?mode.value:null;
   out.activeTrafficTotal=(out.activeDeployment?.versions??[]).reduce((n,v)=>n+(Number(v.percentage)||0),0);
   out.status=out.activeDeployment?.id&&out.activeTrafficTotal===100&&
-    out.schedules.some(s=>s.cron==="*/5 * * * *")&&out.activeVersions.length>0
+    out.schedules.some(s=>s.cron==="*/5 * * * *")&&out.activeVersions.length>0&&out.schedulerMode==="rapna-rasff-pilot"
     ?"CONTROL_EVIDENCE_RETRIEVED":"HOLD";
   if(out.status==="HOLD")out.reason="control-contract-incomplete";
 }catch(error){
