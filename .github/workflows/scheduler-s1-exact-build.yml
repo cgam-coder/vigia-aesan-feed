@@ -24,7 +24,8 @@ jobs:
       TRIGGER_UUID: 00310c5e-c497-46d3-8556-f84cf245a25a
       TARGET_COMMIT: 76ce5422242cb11f1d451fc5f81a88f1d0f90384
       ROLLBACK_VERSION: 7fd3e77f-1672-4f96-8fce-561b85936eb2
-      EXPECTED_CRON: "*/5 * * * *"\n      EXPECTED_MODE: rapna-pilot
+      EXPECTED_CRON: "*/5 * * * *"
+      EXPECTED_MODE: rapna-pilot
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
