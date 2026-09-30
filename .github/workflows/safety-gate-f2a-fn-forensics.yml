@@ -1,0 +1,22 @@
+name: Safety Gate F2A false-negative forensics
+on:
+  push:
+    branches: [work/scheduler-reliability-s0-evidence]
+    paths:
+      - ".github/workflows/safety-gate-f2a-fn-forensics.yml"
+      - "diagnostics/safety-gate-f2a-fn-forensics.mjs"
+permissions:
+  contents: read
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Classify Safety Gate false negatives without writes
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: node diagnostics/safety-gate-f2a-fn-forensics.mjs
