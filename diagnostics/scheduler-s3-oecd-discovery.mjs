@@ -20,7 +20,7 @@ const pickState=(state)=>state?{
   leaseExpiresAt:state.leaseExpiresAt??null,
 }:null;
 
-const out={status:"HOLD",operation:"scheduler-s3-oecd-readonly-discovery"};
+const out={status:"HOLD",operation:"scheduler-s3-oecd-readonly-discovery-v2"};
 try{
   if(!token) throw new Error("credential-not-configured");
   const response=await fetch(url,{
@@ -55,6 +55,17 @@ try{
   const last=Date.parse(out.recent?.lastSuccessAt??"");
   out.recentAgeMinutes=Number.isFinite(last)?Math.round((Date.now()-last)/6000)/10:null;
   out.requiresGapSnapshot=Boolean((out.recent?.cursor??0)>0&&Number.isFinite(last)&&Date.now()-last>7*24*60*60_000);
+  out.activationPreflight={
+    eligibleNow:Boolean(
+      out.recent?.status==="completed" &&
+      !lease?.active &&
+      out.snapshot?.status!=="backfill-running" &&
+      !out.requiresGapSnapshot
+    ),
+    activeLease:Boolean(lease?.active),
+    backfillRunning:out.snapshot?.status==="backfill-running",
+    gapRecoveryRequired:out.requiresGapSnapshot,
+  };
   out.status="PASS_READONLY";
 }catch(error){
   out.reason=error instanceof Error?error.message:"bounded-read-failed";
