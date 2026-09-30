@@ -74,7 +74,7 @@ const dbId=dbBinding?.id??dbBinding?.database_id;
 if(typeof dbId!=="string"||!dbId) throw new Error("d1-binding-not-found");
 
 // 3) Pull a deterministic bounded sample of stored canonical rows from D1.
-const sampleRefs=[...refs].sort().slice(0,32);
+const sampleRefs=[...refs].sort().slice(0,160);
 const placeholders=sampleRefs.map(()=>"?").join(",");
 const d1=await fetchJson(`${CF}/accounts/${ACCOUNT}/d1/database/${dbId}/query`,{
   method:"POST",
