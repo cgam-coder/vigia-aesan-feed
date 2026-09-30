@@ -2,11 +2,15 @@ import { writeFile } from "node:fs/promises";
 
 const ACCOUNT="9c1807c68493f14259248b5f5782cc6f";
 const SCRIPT="vigia-runtime";
-const BUILD="dcebbbf8-b281-4b97-ab30-9d63ffafe199";
+const TAG="c16d1153847b48f7ba2245915cfd97ab";
+const BUILDS=[
+  "559d529a-46df-4a39-a61d-34e68ce4eb72",
+  "dcebbbf8-b281-4b97-ab30-9d63ffafe199"
+];
 const token=process.env.CLOUDFLARE_API_TOKEN;
 const api=(path)=>`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}${path}`;
 const headers={Authorization:`Bearer ${token}`,Accept:"application/json"};
-const out={status:"HOLD",operation:"cloudflare-build-trigger-diagnosis",script:SCRIPT,buildUuid:BUILD};
+const out={status:"HOLD",operation:"cloudflare-build-route-comparison",script:SCRIPT,workerTag:TAG,builds:[]};
 
 const get=async(path)=>{
   const response=await fetch(api(path),{headers,signal:AbortSignal.timeout(45000)});
@@ -15,55 +19,39 @@ const get=async(path)=>{
 };
 const primitive=(value)=>value===null||typeof value==="boolean"||typeof value==="number"||typeof value==="string";
 const pick=(object,keys)=>Object.fromEntries(Object.entries(object??{}).filter(([key,value])=>keys.includes(key)&&primitive(value)));
+const cleanBuild=(result)=>({
+  ...pick(result,["build_uuid","status","build_outcome","created_on","modified_on","stopped_on","preview_url"]),
+  trigger:pick(result?.trigger??{},["trigger_uuid","trigger_name"]),
+  metadata:pick(result?.build_trigger_metadata??{},[
+    "branch","commit_hash","build_command","deploy_command","root_directory","build_trigger_source"
+  ]),
+});
 
 try{
   if(!token) throw new Error("credential-not-configured");
-
-  const scripts=await get("/workers/scripts");
-  out.scriptsHttpStatus=scripts.response.status;
-  if(!scripts.response.ok) throw new Error("scripts-read-failed");
-  const worker=(Array.isArray(scripts.body?.result)?scripts.body.result:[]).find(item=>item?.id===SCRIPT);
-  if(!worker||typeof worker.tag!=="string") throw new Error("worker-tag-not-found");
-  out.worker={name:SCRIPT,tag:worker.tag};
-
-  const triggers=await get(`/builds/workers/${worker.tag}/triggers`);
-  out.triggersHttpStatus=triggers.response.status;
-  if(!triggers.response.ok){
-    out.reason=[401,403].includes(triggers.response.status)?"workers-builds-config-read-not-authorized":"triggers-read-failed";
-    throw new Error(out.reason);
+  for(const uuid of BUILDS){
+    const response=await get(`/builds/builds/${uuid}`);
+    out.builds.push({httpStatus:response.response.status,...(response.response.ok?cleanBuild(response.body?.result??{}):{})});
   }
-  out.triggers=(Array.isArray(triggers.body?.result)?triggers.body.result:[]).map(trigger=>({
-    ...pick(trigger,["trigger_uuid","trigger_name","build_command","deploy_command","root_directory","build_caching_enabled"]),
+
+  const history=await get(`/builds/workers/${TAG}/builds`);
+  out.historyHttpStatus=history.response.status;
+  if(!history.response.ok) throw new Error("build-history-read-failed");
+  const list=Array.isArray(history.body?.result)?history.body.result:
+    Array.isArray(history.body?.result?.builds)?history.body.result.builds:[];
+  out.recentBuilds=list.slice(0,12).map(cleanBuild);
+
+  const triggers=await get(`/builds/workers/${TAG}/triggers`);
+  out.triggersHttpStatus=triggers.response.status;
+  if(!triggers.response.ok) throw new Error("triggers-read-failed");
+  out.currentTriggers=(Array.isArray(triggers.body?.result)?triggers.body.result:[]).map(trigger=>({
+    ...pick(trigger,["trigger_uuid","trigger_name","build_command","deploy_command","root_directory"]),
     branchIncludes:Array.isArray(trigger?.branch_includes)?trigger.branch_includes:[],
     branchExcludes:Array.isArray(trigger?.branch_excludes)?trigger.branch_excludes:[],
-    pathIncludes:Array.isArray(trigger?.path_includes)?trigger.path_includes:[],
-    pathExcludes:Array.isArray(trigger?.path_excludes)?trigger.path_excludes:[],
   }));
-
-  const build=await get(`/builds/builds/${BUILD}`);
-  out.buildHttpStatus=build.response.status;
-  if(!build.response.ok) throw new Error("build-read-failed");
-  const result=build.body?.result??{};
-  out.build={
-    ...pick(result,["build_uuid","status","build_outcome","created_on","modified_on"]),
-    trigger:pick(result.trigger??{},["trigger_uuid","trigger_name"]),
-    triggerMetadata:pick(result.build_trigger_metadata??{},[
-      "branch","commit_hash","build_command","deploy_command","root_directory","build_trigger_source"
-    ]),
-  };
-
-  const production=out.triggers.find(t=>t.branchIncludes.includes("main")&&!t.branchExcludes.includes("main"))??null;
-  const preview=out.triggers.find(t=>t.branchIncludes.includes("*")&&t.branchExcludes.includes("main"))??null;
-  out.classification={
-    productionTriggerUuid:production?.trigger_uuid??null,
-    productionDeployCommand:production?.deploy_command??null,
-    previewTriggerUuid:preview?.trigger_uuid??null,
-    previewDeployCommand:preview?.deploy_command??null,
-    productionMisconfigured:Boolean(production&&production.deploy_command!=="npx wrangler deploy"),
-  };
   out.status="EVIDENCE_RETRIEVED";
 }catch(error){
-  if(!out.reason)out.reason=error instanceof Error?error.message:"bounded-read-failed";
+  out.reason=error instanceof Error?error.message:"bounded-read-failed";
 }
 
 let text=JSON.stringify(out,null,2)+"\n";
