@@ -1,0 +1,165 @@
+name: S1 dormant exact Cloudflare build
+
+on:
+  push:
+    branches: [work/scheduler-reliability-s0-evidence]
+    paths:
+      - ".github/workflows/scheduler-s1-exact-build.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scheduler-s1-exact-cloudflare-build
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      ACCOUNT_ID: 9c1807c68493f14259248b5f5782cc6f
+      SCRIPT: vigia-runtime
+      TRIGGER_UUID: 00310c5e-c497-46d3-8556-f84cf245a25a
+      TARGET_COMMIT: 799d3232d3bff8f09593a9ea199a6ace8e61e0c4
+      ROLLBACK_VERSION: ed713770-2963-4107-b609-1a6d24a8af3b
+      EXPECTED_CRON: "*/5 * * * *"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Start exact production build and certify deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          const account=process.env.ACCOUNT_ID;
+          const script=process.env.SCRIPT;
+          const trigger=process.env.TRIGGER_UUID;
+          const target=process.env.TARGET_COMMIT;
+          const rollbackVersion=process.env.ROLLBACK_VERSION;
+          const expectedCron=process.env.EXPECTED_CRON;
+          const api="https://api.cloudflare.com/client/v4";
+          const headers={Authorization:`Bearer ${token}`,"Content-Type":"application/json",Accept:"application/json"};
+
+          const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+          async function request(url, options={}){
+            const response=await fetch(url,{...options,headers:{...headers,...(options.headers??{})},signal:AbortSignal.timeout(30000)});
+            let body=null;
+            try{ body=await response.json(); }catch{}
+            return {response,body};
+          }
+          async function deployments(){
+            const {response,body}=await request(`${api}/accounts/${account}/workers/scripts/${script}/deployments`);
+            if(!response.ok||body?.success===false) throw new Error(`deployments read HTTP ${response.status}`);
+            const list=body?.result?.deployments??body?.result??[];
+            return Array.isArray(list)?list:[];
+          }
+          async function schedules(){
+            const {response,body}=await request(`${api}/accounts/${account}/workers/scripts/${script}/schedules`);
+            if(!response.ok||body?.success===false) throw new Error(`schedules read HTTP ${response.status}`);
+            const list=body?.result?.schedules??body?.result??[];
+            return Array.isArray(list)?list:[];
+          }
+          async function settings(){
+            const {response,body}=await request(`${api}/accounts/${account}/workers/scripts/${script}/settings`);
+            if(!response.ok||body?.success===false) throw new Error(`settings read HTTP ${response.status}`);
+            return body?.result??{};
+          }
+          async function rollback(){
+            const {response,body}=await request(`${api}/accounts/${account}/workers/scripts/${script}/deployments`,{
+              method:"POST",
+              body:JSON.stringify({
+                strategy:"percentage",
+                versions:[{version_id:rollbackVersion,percentage:100}],
+                annotations:{"workers/message":"Automatic rollback after dormant S1 post-deploy gate","workers/triggered_by":"deployment"}
+              })
+            });
+            if(!response.ok||body?.success===false) throw new Error(`ROLLBACK_FAILED_HTTP_${response.status}`);
+            return body.result;
+          }
+
+          const before=await deployments();
+          const activeBefore=before[0];
+          const beforeVersions=activeBefore?.versions??[];
+          if(beforeVersions.length!==1||beforeVersions[0]?.version_id!==rollbackVersion||Number(beforeVersions[0]?.percentage)!==100){
+            throw new Error("PREBUILD_BASELINE_CHANGED");
+          }
+
+          const start=await request(`${api}/accounts/${account}/builds/triggers/${trigger}/builds`,{
+            method:"POST",
+            body:JSON.stringify({commit_hash:target})
+          });
+          if(!start.response.ok||start.body?.success===false){
+            throw new Error(`BUILD_START_HTTP_${start.response.status}`);
+          }
+          const build=start.body?.result??{};
+          const buildUuid=build.build_uuid;
+          if(typeof buildUuid!=="string") throw new Error("BUILD_UUID_MISSING");
+          console.log(JSON.stringify({phase:"build-started",buildUuid,targetCommit:target,status:build.status??null}));
+
+          let finalBuild=null;
+          for(let i=0;i<90;i++){
+            await sleep(5000);
+            const poll=await request(`${api}/accounts/${account}/builds/builds/${buildUuid}`);
+            if(!poll.response.ok||poll.body?.success===false) throw new Error(`BUILD_POLL_HTTP_${poll.response.status}`);
+            finalBuild=poll.body?.result??null;
+            const status=finalBuild?.status??null;
+            const outcome=finalBuild?.build_outcome??null;
+            if(status==="stopped"){
+              if(outcome!=="success") throw new Error(`BUILD_OUTCOME_${outcome??"unknown"}`);
+              break;
+            }
+          }
+          if(finalBuild?.status!=="stopped"||finalBuild?.build_outcome!=="success") throw new Error("BUILD_TIMEOUT");
+          if(finalBuild?.build_trigger_metadata?.commit_hash!==target) throw new Error("BUILD_COMMIT_MISMATCH");
+          console.log(JSON.stringify({phase:"build-success",buildUuid,commitHash:target}));
+
+          let active=null;
+          let list=null;
+          for(let i=0;i<24;i++){
+            await sleep(5000);
+            list=await deployments();
+            active=list[0]??null;
+            const versions=active?.versions??[];
+            if(versions.length===1&&versions[0]?.version_id!==rollbackVersion&&Number(versions[0]?.percentage)===100) break;
+          }
+
+          try{
+            const versions=active?.versions??[];
+            const activeVersion=versions[0]?.version_id??null;
+            const traffic=versions.reduce((n,v)=>n+(Number(v?.percentage)||0),0);
+            if(!active?.id||versions.length!==1||!activeVersion||activeVersion===rollbackVersion||traffic!==100){
+              throw new Error("NO_NEW_100_PERCENT_DEPLOYMENT");
+            }
+            const [sched,sett]=await Promise.all([schedules(),settings()]);
+            const cronOk=sched.some(s=>s?.cron===expectedCron);
+            const bindings=Array.isArray(sett?.bindings)?sett.bindings:[];
+            const modeBinding=bindings.find(b=>b?.name==="NAGAMEALERT_RECENT_SCHEDULER_MODE");
+            const mode=modeBinding?.text??modeBinding?.value??null;
+            const priorOk=(list??[]).slice(1,5).some(dep=>
+              (dep?.versions??[]).some(v=>v?.version_id===rollbackVersion&&Number(v?.percentage)===100));
+            if(!cronOk||mode!=="shadow"||!priorOk) throw new Error("POST_DEPLOY_CONTRACT_FAILED");
+            console.log(JSON.stringify({
+              phase:"PASS",
+              buildUuid,
+              deploymentId:active.id,
+              activeVersion,
+              traffic,
+              mode,
+              cron:expectedCron,
+              rollbackVersion
+            }));
+          }catch(error){
+            const current=(await deployments())[0]??null;
+            const currentVersion=current?.versions?.[0]?.version_id??null;
+            if(currentVersion&&currentVersion!==rollbackVersion){
+              const rolled=await rollback();
+              console.error(JSON.stringify({phase:"rollback-submitted",deploymentId:rolled?.id??null,rollbackVersion}));
+            }
+            throw error;
+          }
+          NODE
