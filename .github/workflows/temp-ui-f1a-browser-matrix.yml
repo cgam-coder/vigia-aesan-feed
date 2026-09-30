@@ -1,0 +1,209 @@
+name: TEMP UI-F1A cross-browser carrier
+
+on:
+  push:
+    branches: [work/ui-f1a-browser-carrier]
+
+permissions:
+  contents: read
+
+env:
+  PREVIEW_URL: https://work-ui-f1a-system-theme-ios-compat-vigia-runtime.c-gamiz93.workers.dev
+
+jobs:
+  webkit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Verify public Preview routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          for route in / /en/ /es/alertas /en/alerts /es/fuentes /es/metodologia; do
+            code="$(curl --silent --show-error --location --max-time 30 -o /tmp/page.html --write-out '%{http_code}' "${PREVIEW_URL}${route}")"
+            test "$code" = "200"
+            grep -qi '<html' /tmp/page.html
+            echo "PREVIEW_ROUTE_OK ${route} HTTP=${code}"
+          done
+
+      - name: Install Playwright WebKit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check 'playwright==1.57.0'
+          python3 -m playwright install --with-deps webkit
+
+      - name: WebKit iPhone-class matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p webkit-evidence
+          python3 <<'PY'
+          import json, os
+          from pathlib import Path
+          from playwright.sync_api import sync_playwright
+
+          preview=os.environ['PREVIEW_URL']
+          ua='Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1'
+          profiles=[('iphone-320',320,700,2),('iphone-375',375,812,3),('iphone-390',390,844,3),('iphone-430',430,932,3),('landscape',844,390,3)]
+          full_routes=['/','/en/','/es/alertas','/en/alerts','/es/fuentes','/es/metodologia']
+          failures=[]; results=[]
+          def state(page):
+            return page.evaluate("({theme:document.documentElement.getAttribute('data-na-theme'),sw:document.documentElement.scrollWidth,cw:document.documentElement.clientWidth,w:innerWidth,h:innerHeight,scale:visualViewport?.scale??1})")
+          with sync_playwright() as p:
+            browser=p.webkit.launch()
+
+            # System theme -> live changes -> manual override -> persistence.
+            ctx=browser.new_context(viewport={'width':390,'height':844},device_scale_factor=3,is_mobile=True,has_touch=True,user_agent=ua,color_scheme='light')
+            page=ctx.new_page(); page.goto(preview+'/es/alertas',wait_until='networkidle')
+            page.evaluate("localStorage.removeItem('nagamealert-theme')"); page.reload(wait_until='networkidle')
+            initial=page.evaluate("({attr:document.documentElement.getAttribute('data-na-theme'),system:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'})")
+            if initial != {'attr':'light','system':'light'}: failures.append({'themeInitial':initial})
+            page.emulate_media(color_scheme='dark'); page.wait_for_timeout(250)
+            live=page.evaluate("({attr:document.documentElement.getAttribute('data-na-theme'),system:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'})")
+            if live != {'attr':'dark','system':'dark'}: failures.append({'themeLive':live})
+            page.locator('.na-theme-toggle').click(); page.wait_for_timeout(150)
+            override=page.evaluate("({attr:document.documentElement.getAttribute('data-na-theme'),stored:localStorage.getItem('nagamealert-theme')})")
+            page.emulate_media(color_scheme='light'); page.wait_for_timeout(250)
+            held=page.evaluate("({attr:document.documentElement.getAttribute('data-na-theme'),stored:localStorage.getItem('nagamealert-theme'),system:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'})")
+            if held['attr'] != held['stored'] or held['attr'] == held['system']: failures.append({'overrideHold':held})
+            page.reload(wait_until='networkidle')
+            persisted=page.evaluate("({attr:document.documentElement.getAttribute('data-na-theme'),stored:localStorage.getItem('nagamealert-theme')})")
+            if persisted['attr'] != persisted['stored'] or persisted['stored'] != held['stored']: failures.append({'overridePersist':persisted})
+            results.append({'theme':{'initial':initial,'live':live,'override':override,'held':held,'persisted':persisted}})
+            ctx.close()
+
+            # All required routes at representative iPhone 390 and desktop, light/dark.
+            for label,w,h,dpr,mobile in [('iphone-390',390,844,3,True),('desktop',1366,768,1,False)]:
+              for scheme in ('light','dark'):
+                kwargs={'viewport':{'width':w,'height':h},'device_scale_factor':dpr,'color_scheme':scheme}
+                if mobile: kwargs.update({'is_mobile':True,'has_touch':True,'user_agent':ua})
+                ctx=browser.new_context(**kwargs); page=ctx.new_page()
+                for route in full_routes:
+                  page.goto(preview+route,wait_until='networkidle')
+                  page.evaluate("localStorage.removeItem('nagamealert-theme')"); page.reload(wait_until='networkidle')
+                  s=state(page)
+                  if s['theme'] != scheme or s['sw'] > s['cw']+2: failures.append({'profile':label,'scheme':scheme,'route':route,'state':s})
+                  results.append({'profile':label,'scheme':scheme,'route':route,'state':s})
+                ctx.close()
+
+            # Responsive/interactions on critical alerts route.
+            for label,w,h,dpr in profiles:
+              ctx=browser.new_context(viewport={'width':w,'height':h},device_scale_factor=dpr,is_mobile=True,has_touch=True,user_agent=ua,color_scheme='light')
+              page=ctx.new_page(); page.goto(preview+'/es/alertas',wait_until='networkidle')
+              page.evaluate("localStorage.removeItem('nagamealert-theme')"); page.reload(wait_until='networkidle')
+              s=state(page)
+              if s['sw'] > s['cw']+2: failures.append({'profile':label,'overflow':s})
+              font=page.locator('.na-global-search input').evaluate("el=>getComputedStyle(el).fontSize")
+              if font!='16px': failures.append({'profile':label,'inputFont':font})
+              page.locator('.na-global-search input').focus(); page.wait_for_timeout(150)
+              scale=page.evaluate("visualViewport?.scale??1")
+              if scale != 1: failures.append({'profile':label,'focusScale':scale})
+              menu=page.locator('.na-public-mobile-nav summary')
+              if menu.count():
+                menu.click(); page.wait_for_timeout(100)
+                if not page.locator('.na-public-mobile-nav[open]').count(): failures.append({'profile':label,'menu':'not-open'})
+              filt=page.locator('.na-terminal-filter-trigger')
+              if filt.count():
+                filt.click(); page.wait_for_timeout(250)
+                if not page.locator('.na-terminal-filters[open]').count(): failures.append({'profile':label,'filter':'not-open'})
+                if label!='landscape':
+                  page.set_viewport_size({'width':w,'height':max(420,h-260)}); page.wait_for_timeout(250)
+                  sheet=page.locator('.na-terminal-filters[open] .na-terminal-filters__body')
+                  if sheet.count():
+                    box=sheet.bounding_box(); vh=page.evaluate("visualViewport?.height??innerHeight")
+                    if box and box['y']+box['height'] > vh+3: failures.append({'profile':label,'sheetBottom':box['y']+box['height'],'visualHeight':vh})
+              page.screenshot(path=f'webkit-evidence/{label}-alerts.png')
+              results.append({'profile':label,'alerts':s,'inputFont':font,'focusScale':scale})
+              ctx.close()
+
+            browser.close()
+          Path('webkit-evidence/results.json').write_text(json.dumps({'results':results,'failures':failures},indent=2))
+          print(json.dumps({'checks':len(results),'failures':failures},indent=2))
+          if failures: raise SystemExit(1)
+          PY
+
+      - name: Upload WebKit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-f1a-webkit-evidence
+          path: webkit-evidence
+          if-no-files-found: warn
+
+  safari-ios:
+    runs-on: macos-15
+    timeout-minutes: 12
+    steps:
+      - name: Verify Preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --max-time 30 "${PREVIEW_URL}/es/alertas" >/tmp/alerts.html
+          grep -qi '<html' /tmp/alerts.html
+          /usr/bin/safaridriver --version
+
+      - name: Real Safari smoke and iOS Simulator screenshots
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p safari-evidence ios-evidence
+          sudo /usr/bin/safaridriver --enable
+          /usr/bin/safaridriver --port 4444 > safari-evidence/safaridriver.log 2>&1 &
+          DRIVER_PID=$!
+          trap 'kill ${DRIVER_PID} 2>/dev/null || true' EXIT
+          for i in {1..20}; do curl -sf http://127.0.0.1:4444/status >/dev/null && break; sleep 1; done
+          python3 <<'PY'
+          import json, os, time, urllib.request
+          base='http://127.0.0.1:4444'; preview=os.environ['PREVIEW_URL']
+          def req(method,path,body=None):
+            data=None if body is None else json.dumps(body).encode()
+            r=urllib.request.Request(base+path,data=data,method=method,headers={'Content-Type':'application/json'})
+            with urllib.request.urlopen(r,timeout=60) as res: return json.loads(res.read().decode() or '{}')
+          sid=req('POST','/session',{'capabilities':{'alwaysMatch':{'browserName':'Safari'}}})['value']['sessionId']
+          def cmd(method,path,body=None): return req(method,f'/session/{sid}{path}',body).get('value')
+          def js(s): return cmd('POST','/execute/sync',{'script':s,'args':[]})
+          try:
+            cmd('POST','/window/rect',{'x':0,'y':0,'width':1366,'height':768})
+            for route in ['/','/es/alertas','/es/fuentes','/es/metodologia']:
+              cmd('POST','/url',{'url':preview+route}); time.sleep(.5)
+              s=js("return {ready:document.readyState,sw:document.documentElement.scrollWidth,cw:document.documentElement.clientWidth};")
+              assert s['ready']=='complete' and s['sw']<=s['cw']+2,(route,s)
+            cmd('POST','/url',{'url':preview+'/es/alertas'}); time.sleep(.5)
+            js("localStorage.removeItem('nagamealert-theme');location.reload()"); time.sleep(1)
+            t=js("return {attr:document.documentElement.getAttribute('data-na-theme'),system:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'};")
+            assert t['attr']==t['system'],t
+            js("document.querySelector('.na-theme-toggle')?.click()"); time.sleep(.2)
+            o=js("return {attr:document.documentElement.getAttribute('data-na-theme'),stored:localStorage.getItem('nagamealert-theme')};")
+            assert o['attr']==o['stored'] and o['stored'] in ('dark','light'),o
+            open('safari-evidence/results.json','w').write(json.dumps({'theme':t,'override':o},indent=2))
+          finally:
+            try:req('DELETE',f'/session/{sid}')
+            except:pass
+          PY
+
+          UDID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; xs=[x for arr in d.values() for x in arr if x.get("isAvailable") and x.get("name","").startswith("iPhone")]; print(xs[-1]["udid"] if xs else "")')"
+          test -n "$UDID"
+          xcrun simctl boot "$UDID" 2>/dev/null || true
+          xcrun simctl bootstatus "$UDID" -b
+          for appearance in light dark; do
+            xcrun simctl ui "$UDID" appearance "$appearance"
+            xcrun simctl terminate "$UDID" com.apple.mobilesafari 2>/dev/null || true
+            for spec in "home:/" "alerts:/es/alertas"; do
+              name="${spec%%:*}"; route="${spec#*:}"
+              xcrun simctl openurl "$UDID" "${PREVIEW_URL}${route}"
+              sleep 3
+              xcrun simctl io "$UDID" screenshot "ios-evidence/${appearance}-${name}.png"
+            done
+          done
+          xcrun simctl shutdown "$UDID" || true
+
+      - name: Upload Safari/iOS evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-f1a-safari-ios-evidence
+          path: |
+            safari-evidence
+            ios-evidence
+          if-no-files-found: warn
