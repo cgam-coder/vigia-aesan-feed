@@ -98,15 +98,15 @@ for(const ref of sampleRefs){
   const storedDetail=canonical?.sourceRecord?.detail??null;
   const sourceRecordId=Number(canonical?.identity?.sourceRecordId);
   if(!Number.isSafeInteger(sourceRecordId)){missingRows++;continue;}
-  const currentShape=Boolean(storedDetail?.product||storedDetail?.risk||storedDetail?.measureTaken);
-  if(currentShape) currentJsonStored++; else weeklyStored++;
+  const storedCurrentJsonShape=Boolean(storedDetail?.product||storedDetail?.risk||storedDetail?.measureTaken);
+  if(storedCurrentJsonShape) currentJsonStored++; else weeklyStored++;
   const official=await fetchJson(`${SG}/public/api/notification/${sourceRecordId}?language=es`,{
     headers:{Accept:"application/json",language:"es"},
   },30_000);
   if(!official.r.ok||!official.body){fetchFailures++;continue;}
   const storedShape=shape(storedDetail?.singlePublication);
-  const currentShape=shape(official.body?.singlePublication);
-  const storedKey=JSON.stringify(storedShape), currentKey=JSON.stringify(currentShape);
+  const currentPublicationShape=shape(official.body?.singlePublication);
+  const storedKey=JSON.stringify(storedShape), currentKey=JSON.stringify(currentPublicationShape);
   singlePublication.storedShapes[storedKey]=(singlePublication.storedShapes[storedKey]??0)+1;
   singlePublication.currentShapes[currentKey]=(singlePublication.currentShapes[currentKey]??0)+1;
   for(const path of nestedDiffPaths(storedDetail?.singlePublication,official.body?.singlePublication)){
