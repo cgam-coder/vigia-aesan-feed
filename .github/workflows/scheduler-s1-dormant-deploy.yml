@@ -1,0 +1,139 @@
+name: S1 dormant runtime deployment
+
+on:
+  push:
+    branches: [work/scheduler-reliability-s0-evidence]
+    paths:
+      - ".github/workflows/scheduler-s1-dormant-deploy.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scheduler-s1-dormant-runtime-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 9c1807c68493f14259248b5f5782cc6f
+      NAGAMEALERT_BUILD_TARGET: cloudflare
+      NAGAMEALERT_D1_DATABASE_ID: 55596003-1b90-4f66-aad8-decb21205f13
+      NAGAMEALERT_D1_DATABASE_NAME: nagamealert-staging-db
+      NAGAMEALERT_WORKER_NAME: vigia-runtime
+      EXPECTED_RUNTIME_SHA: 799d3232d3bff8f09593a9ea199a6ace8e61e0c4
+      EXPECTED_ROLLBACK_VERSION: ed713770-2963-4107-b609-1a6d24a8af3b
+      EXPECTED_CRON: "*/5 * * * *"
+    steps:
+      - name: Checkout exact runtime candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: cgam-coder/vigia-runtime
+          ref: 799d3232d3bff8f09593a9ea199a6ace8e61e0c4
+          path: runtime
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: runtime/package-lock.json
+
+      - name: Verify exact candidate and current production gate
+        working-directory: runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_RUNTIME_SHA"
+          node --input-type=module <<'NODE'
+          const account=process.env.CLOUDFLARE_ACCOUNT_ID;
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          const script="vigia-runtime";
+          const res=await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/workers/scripts/${script}/deployments`,{
+            headers:{Authorization:`Bearer ${token}`,Accept:"application/json"},
+            signal:AbortSignal.timeout(30000)
+          });
+          if(!res.ok) throw new Error(`deployment preflight HTTP ${res.status}`);
+          const body=await res.json();
+          const list=body?.result?.deployments ?? body?.result ?? [];
+          const active=Array.isArray(list)?list[0]:null;
+          const versions=active?.versions ?? [];
+          if(versions.length!==1 || versions[0]?.version_id!==process.env.EXPECTED_ROLLBACK_VERSION ||
+             Number(versions[0]?.percentage)!==100) throw new Error("production baseline changed");
+          console.log(JSON.stringify({preflight:"PASS",activeVersion:versions[0].version_id,traffic:100}));
+          NODE
+
+      - name: Install exact locked dependencies
+        working-directory: runtime
+        run: npm ci --no-audit --no-fund
+
+      - name: Run full Cloudflare validation build
+        working-directory: runtime
+        run: npm run build:cloudflare
+
+      - name: Deploy dormant S1 code with shadow mode
+        working-directory: runtime
+        run: npx wrangler deploy --config dist/server/wrangler.json
+
+      - name: Verify deployment, traffic, cron and shadow mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const account=process.env.CLOUDFLARE_ACCOUNT_ID;
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          const script="vigia-runtime";
+          const base=`https://api.cloudflare.com/client/v4/accounts/${account}/workers/scripts/${script}`;
+          const get=async (path)=>{
+            const r=await fetch(base+path,{headers:{Authorization:`Bearer ${token}`,Accept:"application/json"},
+              signal:AbortSignal.timeout(30000)});
+            if(!r.ok) throw new Error(`${path} HTTP ${r.status}`);
+            const b=await r.json();
+            if(b?.success===false) throw new Error(`${path} API failure`);
+            return b.result;
+          };
+          const rollback=async ()=>{
+            const r=await fetch(base+"/deployments",{
+              method:"POST",
+              headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
+              body:JSON.stringify({strategy:"percentage",versions:[{
+                version_id:process.env.EXPECTED_ROLLBACK_VERSION,percentage:100
+              }],annotations:{"workers/message":"Automatic rollback: dormant S1 post-deploy gate failed",
+                "workers/triggered_by":"deployment"}}),
+              signal:AbortSignal.timeout(30000)
+            });
+            if(!r.ok) throw new Error(`rollback HTTP ${r.status}`);
+          };
+          let deployment, schedules, settings;
+          try{
+            const d=await get("/deployments");
+            const list=d?.deployments ?? d ?? [];
+            deployment=Array.isArray(list)?list[0]:null;
+            schedules=await get("/schedules");
+            settings=await get("/settings");
+            const versions=deployment?.versions ?? [];
+            const activeVersion=versions[0]?.version_id ?? null;
+            const traffic=versions.reduce((n,v)=>n+(Number(v?.percentage)||0),0);
+            const schedList=schedules?.schedules ?? schedules ?? [];
+            const cronOk=Array.isArray(schedList)&&schedList.some(s=>s?.cron===process.env.EXPECTED_CRON);
+            const bindings=Array.isArray(settings?.bindings)?settings.bindings:[];
+            const modeBinding=bindings.find(b=>b?.name==="NAGAMEALERT_RECENT_SCHEDULER_MODE");
+            const mode=modeBinding?.text ?? modeBinding?.value ?? null;
+            const priorOk=Array.isArray(list)&&list.slice(1,4).some(dep=>
+              (dep?.versions??[]).some(v=>v?.version_id===process.env.EXPECTED_ROLLBACK_VERSION&&Number(v?.percentage)===100));
+            if(!activeVersion || activeVersion===process.env.EXPECTED_ROLLBACK_VERSION ||
+               versions.length!==1 || traffic!==100 || !cronOk || mode!=="shadow" || !priorOk) {
+              await rollback();
+              throw new Error("post-deploy gate failed; rollback submitted");
+            }
+            console.log(JSON.stringify({deployment:"PASS",deploymentId:deployment.id,activeVersion,traffic,
+              cron:process.env.EXPECTED_CRON,mode,rollbackVersion:process.env.EXPECTED_ROLLBACK_VERSION}));
+          }catch(error){
+            console.error(error instanceof Error?error.message:"post-deploy gate failed");
+            process.exit(1);
+          }
+          NODE
