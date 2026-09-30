@@ -14,6 +14,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Sample old, middle and recent weekly reports against official JSON detail
+        if: false
         shell: bash
         run: |
           set -euo pipefail
@@ -209,4 +210,63 @@ jobs:
             paginationDefinition:qDefPos>=0?hit.js.slice(Math.max(0,qDefPos-300),Math.min(hit.js.length,qDefPos+1300)).replace(/\s+/gu," "):null,
             imports:hit.js.slice(0,2200).replace(/\s+/gu," "),
           }));
+          NODE
+
+
+      - name: Resolve archived Safety Gate references through official search
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const endpoint="https://ec.europa.eu/safety-gate-alerts/public/api/search";
+          const headers={
+            "accept":"application/json",
+            "content-type":"application/json",
+            "x-lang-param":"lang",
+            "x-requested-with":"XMLHttpRequest",
+            "cache-control":"No-Cache",
+            "user-agent":"NagameAlert-F2B-ReadOnly-Probe/1.0",
+          };
+          const payload=(reference)=>({
+            criteria:{},
+            searchCriteriaForNotification:false,
+            isLaunched:true,
+            isLaunchSearch:true,
+            pagination:{size:9,page:0,sortField:"PUBLICATION_DATE",sortOrder:"DESC"},
+            searchResults:[],
+            displayDefaultResults:false,
+            displayTagsWithSelectedCriteria:[],
+            isForMostRecent:false,
+            fullTextSearch:reference,
+            language:"en",
+          });
+          const findIdentities=(value,path="$",out=[])=>{
+            if(!value||typeof value!=="object")return out;
+            if(!Array.isArray(value)&&Number.isSafeInteger(value.id)&&typeof value.reference==="string"){
+              out.push({path,id:value.id,reference:value.reference});
+            }
+            if(Array.isArray(value)){
+              value.forEach((child,index)=>findIdentities(child,path+"["+index+"]",out));
+            }else{
+              for(const [key,child] of Object.entries(value))findIdentities(child,path+"."+key,out);
+            }
+            return out;
+          };
+          for(const reference of ["SR/02546/26","A12/1295/15","0374/04","0002/05","0010/05"]){
+            const response=await fetch(endpoint,{
+              method:"POST",headers,body:JSON.stringify(payload(reference)),
+              redirect:"manual",signal:AbortSignal.timeout(30_000),
+            });
+            const raw=await response.text();
+            let body=null;
+            try{body=JSON.parse(raw);}catch{}
+            const identities=findIdentities(body).filter((x)=>x.reference===reference);
+            console.log("SAFETY_GATE_OFFICIAL_SEARCH "+JSON.stringify({
+              query:reference,status:response.status,contentType:response.headers.get("content-type"),
+              allow:response.headers.get("allow"),bytes:Buffer.byteLength(raw),
+              topLevelKeys:body&&typeof body==="object"&&!Array.isArray(body)?Object.keys(body):[],
+              exactMatches:identities,
+              prefix:body?null:raw.slice(0,180).replace(/\s+/gu," "),
+            }));
+          }
           NODE
