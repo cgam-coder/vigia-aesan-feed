@@ -1,0 +1,44 @@
+name: Scheduler S1 RAPNA activation preflight
+on:
+  push:
+    branches: [work/scheduler-reliability-s0-evidence]
+    paths:
+      - ".github/workflows/scheduler-s1-rapna-preflight.yml"
+permissions:
+  contents: read
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Read RAPNA live control state
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const token=process.env.VIGIA_SYNC_TOKEN;
+          const url="https://vigia-runtime.c-gamiz93.workers.dev/api/rapna/sync?observe=1";
+          const r=await fetch(url,{headers:{Authorization:`Bearer ${token}`,Accept:"application/json"},signal:AbortSignal.timeout(30000)});
+          let body=null; try{body=await r.json();}catch{}
+          if(!r.ok||!body) throw new Error(`RAPNA_OBSERVE_HTTP_${r.status}`);
+          const now=Date.now();
+          const leaseExpires=Date.parse(body?.lease?.expiresAt??"");
+          const leaseActive=Boolean(body?.lease&&Number.isFinite(leaseExpires)&&leaseExpires>now);
+          const snapshotStatus=typeof body?.snapshot?.status==="string"?body.snapshot.status:null;
+          const currentSnapshotStatus=typeof body?.currentSnapshot?.status==="string"?body.currentSnapshot.status:null;
+          const activeSnapshot=snapshotStatus==="backfill-running";
+          const activeCurrentSnapshot=["building","backfill-running","restore-running"].includes(currentSnapshotStatus);
+          const result={
+            status:(!leaseActive&&!activeSnapshot&&!activeCurrentSnapshot)?"PASS":"HOLD",
+            recentStatus:body?.recent?.status??null,
+            recentLastSuccessAt:body?.recent?.lastSuccessAt??null,
+            recentAgeMinutes:body?.recent?.lastSuccessAt?Math.round((now-Date.parse(body.recent.lastSuccessAt))/600)/100:null,
+            leaseActive,
+            leaseMode:leaseActive?(body?.lease?.mode??null):null,
+            snapshotStatus,
+            currentSnapshotStatus,
+            backfillStateStatus:body?.backfill?.status??null
+          };
+          console.log(JSON.stringify(result));
+          if(result.status!=="PASS")process.exit(1);
+          NODE
