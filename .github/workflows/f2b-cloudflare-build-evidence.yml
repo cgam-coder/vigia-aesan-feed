@@ -1,4 +1,4 @@
-name: F2B Cloudflare build evidence
+name: F2A production postdeploy evidence
 on:
   push:
     branches: [work/scheduler-reliability-s0-evidence]
@@ -10,12 +10,13 @@ permissions:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Read F2B Cloudflare build metadata
+      - name: Certify F2A production postdeploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: node diagnostics/f2b-cloudflare-build-evidence.mjs
