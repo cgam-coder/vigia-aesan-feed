@@ -75,17 +75,21 @@ if(typeof dbId!=="string"||!dbId) throw new Error("d1-binding-not-found");
 
 // 3) Pull a deterministic bounded sample of stored canonical rows from D1.
 const sampleRefs=[...refs].sort().slice(0,160);
-const placeholders=sampleRefs.map(()=>"?").join(",");
-const d1=await fetchJson(`${CF}/accounts/${ACCOUNT}/d1/database/${dbId}/query`,{
-  method:"POST",
-  headers:{...cfHeaders,"Content-Type":"application/json"},
-  body:JSON.stringify({
-    sql:`SELECT reference, canonical_json AS canonicalJson FROM alerts WHERE source='SAFETY GATE' AND reference IN (${placeholders}) ORDER BY reference`,
-    params:sampleRefs,
-  }),
-});
-if(!d1.r.ok||d1.body?.success===false) throw new Error("d1-read-failed");
-const rows=(Array.isArray(d1.body?.result)?d1.body.result.flatMap(x=>Array.isArray(x?.results)?x.results:[]):[]);
+const rows=[];
+for(let offset=0;offset<sampleRefs.length;offset+=25){
+  const chunk=sampleRefs.slice(offset,offset+25);
+  const placeholders=chunk.map(()=>"?").join(",");
+  const d1=await fetchJson(`${CF}/accounts/${ACCOUNT}/d1/database/${dbId}/query`,{
+    method:"POST",
+    headers:{...cfHeaders,"Content-Type":"application/json"},
+    body:JSON.stringify({
+      sql:`SELECT reference, canonical_json AS canonicalJson FROM alerts WHERE source='SAFETY GATE' AND reference IN (${placeholders}) ORDER BY reference`,
+      params:chunk,
+    }),
+  });
+  if(!d1.r.ok||d1.body?.success===false) throw new Error("d1-read-failed");
+  rows.push(...(Array.isArray(d1.body?.result)?d1.body.result.flatMap(x=>Array.isArray(x?.results)?x.results:[]):[]));
+}
 const rowByRef=new Map(rows.map(row=>[row.reference,row]));
 
 const histogram={};
