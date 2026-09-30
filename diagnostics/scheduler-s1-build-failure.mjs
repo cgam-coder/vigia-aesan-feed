@@ -1,9 +1,9 @@
 import { writeFile } from "node:fs/promises";
 const ACCOUNT="9c1807c68493f14259248b5f5782cc6f";
-const BUILD="b34339f3-1b34-4613-9f0b-6466b6dd427b";
+const BUILD="c66febd0-b931-45f4-9d65-daa81fee8d7c";
 const token=process.env.CLOUDFLARE_API_TOKEN;
 const api="https://api.cloudflare.com/client/v4";
-const out={status:"HOLD",operation:"f2b-cloudflare-build-failure-read",buildUuid:BUILD,detail:null,lines:[]};
+const out={status:"HOLD",operation:"f2a-production-build-read",buildUuid:BUILD,detail:null,lines:[]};
 async function get(path){
   const r=await fetch(api+path,{headers:{Authorization:`Bearer ${token}`,Accept:"application/json"},signal:AbortSignal.timeout(30000)});
   const b=await r.json().catch(()=>null);
