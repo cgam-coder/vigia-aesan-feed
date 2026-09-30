@@ -1,7 +1,7 @@
 const ACCOUNT="9c1807c68493f14259248b5f5782cc6f";
 const API="https://api.cloudflare.com/client/v4";
-const BUILD="c4c77ad3-e159-4f78-997e-246e4a5b471e";
-const COMMIT="dcff97adad8ae9e5ebb0a110b9b08e4f6d238ea8";
+const BUILD="b34339f3-1b34-4613-9f0b-6466b6dd427b";
+const COMMIT="bac810b334c4aae136f76537ad1ba3e238f458ca";
 const token=process.env.CLOUDFLARE_API_TOKEN;
 if(!token) throw new Error("credential-not-configured");
 
@@ -44,5 +44,5 @@ const out={
   stages:Array.isArray(r?.stages)?r.stages.map(safeStage):
     r?.stages&&typeof r.stages==="object"?Object.entries(r.stages).map(([name,stage])=>({name,...safeStage(stage)})):[],
 };
-console.log("F2B_FAILED_BUILD_EVIDENCE "+JSON.stringify(out));
+console.log("F2B_FINAL_BUILD_EVIDENCE "+JSON.stringify(out));
 if(!out.success||out.commitHash!==COMMIT||out.buildId!==BUILD) process.exit(1);
