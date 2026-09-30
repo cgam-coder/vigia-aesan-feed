@@ -20,7 +20,7 @@ const pickState=(state)=>state?{
   leaseExpiresAt:state.leaseExpiresAt??null,
 }:null;
 
-const out={status:"HOLD",operation:"scheduler-s3-oecd-readonly-discovery-v2"};
+const out={status:"HOLD",operation:"scheduler-s3-oecd-readonly-preactivation"};
 try{
   if(!token) throw new Error("credential-not-configured");
   const response=await fetch(url,{
