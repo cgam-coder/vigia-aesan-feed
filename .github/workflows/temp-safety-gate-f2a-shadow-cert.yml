@@ -1,0 +1,102 @@
+name: TEMP Safety Gate F2A zero-write shadow certification
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/temp-safety-gate-f2a-shadow-cert.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  runtime_target:
+    uses: ./.github/workflows/runtime-writer-target.yml
+
+  certify:
+    needs: [runtime_target]
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      VIGIA_BASE_URL: ${{ needs.runtime_target.outputs.base_url }}
+    steps:
+      - name: Observe Safety Gate control state
+        shell: bash
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$VIGIA_SYNC_TOKEN"
+          file="$RUNNER_TEMP/observe.json"
+          code="$(curl --silent --show-error --location --max-time 60             --header "Authorization: Bearer $VIGIA_SYNC_TOKEN"             --output "$file" --write-out '%{http_code}'             "$VIGIA_BASE_URL/api/safety-gate/sync?observe=1")"
+          CODE="$code" FILE="$file" node --input-type=module <<'NODE'
+          import {readFileSync} from "node:fs";
+          const code=Number(process.env.CODE);
+          const body=JSON.parse(readFileSync(process.env.FILE,"utf8"));
+          if(code!==200) throw new Error("observe HTTP "+code);
+          const lease=body?.lease ?? null;
+          console.log("SAFETY_GATE_OBSERVE "+JSON.stringify({
+            recentStatus:body?.recent?.status ?? null,
+            recentLastSuccessAt:body?.recent?.lastSuccessAt ?? null,
+            recentCoverage:body?.recent?.coverage ?? null,
+            lease:lease ? {mode:lease.mode,expiresAt:lease.expiresAt} : null,
+            snapshotStatus:body?.snapshot?.status ?? null,
+          }));
+          NODE
+
+      - name: Run zero-write delta preview
+        shell: bash
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          file="$RUNNER_TEMP/preview.json"
+          code="$(curl --silent --show-error --location --request POST --max-time 180             --header "Authorization: Bearer $VIGIA_SYNC_TOKEN"             --output "$file" --write-out '%{http_code}'             "$VIGIA_BASE_URL/api/safety-gate/sync?mode=delta-preview")"
+          CODE="$code" FILE="$file" node --input-type=module <<'NODE'
+          import {readFileSync} from "node:fs";
+          const code=Number(process.env.CODE);
+          const body=JSON.parse(readFileSync(process.env.FILE,"utf8"));
+          if(code!==200) throw new Error("delta-preview HTTP "+code+" "+JSON.stringify({
+            code:body?.code,phase:body?.phase,reason:body?.reason,discovery:body?.discovery
+          }));
+          const p=body?.preview;
+          if(!p||p.zeroWrite!==true||p.discovery?.coverage!=="complete"||p.recordsObserved!==p.discovery?.totalDeclared) {
+            throw new Error("delta-preview contract failed");
+          }
+          console.log("SAFETY_GATE_DELTA_PREVIEW "+JSON.stringify({
+            zeroWrite:p.zeroWrite,coverage:p.discovery.coverage,totalDeclared:p.discovery.totalDeclared,
+            pagesScanned:p.pagesScanned,recordsObserved:p.recordsObserved,recordsDeduplicated:p.recordsDeduplicated,
+            storedMatched:p.storedMatched,baselineDetailRequests:p.baselineDetailRequests,
+            candidateDetailRequests:p.candidateDetailRequests,savedDetailRequests:p.savedDetailRequests,
+            reductionPercent:p.reductionPercent,reasons:p.reasons
+          }));
+          NODE
+
+      - name: Run complete zero-write delta shadow
+        shell: bash
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          file="$RUNNER_TEMP/shadow.json"
+          code="$(curl --silent --show-error --location --request POST --max-time 1800             --header "Authorization: Bearer $VIGIA_SYNC_TOKEN"             --output "$file" --write-out '%{http_code}'             "$VIGIA_BASE_URL/api/safety-gate/sync?mode=delta-shadow")"
+          CODE="$code" FILE="$file" node --input-type=module <<'NODE'
+          import {readFileSync} from "node:fs";
+          const code=Number(process.env.CODE);
+          const body=JSON.parse(readFileSync(process.env.FILE,"utf8"));
+          const s=body?.shadow;
+          console.log("SAFETY_GATE_DELTA_SHADOW "+JSON.stringify(s ? {
+            zeroWrite:s.zeroWrite,coverage:s.discovery?.coverage,totalDeclared:s.discovery?.totalDeclared,
+            pass:s.pass,hydrationComplete:s.hydrationComplete,pagesScanned:s.pagesScanned,
+            recordsObserved:s.recordsObserved,recordsDeduplicated:s.recordsDeduplicated,
+            storedMatched:s.storedMatched,detailFailures:s.detailFailures,hydratedCount:s.hydratedCount,
+            materialChangeCount:s.materialChangeCount,candidateCount:s.candidateCount,
+            truePositiveCount:s.truePositiveCount,falsePositiveCount:s.falsePositiveCount,
+            falseNegativeCount:s.falseNegativeCount,trueNegativeCount:s.trueNegativeCount
+          } : {http:code,code:body?.code,phase:body?.phase,reason:body?.reason,discovery:body?.discovery}));
+          if(code!==200||!s||s.zeroWrite!==true||s.discovery?.coverage!=="complete"||
+             s.pass!==true||s.hydrationComplete!==true||s.detailFailures!==0||s.falseNegativeCount!==0||
+             s.recordsObserved!==s.discovery?.totalDeclared||s.hydratedCount!==s.recordsDeduplicated) {
+            throw new Error("Safety Gate F2A shadow gate failed");
+          }
+          NODE
