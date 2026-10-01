@@ -1,0 +1,67 @@
+name: TEMP public native Safari authorized third job
+# Owner-authorized third and last native job; ten minutes; no retries or journey job.
+# Complete repository/security preflight gates allocation of the macOS runner.
+"on":
+  push:
+    branches: [diag/ui-f1a-ios-simulator-20261001]
+    paths: [.github/workflows/temp-public-native-ui.yml]
+permissions:
+  contents: read
+concurrency:
+  group: nagamealert-public-native-campaign-a
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: >-
+      github.repository == 'cgam-coder/vigia-aesan-feed' &&
+      github.event.repository.private == false &&
+      github.ref == 'refs/heads/diag/ui-f1a-ios-simulator-20261001' &&
+      github.run_attempt == '1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Complete repository, original security and adversarial regression suites
+        run: |
+          python3 -c "import hashlib; from pathlib import Path; assert hashlib.sha256(Path('.diagnostics/native-public-ui/hashes.json').read_bytes()).hexdigest() == 'eb953f55affe329e86ce3453a3594116be0ae85d3ddfcfcefd177ed050926a8a'"
+          npm test
+          node --test security-checks/workflow-security.test.mjs .diagnostics/native-public-ui/security.test.mjs
+          python3 -m unittest discover -s .diagnostics/native-public-ui -p 'test_*.py' -v
+          ruby -c .diagnostics/native-public-ui/project.rb
+          python3 .diagnostics/native-public-ui/preflight.py
+  core:
+    needs: preflight
+    if: needs.preflight.result == 'success' && github.run_attempt == '1'
+    runs-on: macos-15
+    timeout-minutes: 10
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .diagnostics/native-public-ui
+            .github/workflows
+            security-checks
+      - name: Verify identical validated inputs on Apple runner
+        id: security
+        run: |
+          python3 -c "import hashlib; from pathlib import Path; assert hashlib.sha256(Path('.diagnostics/native-public-ui/hashes.json').read_bytes()).hexdigest() == 'eb953f55affe329e86ce3453a3594116be0ae85d3ddfcfcefd177ed050926a8a'"
+          node --test security-checks/workflow-security.test.mjs .diagnostics/native-public-ui/security.test.mjs
+          python3 .diagnostics/native-public-ui/preflight.py
+      - name: Native XCTest with original lifecycle bounds and independent command logs
+        id: campaign
+        run: python3 .diagnostics/native-public-ui/runner.py core
+      - name: Preserve only the reviewed public evidence archive
+        if: always() && steps.security.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: public-native-core-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/public-ui-core/evidence.zip
+            ${{ runner.temp }}/public-ui-core/integrity.json
+          if-no-files-found: error
+          retention-days: 1
