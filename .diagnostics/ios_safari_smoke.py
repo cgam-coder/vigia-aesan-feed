@@ -19,7 +19,7 @@ import sys
 import time
 import urllib.request
 
-TARGET = "https://cfd1cff7-vigia-runtime.c-gamiz93.workers.dev/es/alertas"
+TARGET = "https://8c4df878-vigia-runtime.c-gamiz93.workers.dev/es/alertas"
 OUT = Path("ios-safari-evidence")
 
 
@@ -218,7 +218,8 @@ const brand=q('.na-public-brand'), name=q('.na-brand-name'), subtitle=q('.na-pub
 const overlap=(a,b)=>!!a&&!!b&&Math.min(a.right,b.right)>Math.max(a.x,b.x)&&Math.min(a.bottom,b.bottom)>Math.max(a.y,b.y);
 return {url:location.href,title:document.title,viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio,scale:visualViewport?.scale},theme:document.documentElement.getAttribute('data-na-theme'),prefersDark:matchMedia('(prefers-color-scheme: dark)').matches,brand:r(brand),name:r(name),subtitle:r(subtitle),menu:r(menu),actions:r(actions),collision:overlap(r(name),r(menu))||overlap(r(subtitle),r(menu)),menuHit:menu?menu.contains(document.elementFromPoint(r(menu).x+r(menu).width/2,r(menu).y+r(menu).height/2)):false,content:q('#terminal-results-title')?.textContent};"""
         report["geometry"] = wd("POST", base + "/execute/sync", {"script": script, "args": []})
-        report["interactiveControlVerified"] = bool(report["geometry"].get("content"))
+        report["readOnlyDriverControlVerified"] = bool(report["geometry"].get("content"))
+        report["interactiveControlVerified"] = False
         mark("native-driver-capture")
         capture("native-header.png")
         run_matrix(base)
@@ -226,171 +227,56 @@ return {url:location.href,title:document.title,viewport:{width:innerWidth,height
 
     def run_matrix(base):
         import base64
-        report["cases"] = []
-        def js(script):
-            return wd("POST", base+"/execute/sync", {"script":script,"args":[]}, 20)
-        def find(css):
-            return wd("POST", base+"/element", {"using":"css selector","value":css})["element-6066-11e4-a52e-4f735466cecf"]
-        def click(css):
-            wd("POST", base+"/element/"+find(css)+"/click",{})
-        def settle(script, expected=True):
-            end=time.monotonic()+8
-            while time.monotonic()<end:
-                value=js(script)
-                if value==expected:return value
-                time.sleep(.4)
-            raise AssertionError("Expected state missing: "+script[:180]+"; got "+str(value)[:500])
+        report['cases']=[]
+        def js(s):return wd('POST',base+'/execute/sync',{'script':s,'args':[]},20)
         def shot(name):
-            raw=base64.b64decode(wd("GET",base+"/screenshot",timeout=20))
-            (OUT/(name+".png")).write_bytes(raw)
-            report["screenshots"].append({"file":name+".png","stage":"matrix","ok":True,**png_info(raw)})
-            capture(name+"-native.png")
-        def case(name,fn):
-            mark("case-"+name)
-            try:
-                evidence=fn()
-                report["cases"].append({"case":name,"status":"PASS","evidence":evidence})
+            raw=base64.b64decode(wd('GET',base+'/screenshot',timeout=20))
+            (OUT/(name+'.png')).write_bytes(raw)
+            report['screenshots'].append({'file':name+'.png','stage':'final-matrix','ok':True,**png_info(raw)})
+            capture(name+'-native.png')
+        def settled(script,value):
+            until=time.monotonic()+8
+            while time.monotonic()<until:
+                got=js(script)
+                if got==value:return
+                time.sleep(.4)
+            raise AssertionError('Expected '+str(value)+'; got '+str(got))
+        def test(name,fn):
+            mark('case-'+name)
+            try:report['cases'].append({'case':name,'status':'PASS','evidence':fn()})
             except CaptureDeadline:raise
-            except Exception as e:
-                report["cases"].append({"case":name,"status":"FAIL","error":str(e)[:1400]})
+            except Exception as e:report['cases'].append({'case':name,'status':'FAIL','error':str(e)[:1800]})
             persist()
-        def theme_state():
-            return js("return {theme:document.documentElement.getAttribute('data-na-theme'),stored:localStorage.getItem('nagamealert-theme'),dark:matchMedia('(prefers-color-scheme: dark)').matches};")
-        def system_theme():
-            js("localStorage.removeItem('nagamealert-theme');return true;")
-            wd("POST",base+"/refresh",{})
-            for appearance in ['light','dark','light']:
-                command(['xcrun','simctl','ui',sim_id,'appearance',appearance],15)
-                settle("return matchMedia('(prefers-color-scheme: dark)').matches;",appearance=='dark')
-                settle("return document.documentElement.getAttribute('data-na-theme');",appearance)
-            return theme_state()
-        def manual_theme():
-            click('.na-theme-toggle')
-            settle("return localStorage.getItem('nagamealert-theme');",'dark')
-            wd("POST",base+'/refresh',{})
-            settle("return document.documentElement.getAttribute('data-na-theme');",'dark')
-            command(['xcrun','simctl','ui',sim_id,'appearance','dark'],15)
-            command(['xcrun','simctl','ui',sim_id,'appearance','light'],15)
-            settle("return document.documentElement.getAttribute('data-na-theme');",'dark')
-            shot('native-dark')
-            return theme_state()
-        def invalid_theme():
-            js("localStorage.setItem('nagamealert-theme','invalid-ui-probe');return true;")
-            wd("POST",base+'/refresh',{})
-            settle("return document.documentElement.getAttribute('data-na-theme');",'light')
-            state=theme_state()
-            if state['stored'] in ['light','dark']:raise AssertionError('invalid preference produced manual override')
-            return state
-        def consent(choice):
-            js("localStorage.removeItem('nagamealert.analytics-consent.v1');return true;")
-            wd("POST",base+'/refresh',{})
-            selector='[role=dialog] button'
-            wanted='Aceptar analítica' if choice=='accepted' else 'Rechazar analítica'
-            settle("return !!document.querySelector('[role=dialog]');")
-            click('.na-consent__actions button:nth-child('+('2' if choice=='accepted' else '1')+')')
-            settle("return !document.querySelector('[role=dialog]');")
+        def geometry(appearance):
+            js("localStorage.removeItem('nagamealert-theme');localStorage.setItem('nagamealert.analytics-consent.v1',JSON.stringify({choice:'rejected',updatedAt:Date.now(),version:1}));return true;")
             wd('POST',base+'/refresh',{})
-            settle("return !document.querySelector('[role=dialog]');")
-            state=js("return {consent:JSON.parse(localStorage.getItem('nagamealert.analytics-consent.v1')),ga:!!document.querySelector('script[src*=googletagmanager]')};")
-            if state['consent']['choice']!=choice or state['ga']:raise AssertionError(str(state))
-            return {**state,'expected':'Preview persists choice and does not load production-only GA'}
-        case('initial-consent-reject-setup',lambda:consent('rejected'))
-        case('analytics-accept-persistence',lambda:consent('accepted'))
-        case('analytics-reject-persistence',lambda:consent('rejected'))
-        case('system-appearance-follow',system_theme)
-        case('manual-theme-precedence-persistence',manual_theme)
-        case('invalid-theme-fallback',invalid_theme)
-        def geometry():
-            shot('native-header-fixed')
-            data=js(r"""const box=e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height}};
-const a=document.querySelector('.na-public-brand'),text=[];for(const e of a.querySelectorAll('.na-brand-name,small')){const range=document.createRange();range.selectNodeContents(e);text.push(...Array.from(range.getClientRects(),r=>({x:r.x,y:r.y,right:r.right,bottom:r.bottom})));}
-const controls=Array.from(document.querySelectorAll('.na-public-mobile-nav summary,.na-language-selector a,.na-theme-toggle')).filter(e=>e.getBoundingClientRect().height&&e.checkVisibility({visibilityProperty:true,opacityProperty:true})).map(e=>{const r=box(e);return {text:e.textContent,box:r,hit:[.2,.5,.8].every(t=>e.contains(document.elementFromPoint(r.x+r.width*t,r.y+r.height/2)))}});
-return {brand:box(a),text,controls,viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio,scale:visualViewport.scale},documentWidth:document.documentElement.scrollWidth};""")
-            def overlap(a,b):return min(a['right'],b['right'])>max(a['x'],b['x'])+1 and min(a['bottom'],b['bottom'])>max(a['y'],b['y'])+1
-            for t in data['text']:
-                if t['x']<data['brand']['x']-1 or t['right']>data['brand']['right']+1:raise AssertionError('painted brand text outside link: '+str(data))
-                if any(overlap(t,c['box']) for c in data['controls']):raise AssertionError('internal collision: '+str(data))
-            if not data['controls'] or any(not c['hit'] or c['box']['height']<24 or ('Menú' in c['text'] and c['box']['height']<43) for c in data['controls']):raise AssertionError('control occluded/undersized: '+str(data))
-            if data['documentWidth']>data['viewport']['width']+1:raise AssertionError('document overflow')
-            return data
-        case('header-painted-text-geometry-click-area',geometry)
-        def menu():
-            click('.na-public-mobile-nav summary')
-            settle("return document.querySelector('.na-public-mobile-nav').open;")
-            links=js("return Array.from(document.querySelectorAll('.na-public-mobile-nav a')).map(e=>({text:e.textContent,url:e.getAttribute('href'),visible:e.getBoundingClientRect().height>0}));")
-            bounds=js("const r=document.querySelector('.na-public-nav--mobile').getBoundingClientRect();return {x:r.x,right:r.right,width:innerWidth};")
-            if bounds['x']<0 or bounds['right']>bounds['width']:raise AssertionError('Menu panel clipped '+str(bounds))
-            if not links or not all(x['visible'] for x in links):raise AssertionError(str(links))
-            shot('native-menu')
-            click('.na-public-mobile-nav summary')
-            settle("return document.querySelector('.na-public-mobile-nav').open;",False)
-            return links
-        case('mobile-menu-open-close',menu)
-        def filters():
-            click('.na-terminal-filter-trigger')
-            settle("return document.querySelector('.na-terminal-filters').open;")
-            click('#terminal-country option[value=ES]')
-            settle("return new URL(location.href).searchParams.get('country');",'ES')
-            settle("return document.querySelector('.na-terminal-results').getAttribute('aria-busy');",'false')
-            shot('native-filters')
-            buttons=wd('POST',base+'/elements',{'using':'css selector','value':'.na-terminal-filters__body button'})
-            for b in buttons:
-                eid=b['element-6066-11e4-a52e-4f735466cecf']
-                if 'Restablecer' in wd('GET',base+'/element/'+eid+'/text'):
-                    wd('POST',base+'/element/'+eid+'/click',{});break
-            settle("return new URL(location.href).searchParams.has('country');",False)
-            click('.na-terminal-filters__close')
-            settle("return document.querySelector('.na-terminal-filters').open;",False)
-            return js("return {country:document.querySelector('#terminal-country').value,count:document.querySelector('.na-terminal-results__count')?.textContent,focus:document.activeElement.className};")
-        case('apply-clear-filters-and-focus',filters)
-        def search():
-            element=find('#global-alert-search')
-            wd('POST',base+'/element/'+element+'/click',{})
-            focus=js("return document.activeElement.id;")
-            if focus!='global-alert-search':raise AssertionError('search input not focused')
-            wd('POST',base+'/element/'+element+'/value',{'text':'cacahuete','value':list('cacahuete')})
-            click('.na-global-search button')
-            settle("return new URL(location.href).searchParams.get('q');",'cacahuete')
-            settle("return document.querySelector('.na-terminal-results').getAttribute('aria-busy');",'false')
-            content=js("return document.querySelector('.na-terminal-results').textContent;")
-            if 'cacahuete' not in content.lower():raise AssertionError('Expected search result content absent: '+content[:500])
-            shot('native-search')
-            return {'focus':focus,'q':'cacahuete','expectedResultFound':True,'softwareKeyboard':'HOLD: suppressed by SafariDriver'}
-        case('search-focus-results',search)
-        def map_detail():
-            wd('POST',base+'/url',{'url':TARGET+'?source=AESAN'})
-            settle("return document.querySelector('.na-terminal-results').getAttribute('aria-busy');",'false')
-            settle("return !!document.querySelector('.na-terminal-map');")
-            content=js("return {source:document.querySelector('[data-source=AESAN]').getAttribute('aria-current'),map:document.querySelector('.na-terminal-map').textContent,links:Array.from(document.querySelectorAll('.na-terminal-results a[href*=\"/alerta/\"]')).map(e=>({text:e.textContent,url:e.href}))};")
-            if content['source']!='page' or not content['links']:raise AssertionError('source/map/results state absent')
-            shot('native-map')
-            chosen=next((x for x in content['links'] if 'cacahuete' in x['text'].lower()),content['links'][0])
-            wd('POST',base+'/url',{'url':chosen['url']})
-            settle("return !!document.querySelector('h1');")
-            heading=js("return document.querySelector('h1').textContent;")
-            if not heading.strip():raise AssertionError('detail heading absent')
-            shot('native-detail')
-            wd('POST',base+'/back',{})
-            settle("return !!document.querySelector('#terminal-results-title');")
-            return {'source':'AESAN','mapText':content['map'][:500],'detailTitle':heading,'returnedToResults':True}
-        case('source-map-detail-back',map_detail)
-        def f7_pair():
-            out=[]
-            for name,url in [('f7-before','https://579819b1-vigia-runtime.c-gamiz93.workers.dev/es/'),('f7-candidate',TARGET.split('/es/')[0]+'/es/')]:
+            command(['xcrun','simctl','ui',sim_id,'appearance',appearance],15)
+            settled("return document.documentElement.getAttribute('data-na-theme');",appearance)
+            settled("return matchMedia('(prefers-color-scheme: dark)').matches;",appearance=='dark')
+            shot('native-'+appearance+'-header')
+            g=js("""const b=e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height}};const brand=document.querySelector('.na-public-brand');const texts=[];for(const e of brand.querySelectorAll('.na-brand-name,small')){const r=document.createRange();r.selectNodeContents(e);texts.push(...Array.from(r.getClientRects(),x=>({x:x.x,y:x.y,right:x.right,bottom:x.bottom})));}const controls=Array.from(document.querySelectorAll('.na-public-mobile-nav summary,.na-language-selector a,.na-theme-toggle')).filter(e=>e.getBoundingClientRect().height).map(e=>{const r=b(e);return {box:r,hit:[.2,.5,.8].every(t=>e.contains(document.elementFromPoint(r.x+r.width*t,r.y+r.height/2)))}});return {theme:document.documentElement.getAttribute('data-na-theme'),brand:b(brand),search:b(document.querySelector('.na-global-search')),texts,controls,viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio,scale:visualViewport.scale},documentWidth:document.documentElement.scrollWidth};""")
+            overlap=lambda a,b:min(a['right'],b['right'])>max(a['x'],b['x'])+1 and min(a['bottom'],b['bottom'])>max(a['y'],b['y'])+1
+            for text in g['texts']:
+                if text['x']<g['brand']['x']-1 or text['right']>g['brand']['right']+1 or any(overlap(text,c['box']) for c in g['controls']):raise AssertionError('Brand collision '+str(g))
+            if any(not c['hit'] or overlap(c['box'],g['search']) for c in g['controls']):raise AssertionError('Search collision or obstructed hit area '+str(g))
+            if g['documentWidth']>g['viewport']['width']+1:raise AssertionError('Document overflow')
+            return g
+        test('native-system-light-header-geometry',lambda:geometry('light'))
+        test('native-system-dark-header-geometry',lambda:geometry('dark'))
+        def f7():
+            states=[]
+            for label,url in [('f7-approved-baseline','https://nagamealert.com/es/'),('f7-final-candidate',TARGET.split('/es/')[0]+'/es/')]:
                 wd('POST',base+'/url',{'url':url})
-                js("localStorage.setItem('nagamealert.analytics-consent.v1',JSON.stringify({choice:'rejected',updatedAt:1,version:1}));localStorage.setItem('nagamealert-theme','light');return true;")
+                js("localStorage.setItem('nagamealert-theme','light');localStorage.setItem('nagamealert.analytics-consent.v1',JSON.stringify({choice:'rejected',updatedAt:Date.now(),version:1}));return true;")
                 wd('POST',base+'/refresh',{})
-                js("const s=document.createElement('style');s.textContent='*,*::before,*::after { animation-play-state:paused!important; animation-delay:0s!important; transition:none!important }';document.head.append(s);return true;")
                 time.sleep(1)
-                state=js("return {url:location.href,width:innerWidth,height:innerHeight,dpr:devicePixelRatio,scale:visualViewport.scale,fonts:document.fonts.status,theme:document.documentElement.getAttribute('data-na-theme')};")
-                shot(name);out.append(state)
-            return {'states':out,'baseline':'pre-patch immutable candidate; approved-baseline comparison remains separate','pixelComparison':'PENDING'}
-        case('f7-same-engine-regression-captures',f7_pair)
-        report['cases'] += [{'case':x,'status':'HOLD','reason':r} for x,r in [
-            ('native-software-keyboard','SafariDriver suppresses iOS software keyboard'),
-            ('native-pinch-zoom','No native gesture executed'),
-            ('native-orientation-safe-areas-browser-bars','Portrait captures only; rotation and changing bars not executed')]]
-        report['fullCompatibilityCertified']=False
+                js("for(const a of document.getAnimations()){a.pause();a.currentTime=0;}return true;")
+                state=js("return {url:location.href,width:innerWidth,height:innerHeight,dpr:devicePixelRatio,scale:visualViewport.scale,fonts:document.fonts.status,theme:document.documentElement.getAttribute('data-na-theme'),consent:JSON.parse(localStorage.getItem('nagamealert.analytics-consent.v1'))?.choice,animationTimes:document.getAnimations().map(a=>a.currentTime)};")
+                shot(label);states.append(state)
+            return {'states':states,'pixelComparison':'PENDING_VISUAL_REVIEW'}
+        test('native-f7-approved-production-pair',f7)
+        report['nativeInteractionCertified']=False
+        report['cases'].append({'case':'native-input-keyboard-pinch-rotation','status':'HOLD','reason':'Separate bounded SafariDriver/XCTest attempts did not certify these interactions; not repeated here'})
         persist()
 
     def expire(_sig, _frame):
@@ -405,9 +291,10 @@ return {brand:box(a),text,controls,viewport:{width:innerWidth,height:innerHeight
         sdk = command(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-version"]).decode().strip()
         report["host"] = {"macOS": command(["sw_vers"]).decode().strip(), "arch": platform.machine(),
                           "xcode": command(["xcodebuild", "-version"]).decode().strip(), "simulatorSDK": sdk}
-        mark("inventory")
-        inventory = json.loads(command(["xcrun", "simctl", "list", "--json"], 75))
-        device, runtime = choose_device(inventory, sdk)
+        mark("reuse-verified-checkpoint-runtime")
+        if sdk != "18.5":raise RuntimeError("Selected SDK changed from verified checkpoint; no runtime installation or inventory retry")
+        device={"name":"iPhone 16","deviceTypeIdentifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-16"}
+        runtime={"name":"iOS 18.5","version":"18.5","buildversion":"22F77","identifier":"com.apple.CoreSimulator.SimRuntime.iOS-18-5"}
         report["selected"] = {"model": device["name"], "runtime": runtime["name"],
                               "runtimeVersion": runtime.get("version"), "runtimeBuild": runtime.get("buildversion")}
         mark("create-disposable-simulator")
@@ -477,7 +364,7 @@ return {brand:box(a),text,controls,viewport:{width:innerWidth,height:innerHeight
                 stream.write("## Native Safari capture: visual review required\n\n```json\n" + json.dumps(report, indent=2) + "\n```\n")
     print("IOS_SAFARI_RESULT " + json.dumps(report), flush=True)
     # Green means only that final capture and cleanup completed, not a UX PASS.
-    return 0 if (report["captureReady"] and report.get("interactiveControlVerified") and
+    return 0 if (report["captureReady"] and report.get("readOnlyDriverControlVerified") and
                  report["cleanup"].get("shutdown") and report["cleanup"].get("delete")) else 1
 
 

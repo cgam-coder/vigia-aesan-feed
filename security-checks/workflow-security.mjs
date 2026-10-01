@@ -7,9 +7,9 @@ import { join } from "node:path";
 import * as baseline from "./workflow-security.baseline.mjs";
 export { FLOATING_ACTION_EXCEPTIONS, KNOWN_DEBT } from "./workflow-security.baseline.mjs";
 export const DIAGNOSTIC_FILE = "ui-f1a-ios-simulator-once.yml";
-const WORKFLOW_SHA256 = "bfdc6d1ab5b99592b6749ae97fb9b7d196e81049a17e9a2f15cc3d38308bfb6a";
-const SCRIPT_SHA256 = "96e23695b1916c5d59b8e7bea38369b5f505f5180a85da8b0ae7ff9eef9f9ea5";
-const CHROMIUM_SHA256 = "dee9d130f0c3e3b66003012bbd00c9b669872a389d1f5df17c0d2f3f3e04883d";
+const WORKFLOW_SHA256 = "588a3ead7a046048c5e68b899fd166f419d27fef58f243f93f86692d995052bc";
+const SCRIPT_SHA256 = "d1f695dff4cf973d25a884e5d91fc275738c6a1a05dbf945d4e002e143bf09cb";
+const CHROMIUM_SHA256 = "a0bb0e11ce5d5581e05ece166ae8e27620c5a0717baf0fc4b3cb521d11c8dc4b";
 const sha256 = text => createHash("sha256").update(text).digest("hex");
 export const isReviewedDiagnosticWorkflow = (file, source) =>
   file === DIAGNOSTIC_FILE && typeof source === "string" && sha256(source) === WORKFLOW_SHA256;
