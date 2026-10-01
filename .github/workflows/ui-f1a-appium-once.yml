@@ -1,0 +1,83 @@
+name: TEMP Appium native Safari complete campaign
+# Owner approved one standard macOS job, at most 30 minutes, no automatic reruns.
+"on":
+  push:
+    branches: [diag/ui-f1a-ios-simulator-20261001]
+    paths: [.github/workflows/ui-f1a-appium-once.yml]
+permissions:
+  contents: read
+concurrency:
+  group: nagamealert-appium-20261001
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: >-
+      github.repository == 'cgam-coder/vigia-aesan-feed' &&
+      github.event.repository.private == false &&
+      github.ref == 'refs/heads/diag/ui-f1a-ios-simulator-20261001' &&
+      github.run_attempt == '1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Complete unchanged repository suites and coordinated safety contract
+        run: |
+          echo '39b92d4396c4c88439c1a7defdb204dcfede38db134567f454e686eb2c703c2f  .diagnostics/appium-public/hashes.json' | sha256sum -c -
+          npm test
+          node --test security-checks/workflow-security.test.mjs .diagnostics/appium-public/scope.test.mjs
+          python3 -m unittest discover -s .diagnostics/appium-public -p test_contract.py -v
+          python3 .diagnostics/appium-public/preflight.py resolve
+      - name: Preserve reviewed npm dependency lock only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: appium-lock-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/appium-lock/package-lock.json
+            ${{ runner.temp }}/appium-lock/lock-integrity.json
+          if-no-files-found: error
+          retention-days: 1
+  native:
+    needs: preflight
+    if: needs.preflight.result == 'success' && github.run_attempt == '1'
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .diagnostics/appium-public
+            .github/workflows
+            security-checks
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        timeout-minutes: 1
+        with:
+          name: appium-lock-${{ github.run_id }}
+          path: ${{ runner.temp }}/appium-lock
+      - name: Verify exact same reviewed input on Apple
+        id: safety
+        timeout-minutes: 1
+        run: |
+          echo '39b92d4396c4c88439c1a7defdb204dcfede38db134567f454e686eb2c703c2f  .diagnostics/appium-public/hashes.json' | shasum -a 256 -c -
+          python3 .diagnostics/appium-public/preflight.py
+          node --test security-checks/workflow-security.test.mjs .diagnostics/appium-public/scope.test.mjs
+      - name: Single standard Appium campaign; native actions and bounded public observations
+        timeout-minutes: 25
+        run: python3 .diagnostics/appium-public/runner.py
+      - name: Recover only allowlisted disposable public-Preview evidence
+        timeout-minutes: 1
+        if: always() && steps.safety.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: appium-native-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/nagamealert-appium/evidence.zip
+            ${{ runner.temp }}/nagamealert-appium/integrity.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 6

@@ -1,0 +1,9 @@
+{
+  "name": "nagamealert-public-appium-certification",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "appium": "2.19.0",
+    "appium-xcuitest-driver": "9.10.5"
+  }
+}

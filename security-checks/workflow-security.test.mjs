@@ -6,6 +6,8 @@ import {
   KNOWN_DEBT,
   analyzeWorkflows,
   loadWorkflows,
+  TEMP_FILE,
+  temporaryAuthorized,
 } from "./workflow-security.mjs";
 
 const repositoryWorkflows = await loadWorkflows(process.cwd());
@@ -51,7 +53,8 @@ test("only the bounded public SEO snapshot may publish an artifact", () => {
   const uploaders = [...repositoryWorkflows.entries()]
     .filter(([, source]) => /uses:\s*actions\/upload-artifact@/u.test(source))
     .map(([file]) => file);
-  assert.deepEqual(uploaders, ["seo-public-snapshot.yml"]);
+  const approvedTemporary = temporaryAuthorized(repositoryWorkflows.get(TEMP_FILE));
+  assert.deepEqual(uploaders, ["seo-public-snapshot.yml", ...(approvedTemporary ? [TEMP_FILE] : [])]);
   assert.match(
     repositoryWorkflows.get("seo-public-snapshot.yml"),
     /path:\s*public-monitoring\/seo\/seo-validation-evidence\//u,
