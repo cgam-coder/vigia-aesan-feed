@@ -1,5 +1,5 @@
 name: TEMP Appium dependency repair and clean installation
-# Revision 3: no global overrides of the driver shrinkwrap; validate actual runtime graph and imports.
+# Revision 4: classify Sharp optional binaries with its own runtime platform selector, without changing the frozen graph gate.
 # Preparation only; this workflow cannot allocate macOS or interact with the product.
 "on":
   push:

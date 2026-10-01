@@ -13,6 +13,14 @@ function audit(tree,locked){
   for(const e of n.edgesOut.values()){
    if(e.type==='dev'||(e.type==='peerOptional'&&!e.to))continue;
    if(e.type==='optional'){
+    // Sharp chooses one binary family using its own published runtime selector.
+    // All families remain mandatory in the separate virtual-lock completeness gate.
+    if(n.name==='sharp' && /^@img\/sharp-(?:libvips-)?/.test(e.name)){
+     const runtime=require(path.join(n.path,'lib/libvips.js')).runtimePlatformArch();
+     if(e.name!=='@img/sharp-'+runtime && e.name!=='@img/sharp-libvips-'+runtime){
+      platformOmissions.push({from:n.location,name:e.name,reason:'Sharp runtime selector '+runtime+' does not load this optional binary family'});continue;
+     }
+    }
     let target=e.to?.package;
     if(!target){
      const candidates=Object.entries(locked.packages).filter(([k,p])=>k.endsWith('/'+e.name)&&p.version===e.spec).map(([,p])=>p);
