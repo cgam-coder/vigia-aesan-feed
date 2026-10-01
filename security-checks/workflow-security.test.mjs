@@ -6,8 +6,6 @@ import {
   KNOWN_DEBT,
   analyzeWorkflows,
   loadWorkflows,
-  DIAGNOSTIC_FILE,
-  isReviewedDiagnosticWorkflow,
 } from "./workflow-security.mjs";
 
 const repositoryWorkflows = await loadWorkflows(process.cwd());
@@ -49,16 +47,11 @@ test("retired GH-FIXES workflow surfaces stay absent", () => {
   assert.equal(repositoryWorkflows.has("gh-fixes-closure-verify.yml"), false);
 });
 
-test("only SEO and the exact owner-authorized temporary diagnostic may publish artifacts", () => {
+test("only the bounded public SEO snapshot may publish an artifact", () => {
   const uploaders = [...repositoryWorkflows.entries()]
     .filter(([, source]) => /uses:\s*actions\/upload-artifact@/u.test(source))
     .map(([file]) => file);
-  const expected = ["seo-public-snapshot.yml"];
-  if (repositoryWorkflows.has(DIAGNOSTIC_FILE)) {
-    assert.ok(isReviewedDiagnosticWorkflow(DIAGNOSTIC_FILE, repositoryWorkflows.get(DIAGNOSTIC_FILE)));
-    expected.push(DIAGNOSTIC_FILE);
-  }
-  assert.deepEqual(uploaders, expected);
+  assert.deepEqual(uploaders, ["seo-public-snapshot.yml"]);
   assert.match(
     repositoryWorkflows.get("seo-public-snapshot.yml"),
     /path:\s*public-monitoring\/seo\/seo-validation-evidence\//u,
@@ -305,28 +298,3 @@ function assertViolation(workflows, code) {
     "Expected " + code + "; received " + JSON.stringify(result.violations),
   );
 }
-
-test("temporary diagnostic cannot expand its artifact, privileges, code pin or trigger", () => {
-  const source = repositoryWorkflows.get(DIAGNOSTIC_FILE);
-  assert.ok(isReviewedDiagnosticWorkflow(DIAGNOSTIC_FILE, source));
-  assert.equal(isReviewedDiagnosticWorkflow("other.yml", source), false);
-  for (const [from, to] of [
-    ["contents: read", "contents: write"],
-    ["neutral-xctest-evidence/neutral-xctest-before.png", "."],
-    ["retention-days: 1", "retention-days: 90"],
-    ["persist-credentials: false", "persist-credentials: true"],
-    ["runs-on: macos-15", "runs-on: macos-15-large"],
-    ["5652b086ea2dd573ae7d22edcaa0633bd886cbf6ac1a00865ffbe7270681f2df", "0".repeat(64)],
-    ["branches: [diag/ui-f1a-ios-simulator-20261001]", "branches: [main]"],
-  ]) {
-    assert.ok(source.includes(from));
-    const mutated = cloneWorkflows();
-    mutated.set(DIAGNOSTIC_FILE, source.replace(from, to));
-    assert.equal(isReviewedDiagnosticWorkflow(DIAGNOSTIC_FILE, mutated.get(DIAGNOSTIC_FILE)), false);
-    assertViolation(mutated, "UNEXPECTED_PUBLIC_ARTIFACT");
-  }
-  const secret = cloneWorkflows();
-  secret.set(DIAGNOSTIC_FILE, source + "\n    env:\n      TOKEN: $" + "{{ secrets.VIGIA_SYNC_TOKEN }}\n");
-  assertViolation(secret, "UNEXPECTED_PUBLIC_ARTIFACT");
-});
-
