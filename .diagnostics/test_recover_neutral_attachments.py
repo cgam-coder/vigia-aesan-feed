@@ -140,4 +140,18 @@ class ReviewTests(unittest.TestCase):
         r={'states':[{'logicalName':'neutral-state-before-tap','payload':before},{'logicalName':'neutral-state-after-tap','payload':after}]}
         self.assertTrue(state_gate(r));after['dateMs']=99;self.assertFalse(state_gate(r))
 
+    def test_single_passed_structured_node_survives_summary_timeout(self):
+        from recover_neutral_attachments import classify_execution
+        nodes={'testNodes':[{'nodeType':'Test Case','nodeIdentifier':'NeutralUITests/testNeutralTap()','result':'Passed'}]}
+        result=classify_execution(nodes,{},'')
+        self.assertEqual(result['status'],'EXECUTED_PASSED');self.assertFalse(result['summaryAvailable'])
+    def test_summary_contradiction_does_not_pass(self):
+        from recover_neutral_attachments import classify_execution
+        nodes={'testNodes':[{'nodeType':'Test Case','nodeIdentifier':'NeutralUITests/testNeutralTap()','result':'Passed'}]}
+        result=classify_execution(nodes,{'totalTestCount':1,'passedTests':0,'failedTests':1},'')
+        self.assertEqual(result['status'],'EXECUTED_RESULT_CONFLICT')
+    def test_missing_human_name_schema_not_silently_skipped(self):
+        self.items[0]['name']=self.items[0].pop('suggestedHumanReadableName')
+        r=self.run_collector();self.assertTrue(r['errors']);self.assertFalse(r['imagePairRecovered'])
+
 if __name__=='__main__': unittest.main(verbosity=2)

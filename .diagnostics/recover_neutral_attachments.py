@@ -84,6 +84,7 @@ def recover(export_dir: Path, output_dir: Path) -> dict:
     total = 0
     groups=manifest if isinstance(manifest,list) else [manifest]
     context_ok=len(groups)==1 and isinstance(groups[0],dict) and groups[0].get('testIdentifier')==TEST_ID and isinstance(groups[0].get('attachments'),list)
+    if context_ok and len(objects)!=len(groups[0]['attachments']):report['errors'].append({'error':'Unknown attachment naming schema; records not silently omitted'})
     if not context_ok:report['errors'].append({'error':'Unrecognized manifest/testcase context; expected one neutral testcase'})
     inventory=[]
     for source in sorted(export_dir.iterdir()):
@@ -165,10 +166,14 @@ def classify_execution(tests,summary,log):
     exact=[x for x in nodes if x.get('nodeIdentifier')==TEST_ID]
     started="testNeutralTap]' started." in log
     status='UNKNOWN'
-    if len(nodes)==1 and len(exact)==1 and summary.get('totalTestCount')==1:
-        status='EXECUTED_PASSED' if exact[0].get('result')=='Passed' and summary.get('passedTests')==1 and summary.get('failedTests')==0 else 'EXECUTED_NOT_PASSED'
+    if len(nodes)==1 and len(exact)==1:
+        if exact[0].get('result')=='Passed':
+            coherent=not summary or (summary.get('totalTestCount')==1 and summary.get('passedTests')==1 and summary.get('failedTests')==0)
+            status='EXECUTED_PASSED' if coherent else 'EXECUTED_RESULT_CONFLICT'
+        elif exact[0].get('result')=='Failed':status='EXECUTED_NOT_PASSED'
+        elif started:status='EXECUTED_RESULT_UNKNOWN'
     elif started:status='EXECUTED_RESULT_UNKNOWN'
-    return {'status':status,'xctestStarted':True if status.startswith('EXECUTED') else None,'exactTestIdentifier':TEST_ID,'structuredResultAvailable':bool(exact)}
+    return {'status':status,'xctestStarted':True if status.startswith('EXECUTED') else None,'exactTestIdentifier':TEST_ID,'structuredResultAvailable':bool(exact),'summaryAvailable':bool(summary)}
 
 def walk(value):
     if isinstance(value,dict):
