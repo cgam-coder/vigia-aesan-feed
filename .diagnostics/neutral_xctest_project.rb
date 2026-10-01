@@ -15,21 +15,54 @@ SWIFT
 File.write('NeutralUI/NeutralUITests.swift', <<~SWIFT)
 import XCTest
 final class NeutralUITests: XCTestCase {
+ var evidence: [String:Any] = ["xctestStarted":true,"safariForeground":false,"fixtureLoaded":false,"tapAttempted":false]
+ let safari=XCUIApplication(bundleIdentifier:"com.apple.mobilesafari")
+ func capture(_ name:String) {
+  let shot=XCTAttachment(screenshot:safari.screenshot());shot.name=name;shot.lifetime = .keepAlways;add(shot)
+ }
+ func checkpoint(_ stage:String) {
+  evidence["stage"]=stage
+  if let data=try? JSONSerialization.data(withJSONObject:evidence,options:[.sortedKeys]) {
+   let item=XCTAttachment(data:data,uniformTypeIdentifier:"public.json");item.name="neutral-state-"+stage;item.lifetime = .keepAlways;add(item)
+  }
+  print("NEUTRAL_STAGE "+stage)
+ }
+ override func tearDownWithError() throws { capture("neutral-xctest-final");checkpoint("final") }
  func testNeutralTap() throws {
   continueAfterFailure=false
-  let safari=XCUIApplication(bundleIdentifier:"com.apple.mobilesafari")
+  checkpoint("test-entered")
   safari.activate()
+  evidence["safariForeground"]=safari.wait(for:.runningForeground,timeout:10)
+  capture("neutral-safari-foreground");checkpoint("safari-foreground")
+  XCTAssertTrue(evidence["safariForeground"] as? Bool == true,"Safari not foreground")
+  // First-launch Safari onboarding only; no product controls or synthetic input.
+  for name in ["Continue","Not Now"] {
+   let control=safari.buttons[name]
+   if control.waitForExistence(timeout:2) && control.isHittable { control.tap() }
+  }
+  let address=safari.textFields.matching(NSPredicate(format:"identifier == %@ OR label CONTAINS[c] %@ OR label CONTAINS[c] %@","URL","Address","Search")).firstMatch
+  capture("neutral-navigation-before");checkpoint("navigation-start")
+  XCTAssertTrue(address.waitForExistence(timeout:8),"Safari native address field unavailable")
+  address.tap()
+  address.typeText("http://127.0.0.1:8765/control?route=xctest\\n")
   let web=safari.webViews.firstMatch
   let button=web.buttons["Neutral activation"]
-  XCTAssertTrue(button.waitForExistence(timeout:10))
+  evidence["fixtureLoaded"]=button.waitForExistence(timeout:12) && web.staticTexts["Neutral input control"].exists
+  capture("neutral-navigation-after");checkpoint("fixture-loaded")
+  XCTAssertTrue(evidence["fixtureLoaded"] as? Bool == true,"Real neutral fixture not loaded")
   XCTAssertTrue(button.isHittable)
   XCTAssertTrue(web.staticTexts["Activations: 0"].exists)
-  let before=XCTAttachment(screenshot:safari.screenshot());before.name="neutral-xctest-before";before.lifetime = .keepAlways;add(before)
+  evidence["counterBefore"]=0;evidence["targetHittable"]=button.isHittable
+  capture("neutral-xctest-before");checkpoint("before-tap")
   print("NEUTRAL_FRAME \\(button.frame)")
+  evidence["tapAttempted"]=true;checkpoint("tap-call-entered")
   button.tap()
+  evidence["tapReturned"]=true;checkpoint("tap-returned")
   let activated=web.staticTexts["Activations: 1"]
   let didActivate=activated.waitForExistence(timeout:8)
-  let after=XCTAttachment(screenshot:safari.screenshot());after.name="neutral-xctest-after";after.lifetime = .keepAlways;add(after)
+  if didActivate { evidence["counterAfter"]=1 }
+  else if web.staticTexts["Activations: 0"].exists { evidence["counterAfter"]=0 }
+  capture("neutral-xctest-after");checkpoint("after-tap")
   XCTAssertTrue(didActivate,"Neutral counter did not change after one XCUIElement tap")
   print("NEUTRAL_ACTIVATION_VERIFIED")
  }

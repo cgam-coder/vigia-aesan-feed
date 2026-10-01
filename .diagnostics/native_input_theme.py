@@ -230,40 +230,72 @@ def main():
         persist();print('ISOLATION_RESULT '+json.dumps(r),flush=True)
     return 0 if r['cleanup'].get('shutdown',{}).get('ok') and r['cleanup'].get('delete',{}).get('ok') else 1
 
-def run_xctest(sim,cmd,out):
-    cmd(['ruby',str(Path(__file__).with_name('neutral_xctest_project.rb'))],20)
-    cmd(['xcrun','simctl','openurl',sim,'http://127.0.0.1:8765/control?route=xctest'],25)
-    result={'reusesVerifiedSimulator':True,'safariDriverAbsent':True,'singleTap':True}
-    try:cmd(['xcrun','simctl','io',sim,'screenshot',str(out/'xctest-neutral-before-native.png')],20)
-    except Deadline:raise
-    except Exception as e:result['beforeCaptureHold']=str(e)[:600]
+def build_xctest(cmd,out,result):
+    result['projectGenerated']=False;result['buildStarted']=False;result['buildSucceeded']=False
     try:
-        log=cmd(['xcodebuild','test','-project','NeutralUI/NeutralUI.xcodeproj','-scheme','NeutralUI','-destination','platform=iOS Simulator,id='+sim,'-derivedDataPath','neutral-derived','-resultBundlePath','NeutralUI.xcresult','-parallel-testing-enabled','NO','-maximum-test-execution-time-allowance','35','CODE_SIGNING_ALLOWED=NO'],155)
-        result['controlVerified']="testNeutralTap]' passed" in log
-        result['logSummary']=[x[-900:] for x in log.splitlines() if re.search('Test Case|error:|TEST (SUCCEEDED|FAILED)|NEUTRAL_',x)][-20:]
-    except Deadline:raise
-    except Exception as e:result.update(controlVerified=False,error=str(e)[:1200])
+        cmd(['ruby',str(Path(__file__).with_name('neutral_xctest_project.rb'))],20)
+        result['projectGenerated']=True;result['buildStarted']=True
+        cmd(['xcodebuild','build-for-testing','-project','NeutralUI/NeutralUI.xcodeproj','-scheme','NeutralUI','-sdk','iphonesimulator','-destination','generic/platform=iOS Simulator','-derivedDataPath','neutral-derived','CODE_SIGNING_ALLOWED=NO'],110)
+        result['buildSucceeded']=True
+    except Exception as e:
+        result.update(blockedStage='build_failed',error=type(e).__name__+': '+str(e)[:1400])
+    return result['buildSucceeded']
+
+def walk_json(value):
+    if isinstance(value,dict):
+        yield value
+        for item in value.values():yield from walk_json(item)
+    elif isinstance(value,list):
+        for item in value:yield from walk_json(item)
+
+def run_xctest(sim,cmd,out,result=None):
+    if result is None:
+        result={'safariDriverAbsent':True,'singleTap':True}
+        if not build_xctest(cmd,out,result):return result
+    if not result.get('buildSucceeded'):return result
+    result['testCommandStarted']=True;result['xctestStarted']=False
+    try:
+        # Safari activation/navigation are inside the test. No blocking openurl prerequisite.
+        cmd(['xcodebuild','test-without-building','-project','NeutralUI/NeutralUI.xcodeproj','-scheme','NeutralUI','-destination','platform=iOS Simulator,id='+sim,'-derivedDataPath','neutral-derived','-resultBundlePath','NeutralUI.xcresult','-parallel-testing-enabled','NO','-maximum-test-execution-time-allowance','90','CODE_SIGNING_ALLOWED=NO'],180)
+        result['testCommandSucceeded']=True
+    except Exception as e:result.update(testCommandSucceeded=False,testCommandError=type(e).__name__+': '+str(e)[:1400])
     finally:
-        try:cmd(['xcrun','simctl','io',sim,'screenshot',str(out/'xctest-neutral-after-native.png')],20)
-        except Exception:pass
+        try:cmd(['xcrun','simctl','io',sim,'screenshot',str(out/'xctest-neutral-after-native.png')],15)
+        except Exception as e:result['afterCaptureHold']=str(e)[:500]
         if Path('NeutralUI.xcresult').exists():
+            for name in ['summary','tests']:
+                try:
+                    raw=cmd(['xcrun','xcresulttool','get','test-results',name,'--path','NeutralUI.xcresult'],10)
+                    value=json.loads(raw);(out/('xcresult-'+name+'.json')).write_text(raw)
+                    if name=='tests':
+                        result['structuredTestPassed']=any('testNeutralTap' in str(x.get('name','')) and x.get('result')=='Passed' for x in walk_json(value))
+                except Exception as e:result[name+'Hold']=str(e)[:500]
             try:
-                cmd(['xcrun','xcresulttool','export','attachments','--path','NeutralUI.xcresult','--output-path','neutral-attachments'],20)
-                def walk(value):
-                    if isinstance(value,dict):
-                        yield value
-                        for item in value.values():yield from walk(item)
-                    elif isinstance(value,list):
-                        for item in value:yield from walk(item)
+                cmd(['xcrun','xcresulttool','export','attachments','--path','NeutralUI.xcresult','--output-path','neutral-attachments'],15)
                 entries=json.loads(Path('neutral-attachments/manifest.json').read_text())
-                for item in walk(entries):
+                states=[]
+                names=['neutral-xctest-before','neutral-xctest-after','neutral-xctest-final','neutral-safari-foreground','neutral-navigation-before','neutral-navigation-after']
+                for item in walk_json(entries):
                     name=item.get('suggestedHumanReadableName','');file=item.get('fileName')
-                    stem=next((x for x in ['neutral-xctest-before','neutral-xctest-after'] if name.startswith(x)),None)
-                    if not stem or not file:continue
-                    raw=(Path('neutral-attachments')/Path(file).name).read_bytes();SMOKE.png_info(raw);(out/(stem+'.png')).write_bytes(raw)
-            except Deadline:raise
+                    if not file:continue
+                    raw=(Path('neutral-attachments')/Path(file).name).read_bytes()
+                    if name.startswith('neutral-state-'):
+                        state=json.loads(raw);states.append(state)
+                        (out/(name.split('.')[0]+'.json')).write_bytes(raw)
+                    else:
+                        stem=next((x for x in names if name.startswith(x)),None)
+                        if stem:SMOKE.png_info(raw);(out/(stem+'.png')).write_bytes(raw)
+                (out/'xctest-states.json').write_text(json.dumps(states,indent=2))
+                stages=['test-entered','safari-foreground','navigation-start','fixture-loaded','before-tap','tap-call-entered','tap-returned','after-tap','final']
+                for state in sorted(states,key=lambda x:stages.index(x.get('stage')) if x.get('stage') in stages else -1):result.update(state)
             except Exception as e:result['attachmentHold']=str(e)[:600]
-        if not all((out/(n+'.png')).exists() for n in ['neutral-xctest-before','neutral-xctest-after']):result.update(controlVerified=False,captureGate='HOLD: mandatory XCTest before/after attachment missing')
+        result['visualEvidenceRecovered']=all((out/(n+'.png')).exists() for n in ['neutral-xctest-before','neutral-xctest-after'])
+        if not result.get('xctestStarted'):result['blockedStage']='test_not_entered'
+        elif not result.get('safariForeground'):result['blockedStage']='safari_foreground'
+        elif not result.get('fixtureLoaded'):result['blockedStage']='native_navigation_or_fixture'
+        elif not result.get('tapAttempted'):result['blockedStage']='before_tap'
+        elif result.get('counterAfter')!=1:result['blockedStage']='tap_did_not_activate'
+        result['controlVerified']=all(result.get(k) for k in ['buildSucceeded','xctestStarted','safariForeground','fixtureLoaded','tapAttempted','tapReturned','structuredTestPassed','visualEvidenceRecovered']) and result.get('counterBefore')==0 and result.get('counterAfter')==1
     return result
 
 if __name__=='__main__':
