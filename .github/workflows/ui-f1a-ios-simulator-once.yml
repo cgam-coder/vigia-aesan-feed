@@ -1,0 +1,101 @@
+name: TEMP UI-F1A recover neutral XCTest attachment pair
+# Owner-authorized isolated public-page/localhost probes. DO NOT MERGE. Remove after recovery.
+"on":
+  push:
+    branches: [diag/ui-f1a-ios-simulator-20261001]
+    paths:
+      - .diagnostics/neutral_xctest_only.py
+      - .diagnostics/neutral_xctest_project.rb
+      - .diagnostics/recover_neutral_attachments.py
+      - .diagnostics/test_recover_neutral_attachments.py
+      - .diagnostics/native_input_theme.py
+      - .github/workflows/ui-f1a-ios-simulator-once.yml
+permissions:
+  contents: read
+concurrency:
+  group: ui-f1a-ios-simulator-viability-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  neutral-xctest:
+    if: >-
+      github.repository == 'cgam-coder/vigia-aesan-feed' &&
+      github.event.repository.private == false &&
+      github.ref == 'refs/heads/diag/ui-f1a-ios-simulator-20261001' &&
+      github.run_attempt == '1'
+    runs-on: macos-15
+    timeout-minutes: 10
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - name: Checkout reviewed public diagnostics and original security contracts
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .diagnostics
+            .github/workflows
+            security-checks
+      - name: Verify exact harness pins, negative security checks and offline classifiers
+        id: security
+        run: |
+          echo '55217b8cdf6ddb37e9ab665865b04cbf3c93bd5e6f82b98e9f189453ccb9f53e  .diagnostics/neutral_xctest_only.py' | shasum -a 256 -c -
+          echo '0ea9a28064972b00dcb55476fa3b091922886a83223bb8964b6005628d879e23  .diagnostics/native_input_theme.py' | shasum -a 256 -c -
+          echo '818ba2e435466e6e1dea86b48167e9cad57a597d7e5f170a6852d2664ac7a6d9  .diagnostics/neutral_xctest_project.rb' | shasum -a 256 -c -
+          echo '52b63de8b3e2721b667e151072292a60aaab2a0a876cb8110ed71080a4192afb  .diagnostics/ios_safari_smoke.py' | shasum -a 256 -c -
+          echo '79a9cffbba4f1e1131e2368feee7f5c8f9d392ae2634964355ff0e5ce81c528c  .diagnostics/recover_neutral_attachments.py' | shasum -a 256 -c -
+          echo '3d58caf48559dbf9325db840ddde2300b8c11c4558b337c9e0b7dafcf1c9abbd  .diagnostics/test_recover_neutral_attachments.py' | shasum -a 256 -c -
+          python3 -m unittest discover -s .diagnostics -p test_recover_neutral_attachments.py -v
+          node --test security-checks/workflow-security.test.mjs
+          python3 .diagnostics/neutral_xctest_only.py --self-test
+      - name: One native XCTest tap on neutral control without SafariDriver
+        run: python3 .diagnostics/neutral_xctest_only.py
+      - name: Enforce reviewed evidence size ceiling before upload
+        id: evidence_size
+        if: always() && steps.security.outcome == 'success'
+        run: |
+          python3 -c "from pathlib import Path; p=Path('neutral-xctest-evidence'); assert p.exists(); assert sum(x.stat().st_size for x in p.iterdir() if x.is_file()) <= 24000000, 'Evidence size ceiling exceeded'"
+      - name: Recover only explicit neutral and public Preview evidence
+        if: always() && steps.security.outcome == 'success' && steps.evidence_size.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: neutral-xctest-${{ github.run_id }}
+          path: |
+            neutral-xctest-evidence/report.json
+            neutral-xctest-evidence/xctest-neutral-after-native.png
+            neutral-xctest-evidence/final-native.png
+            neutral-xctest-evidence/xcresult-summary.json
+            neutral-xctest-evidence/xcresult-tests.json
+            neutral-xctest-evidence/xctest-states.json
+            neutral-xctest-evidence/build.log
+            neutral-xctest-evidence/test.log
+            neutral-xctest-evidence/manifest.original.json
+            neutral-xctest-evidence/export-inventory.json
+            neutral-xctest-evidence/neutral-export-reviewed.zip
+            neutral-xctest-evidence/recovery-report.json
+            neutral-xctest-evidence/export-help.txt
+            neutral-xctest-evidence/export-output.txt
+            neutral-xctest-evidence/upload-integrity.json
+            neutral-xctest-evidence/neutral-xctest-before.png
+            neutral-xctest-evidence/neutral-xctest-before.jpg
+            neutral-xctest-evidence/neutral-xctest-after.png
+            neutral-xctest-evidence/neutral-xctest-after.jpg
+            neutral-xctest-evidence/neutral-xctest-final.png
+            neutral-xctest-evidence/neutral-xctest-final.jpg
+            neutral-xctest-evidence/neutral-safari-foreground.png
+            neutral-xctest-evidence/neutral-safari-foreground.jpg
+            neutral-xctest-evidence/neutral-navigation-before.png
+            neutral-xctest-evidence/neutral-navigation-before.jpg
+            neutral-xctest-evidence/neutral-navigation-after.png
+            neutral-xctest-evidence/neutral-navigation-after.jpg
+            neutral-xctest-evidence/neutral-state-test-entered.json
+            neutral-xctest-evidence/neutral-state-safari-foreground.json
+            neutral-xctest-evidence/neutral-state-navigation-start.json
+            neutral-xctest-evidence/neutral-state-fixture-loaded.json
+            neutral-xctest-evidence/neutral-state-before-tap.json
+            neutral-xctest-evidence/neutral-state-tap-call-entered.json
+            neutral-xctest-evidence/neutral-state-tap-returned.json
+            neutral-xctest-evidence/neutral-state-after-tap.json
+            neutral-xctest-evidence/neutral-state-final.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 6

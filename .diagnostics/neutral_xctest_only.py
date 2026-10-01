@@ -12,7 +12,7 @@ Deadline=isolation.Deadline
 
 def main():
  OUT.mkdir(exist_ok=True)
- r={'scope':'one XCUIElement tap on neutral local control; no product interaction yet','diagnosticSha':os.environ.get('GITHUB_SHA'),'runId':os.environ.get('GITHUB_RUN_ID'),'candidateSha':'df5ea1f2918ae232c22e7a31bb0866ab910eb881','nativeInputVerified':False,'productPass':None,'physicalIPhone':False,'safariDriverStarted':False,'stages':[],'telemetry':[],'fixtureRequests':[],'cleanup':{},'control':{'projectGenerated':False,'buildStarted':False,'buildSucceeded':False,'xctestStarted':False,'safariForeground':False,'fixtureLoaded':False,'tapAttempted':False,'counterBefore':None,'counterAfter':None,'trustedActivationObserved':False,'inputGate':'HOLD/NOT_EXECUTED'}}
+ r={'scope':'one XCUIElement tap on neutral local control; no product interaction yet','diagnosticSha':os.environ.get('GITHUB_SHA'),'runId':os.environ.get('GITHUB_RUN_ID'),'candidateSha':'df5ea1f2918ae232c22e7a31bb0866ab910eb881','nativeInputVerified':False,'productPass':None,'physicalIPhone':False,'safariDriverStarted':False,'stages':[],'telemetry':[],'fixtureRequests':[],'cleanup':{},'control':{'projectGenerated':False,'buildStarted':False,'buildSucceeded':False,'xctestStarted':None,'safariForeground':None,'fixtureLoaded':None,'tapAttempted':None,'counterBefore':None,'counterAfter':None,'trustedActivationObserved':False,'inputGate':'HOLD/NOT_EXECUTED'}}
  sim=None;server=None
  def persist():(OUT/'report.json').write_text(json.dumps(r,indent=2))
  def mark(s):r['lastStage']=s;r['stages'].append({'stage':s,'time':time.time()});persist();print('NEUTRAL_XCTEST_STAGE '+s,flush=True)
@@ -33,10 +33,12 @@ def main():
    raise RuntimeError(args[0]+' failed: '+b.decode(errors='replace')[-900:]+'\n'+summary)
   return a.decode(errors='replace')
  def save_log(args,a,b):
+  if args[:3]==['xcrun','xcresulttool','export']:
+   (OUT/'export-output.txt').write_bytes(a+b)
   if args[0]=='xcodebuild' and args[1] in ['build-for-testing','test-without-building']:
    (OUT/('build.log' if args[1]=='build-for-testing' else 'test.log')).write_bytes(a+b)
- def alarm(*_):raise Deadline('Independent 480-second single-tap XCTest deadline')
- signal.signal(signal.SIGALRM,alarm);signal.alarm(480)
+ def alarm(*_):raise Deadline('Independent 430-second execution deadline; recovery and cleanup reserved')
+ signal.signal(signal.SIGALRM,alarm);signal.alarm(430)
  try:
   if platform.system()!='Darwin' or os.environ.get('GITHUB_REPOSITORY')!='cgam-coder/vigia-aesan-feed':raise RuntimeError('Authorized public standard macOS runner only')
   mark('direct-preinstalled-simulator-create-without-inventory')
@@ -101,7 +103,9 @@ def finish_gate(r):
  c['safariFixtureRequestObserved']=any(not x.get('hostCheck') and 'Safari' in x.get('userAgent','') for x in r.get('fixtureRequests',[]))
  clean=all(r.get('cleanup',{}).get(k) for k in ['localServer','shutdown','delete'])
  r['nativeInputVerified']=bool(c.get('controlVerified') and delivered and c['safariFixtureRequestObserved'] and clean)
- c['inputGate']='PASS_PENDING_VISUAL_REVIEW' if r['nativeInputVerified'] else ('HOLD' if c.get('tapAttempted') else 'HOLD/NOT_EXECUTED')
+ c['inputGate']='PASS_PENDING_VISUAL_REVIEW' if r['nativeInputVerified'] else 'HOLD'
+ c['executionGate']=c.get('execution',{}).get('status','NOT_EXECUTED' if c.get('blockedStage')=='build_failed' else 'UNKNOWN')
+ c['evidenceGate']=c.get('recovery',{}).get('status','HOLD')
 
 def self_test():
  isolation.self_test()
@@ -127,7 +131,7 @@ def self_test():
    return ''
   with patch.object(isolation.Path,'exists',return_value=False):isolation.run_xctest('fake',timeout,out,r)
   assert before.read_bytes()==b'preserved' and r['testCommandStarted'] and not r['xctestStarted']
-  assert r['blockedStage']=='test_not_entered' and not r['controlVerified']
+  assert r['blockedStage']=='attachment_recovery' and not r['controlVerified']
   assert not any('openurl' in a for a in calls)
  base={'control':{'controlVerified':True,'tapAttempted':True},'telemetry':[],'fixtureRequests':[], 'cleanup':{'localServer':True,'shutdown':True,'delete':True}}
  finish_gate(base);assert not base['nativeInputVerified']

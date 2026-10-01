@@ -22,6 +22,8 @@ final class NeutralUITests: XCTestCase {
  }
  func checkpoint(_ stage:String) {
   evidence["stage"]=stage
+  evidence["dateMs"]=Int64(Date().timeIntervalSince1970*1000)
+  evidence["testIdentifier"]="NeutralUITests/testNeutralTap()"
   if let data=try? JSONSerialization.data(withJSONObject:evidence,options:[.sortedKeys]) {
    let item=XCTAttachment(data:data,uniformTypeIdentifier:"public.json");item.name="neutral-state-"+stage;item.lifetime = .keepAlways;add(item)
   }

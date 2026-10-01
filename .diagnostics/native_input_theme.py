@@ -253,9 +253,11 @@ def run_xctest(sim,cmd,out,result=None):
         result={'safariDriverAbsent':True,'singleTap':True}
         if not build_xctest(cmd,out,result):return result
     if not result.get('buildSucceeded'):return result
-    result['testCommandStarted']=True;result['xctestStarted']=False
+    helper_spec=importlib.util.spec_from_file_location('neutral_collector',Path(__file__).with_name('recover_neutral_attachments.py'))
+    helper=importlib.util.module_from_spec(helper_spec);helper_spec.loader.exec_module(helper)
+    result['testCommandStarted']=True;result['xctestStarted']=None
+    tests={};summary={};recovery={};decoded=False
     try:
-        # Safari activation/navigation are inside the test. No blocking openurl prerequisite.
         cmd(['xcodebuild','test-without-building','-project','NeutralUI/NeutralUI.xcodeproj','-scheme','NeutralUI','-destination','platform=iOS Simulator,id='+sim,'-derivedDataPath','neutral-derived','-resultBundlePath','NeutralUI.xcresult','-parallel-testing-enabled','NO','-maximum-test-execution-time-allowance','90','CODE_SIGNING_ALLOWED=NO'],180)
         result['testCommandSucceeded']=True
     except Exception as e:result.update(testCommandSucceeded=False,testCommandError=type(e).__name__+': '+str(e)[:1400])
@@ -267,35 +269,51 @@ def run_xctest(sim,cmd,out,result=None):
                 try:
                     raw=cmd(['xcrun','xcresulttool','get','test-results',name,'--path','NeutralUI.xcresult'],10)
                     value=json.loads(raw);(out/('xcresult-'+name+'.json')).write_text(raw)
-                    if name=='tests':
-                        result['structuredTestPassed']=any('testNeutralTap' in str(x.get('name','')) and x.get('result')=='Passed' for x in walk_json(value))
+                    if name=='tests':tests=value
+                    else:summary=value
                 except Exception as e:result[name+'Hold']=str(e)[:500]
             try:
-                cmd(['xcrun','xcresulttool','export','attachments','--path','NeutralUI.xcresult','--output-path','neutral-attachments'],15)
-                entries=json.loads(Path('neutral-attachments/manifest.json').read_text())
-                states=[]
-                names=['neutral-xctest-before','neutral-xctest-after','neutral-xctest-final','neutral-safari-foreground','neutral-navigation-before','neutral-navigation-after']
-                for item in walk_json(entries):
-                    name=item.get('suggestedHumanReadableName','');file=item.get('fileName')
-                    if not file:continue
-                    raw=(Path('neutral-attachments')/Path(file).name).read_bytes()
-                    if name.startswith('neutral-state-'):
-                        state=json.loads(raw);states.append(state)
-                        (out/(name.split('.')[0]+'.json')).write_bytes(raw)
-                    else:
-                        stem=next((x for x in names if name.startswith(x)),None)
-                        if stem:SMOKE.png_info(raw);(out/(stem+'.png')).write_bytes(raw)
-                (out/'xctest-states.json').write_text(json.dumps(states,indent=2))
-                stages=['test-entered','safari-foreground','navigation-start','fixture-loaded','before-tap','tap-call-entered','tap-returned','after-tap','final']
-                for state in sorted(states,key=lambda x:stages.index(x.get('stage')) if x.get('stage') in stages else -1):result.update(state)
-            except Exception as e:result['attachmentHold']=str(e)[:600]
-        result['visualEvidenceRecovered']=all((out/(n+'.png')).exists() for n in ['neutral-xctest-before','neutral-xctest-after'])
-        if not result.get('xctestStarted'):result['blockedStage']='test_not_entered'
-        elif not result.get('safariForeground'):result['blockedStage']='safari_foreground'
-        elif not result.get('fixtureLoaded'):result['blockedStage']='native_navigation_or_fixture'
-        elif not result.get('tapAttempted'):result['blockedStage']='before_tap'
-        elif result.get('counterAfter')!=1:result['blockedStage']='tap_did_not_activate'
-        result['controlVerified']=all(result.get(k) for k in ['buildSucceeded','xctestStarted','safariForeground','fixtureLoaded','tapAttempted','tapReturned','structuredTestPassed','visualEvidenceRecovered']) and result.get('counterBefore')==0 and result.get('counterAfter')==1
+                # Installed-version help, export stdout/stderr and original manifest retained.
+                help_text=cmd(['xcrun','xcresulttool','help','export','attachments'],10)
+                (out/'export-help.txt').write_text(help_text)
+                if '--test-id' not in help_text:raise ValueError('Installed exporter lacks test-id filter')
+                cmd(['xcrun','xcresulttool','export','attachments','--test-id',helper.TEST_ID,'--path','NeutralUI.xcresult','--output-path','neutral-attachments'],25)
+                export=Path('neutral-attachments')
+                # Preserve even an unrecognized schema before the collector can reject it.
+                if (export/'manifest.json').is_file():
+                    (out/'manifest.original.json').write_bytes((export/'manifest.json').read_bytes())
+                recovery=helper.recover(export,Path('neutral-recovered'))
+                for filename in ['manifest.original.json','export-inventory.json','neutral-export-reviewed.zip','recovery-report.json']:
+                    source=Path('neutral-recovered')/filename
+                    if source.exists():(out/filename).write_bytes(source.read_bytes())
+                for item in recovery.get('copied',[]):
+                    source=Path('neutral-recovered')/item['output'];(out/item['output']).write_bytes(source.read_bytes())
+                decoded=True
+                for item in recovery.get('copied',[]):
+                    if item['output'].endswith(('.jpg','.png')):
+                        target=Path('/tmp')/('neutral-decoded-'+item['logicalName']+'.png')
+                        cmd(['sips','-s','format','png',str(out/item['output']),'--out',str(target)],10)
+                        SMOKE.png_info(target.read_bytes());target.unlink()
+                (out/'xctest-states.json').write_text(json.dumps(recovery.get('states',[]),indent=2))
+                for state in sorted(recovery.get('states',[]),key=lambda x:helper.STAGES.index(x['payload']['stage'])):
+                    result.update({k:v for k,v in state['payload'].items() if k not in ['stage']})
+                result['stateSequenceVerified']=helper.state_gate(recovery)
+            except Exception as e:
+                decoded=False;result['attachmentHold']=type(e).__name__+': '+str(e)[:1000]
+        log=(out/'test.log').read_text(errors='replace') if (out/'test.log').exists() else ''
+        result['execution']=helper.classify_execution(tests,summary,log)
+        result['xctestStarted']=result['execution']['xctestStarted']
+        result['structuredTestPassed']=result['execution']['status']=='EXECUTED_PASSED'
+        result['recovery']={'status':recovery.get('recoveryStatus','HOLD'),'imagePairRecovered':recovery.get('imagePairRecovered',False),'imagesDecoded':decoded,'errors':recovery.get('errors',[]),'visualReview':'PENDING'}
+        result['visualEvidenceRecovered']=bool(recovery.get('imagePairRecovered') and decoded)
+        result['blockedStage']=None if result['visualEvidenceRecovered'] else 'attachment_recovery'
+        result['controlVerified']=bool(result['structuredTestPassed'] and result.get('stateSequenceVerified') and result['visualEvidenceRecovered'])
+        integrity=[]
+        for path in sorted(out.iterdir()):
+            if path.is_file() and path.name not in ['report.json','upload-integrity.json']:
+                raw=path.read_bytes();integrity.append({'path':path.name,'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()})
+        result['uploadIntegrity']={'mandatoryPresent':all((out/n).exists() for n in ['manifest.original.json','export-inventory.json','recovery-report.json','neutral-export-reviewed.zip','xctest-states.json']), 'files':integrity}
+        (out/'upload-integrity.json').write_text(json.dumps(result['uploadIntegrity'],indent=2))
     return result
 
 if __name__=='__main__':
