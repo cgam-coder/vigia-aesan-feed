@@ -1,9 +1,0 @@
-{
-  "campaign.py": "71de1a00ed48fe48d1a37b938f48b25af2999b53199c34bde5a710c5816ebe4f",
-  "runner.py": "422dbd632557dbba61e993e28f11a5a9e57f68a8a18eefa1003cc3725e1c0152",
-  "test_contract.py": "899a71647e72c80a5261bcec656389a70495f937f31d14945e82ec9cb1361eaa",
-  "inspect-installed.cjs": "212e6909b33e02d2de53b06fe50f899f099bcee48a878e0d82583d2ff845a463",
-  "smoke.cjs": "c7798960862b80152d0eed9e1db7c8dfa5cae94659c9d7306efa95a712ecb254",
-  "preflight.py": "5faccf1bd7e17749111bf85dd9b7f753c1b68815e3596c548f0b4343d150c756",
-  "test_campaign_readiness.py": "d456d2d7addcff829f72631e0240361ad99e1ebf69026f7b4f5d61f68dbf7faa"
-}
