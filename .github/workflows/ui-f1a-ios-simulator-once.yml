@@ -1,0 +1,76 @@
+name: TEMP UI-F1A independent native input and theme
+# Owner-authorized isolated public-page/localhost probes. DO NOT MERGE. Remove after recovery.
+"on":
+  push:
+    branches: [diag/ui-f1a-ios-simulator-20261001]
+    paths:
+      - .diagnostics/native_input_theme.py
+      - .diagnostics/neutral_xctest_project.rb
+      - .github/workflows/ui-f1a-ios-simulator-once.yml
+permissions:
+  contents: read
+concurrency:
+  group: ui-f1a-ios-simulator-viability-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  native-isolation:
+    if: >-
+      github.repository == 'cgam-coder/vigia-aesan-feed' &&
+      github.event.repository.private == false &&
+      github.ref == 'refs/heads/diag/ui-f1a-ios-simulator-20261001' &&
+      github.run_attempt == '1'
+    runs-on: macos-15
+    timeout-minutes: 10
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - name: Checkout reviewed public diagnostics and original security contracts
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .diagnostics
+            .github/workflows
+            security-checks
+      - name: Verify exact harness pins, negative security checks and offline classifiers
+        id: security
+        run: |
+          echo '0e393bcab42cebcbad740358517f9b5963abd5e3a5df37043d41b989cded816a  .diagnostics/native_input_theme.py' | shasum -a 256 -c -
+          echo '7669d5e101f45bd235df6fbff848c78b070953c42c0e14c511f41f58bbce0106  .diagnostics/neutral_xctest_project.rb' | shasum -a 256 -c -
+          echo '52b63de8b3e2721b667e151072292a60aaab2a0a876cb8110ed71080a4192afb  .diagnostics/ios_safari_smoke.py' | shasum -a 256 -c -
+          node --test security-checks/workflow-security.test.mjs
+          python3 .diagnostics/native_input_theme.py --self-test
+      - name: Independent OS media UI snapshots and clean-session neutral native input
+        run: python3 .diagnostics/native_input_theme.py
+      - name: Recover only explicit neutral and public Preview evidence
+        if: always() && steps.security.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-input-theme-${{ github.run_id }}
+          path: |
+            native-isolation-evidence/report.json
+            native-isolation-evidence/initial-dark-before-driver-native.png
+            native-isolation-evidence/theme-dark-first-access.png
+            native-isolation-evidence/theme-live-light.png
+            native-isolation-evidence/theme-light-reload.png
+            native-isolation-evidence/theme-live-dark.png
+            native-isolation-evidence/failure-native.png
+            native-isolation-evidence/xctest-neutral-before-native.png
+            native-isolation-evidence/xctest-neutral-after-native.png
+            native-isolation-evidence/neutral-xctest-before.png
+            native-isolation-evidence/neutral-xctest-after.png
+            native-isolation-evidence/theme-dark-first-access-native.png
+            native-isolation-evidence/theme-live-light-native.png
+            native-isolation-evidence/theme-light-reload-native.png
+            native-isolation-evidence/theme-live-dark-native.png
+            native-isolation-evidence/neutral-touch-before.png
+            native-isolation-evidence/neutral-touch-before-native.png
+            native-isolation-evidence/neutral-touch-after.png
+            native-isolation-evidence/neutral-touch-after-native.png
+            native-isolation-evidence/neutral-element-before.png
+            native-isolation-evidence/neutral-element-before-native.png
+            native-isolation-evidence/neutral-element-after.png
+            native-isolation-evidence/neutral-element-after-native.png
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 6
