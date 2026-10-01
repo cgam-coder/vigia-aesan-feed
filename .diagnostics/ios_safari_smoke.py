@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Temporary native Safari/iOS Simulator capture; no private code or credentials.
 
-Capture-only: screenshot must be visually reviewed before accepting page render.
+Bounded SafariDriver feasibility only; no full compatibility certification.
 Uses the existing Xcode-matching runtime and explicitly opens Simulator.app.
 Capture before navigation and after command failure; no SDK downloads or SafariDriver.
 """
@@ -17,6 +17,7 @@ import struct
 import subprocess
 import sys
 import time
+import urllib.request
 
 TARGET = "https://579819b1-vigia-runtime.c-gamiz93.workers.dev/es/alertas"
 OUT = Path("ios-safari-evidence")
@@ -93,6 +94,8 @@ def main() -> int:
               "physicalIPhone": False, "safaridriverUsed": False,
               "fullCompatibilityCertified": False, "stages": [], "screenshots": [], "commands": [], "cleanup": {}}
     sim_id = None
+    driver = None
+    session_id = None
     active_stage = "start"
 
     def persist():
@@ -109,7 +112,7 @@ def main() -> int:
         print("IOS_SAFARI_STAGE " + stage, flush=True)
 
     def command(args, timeout=20):
-        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True, stdin=subprocess.DEVNULL)
         try:
             stdout, stderr = proc.communicate(timeout=timeout)
         except BaseException:
@@ -174,11 +177,57 @@ def main() -> int:
         mark("after-navigation-settle")
         report["captureReady"] = capture("iphone-simulator.png")
 
+    def wd(method, path, payload=None, timeout=35):
+        data = None if payload is None else json.dumps(payload).encode()
+        request = urllib.request.Request("http://127.0.0.1:4444" + path, data=data,
+                                         method=method, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            result = json.load(response)
+        if isinstance(result.get("value"), dict) and result["value"].get("error"):
+            raise RuntimeError("WebDriver: " + str(result["value"])[:1200])
+        return result.get("value")
+
+    def interactive_probe():
+        nonlocal driver, session_id
+        mark("enable-safaridriver-noninteractive")
+        enabled = observe("sudo-enable-driver", ["sudo", "-n", "/usr/bin/safaridriver", "--enable"], 20)
+        if not enabled["ok"]:
+            raise RuntimeError("Noninteractive SafariDriver enable failed; no manual authentication requested")
+        mark("start-safaridriver")
+        driver = subprocess.Popen(["/usr/bin/safaridriver", "-p", "4444"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+            start_new_session=True)
+        time.sleep(2)
+        mark("create-native-ios-session")
+        value = wd("POST", "/session", {"capabilities": {"alwaysMatch": {
+            "browserName": "safari", "platformName": "ios", "safari:useSimulator": True,
+            "safari:deviceUDID": sim_id}}}, 45)
+        session_id = value["sessionId"]
+        caps = value.get("capabilities", {})
+        report["driverCapabilities"] = {k:v for k,v in caps.items() if k in
+            ["browserName", "browserVersion", "platformName", "safari:deviceName", "safari:deviceUDID", "safari:platformVersion", "safari:platformBuildVersion"]}
+        report["safaridriverUsed"] = True
+        base = "/session/" + session_id
+        wd("POST", base + "/timeouts", {"pageLoad": 35000, "script": 15000, "implicit": 0})
+        mark("driver-navigate-exact-preview")
+        wd("POST", base + "/url", {"url": TARGET}, 40)
+        time.sleep(3)
+        mark("driver-measure-header")
+        script = """const q=s=>document.querySelector(s), r=e=>{if(!e)return null;const a=e.getBoundingClientRect();return {x:a.x,y:a.y,width:a.width,height:a.height,right:a.right,bottom:a.bottom}};
+const brand=q('.na-public-brand'), name=q('.na-brand-name'), subtitle=q('.na-public-brand__copy small'), menu=q('.na-public-mobile-nav summary'), actions=q('.na-public-header__actions');
+const overlap=(a,b)=>!!a&&!!b&&Math.min(a.right,b.right)>Math.max(a.x,b.x)&&Math.min(a.bottom,b.bottom)>Math.max(a.y,b.y);
+return {url:location.href,title:document.title,viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio,scale:visualViewport?.scale},theme:document.documentElement.getAttribute('data-na-theme'),prefersDark:matchMedia('(prefers-color-scheme: dark)').matches,brand:r(brand),name:r(name),subtitle:r(subtitle),menu:r(menu),actions:r(actions),collision:overlap(r(name),r(menu))||overlap(r(subtitle),r(menu)),menuHit:menu?menu.contains(document.elementFromPoint(r(menu).x+r(menu).width/2,r(menu).y+r(menu).height/2)):false,content:q('#terminal-results-title')?.textContent};"""
+        report["geometry"] = wd("POST", base + "/execute/sync", {"script": script, "args": []})
+        report["interactiveControlVerified"] = bool(report["geometry"].get("content"))
+        mark("native-driver-capture")
+        capture("safari-after.png")
+        report["reviewStatus"] = "INTERACTIVE_MICROPROBE_ONLY; keyboard suppressed by SafariDriver; no matrix PASS"
+
     def expire(_sig, _frame):
-        raise CaptureDeadline("Independent 300-second capture deadline exceeded")
+        raise CaptureDeadline("Independent 420-second capture deadline exceeded")
 
     signal.signal(signal.SIGALRM, expire)
-    signal.alarm(300)
+    signal.alarm(420)
     try:
         mark("runner")
         if platform.system() != "Darwin" or os.environ.get("GITHUB_REPOSITORY") != "cgam-coder/vigia-aesan-feed":
@@ -217,6 +266,7 @@ def main() -> int:
         report["application"] = {"bundleId": "com.apple.mobilesafari", "launchConfirmed": confirmed}
         time.sleep(5)
         navigate_and_capture()
+        interactive_probe()
         report["reviewStatus"] = "PENDING_VISUAL_REVIEW; image presence and command status are not product PASS"
         mark("capture-complete")
     except Exception as exc:
@@ -230,6 +280,19 @@ def main() -> int:
         print("IOS_SAFARI_HOLD " + report["error"], flush=True)
     finally:
         signal.alarm(0)
+        if session_id:
+            try:
+                wd("DELETE", "/session/" + session_id, timeout=10)
+                report["cleanup"]["driverSession"] = True
+            except Exception as exc:
+                report["cleanup"]["driverSession"] = False
+        if driver:
+            try:
+                os.killpg(driver.pid, signal.SIGKILL)
+                driver.wait(timeout=5)
+                report["cleanup"]["driverProcess"] = True
+            except Exception:
+                report["cleanup"]["driverProcess"] = False
         if sim_id and re.fullmatch(r"[A-Fa-f0-9-]{36}", sim_id):
             for action in ["shutdown", "delete"]:
                 try:
@@ -244,7 +307,7 @@ def main() -> int:
                 stream.write("## Native Safari capture: visual review required\n\n```json\n" + json.dumps(report, indent=2) + "\n```\n")
     print("IOS_SAFARI_RESULT " + json.dumps(report), flush=True)
     # Green means only that final capture and cleanup completed, not a UX PASS.
-    return 0 if (report["captureReady"] and report["nativeAppleSafari"] and
+    return 0 if (report["captureReady"] and report.get("interactiveControlVerified") and
                  report["cleanup"].get("shutdown") and report["cleanup"].get("delete")) else 1
 
 
