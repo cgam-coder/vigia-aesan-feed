@@ -226,74 +226,98 @@ return {url:location.href,title:document.title,viewport:{width:innerWidth,height
 
     def run_matrix(base):
         import base64
+        report['scope']='native WebDriver user clicks: consent lifecycle, menu, OS media and manual theme; keyboard/gestures HOLD'
         report['cases']=[]
-        def js(script):return wd('POST',base+'/execute/sync',{'script':script,'args':[]},15)
-        def snapshot():return js("return {theme:document.documentElement.getAttribute('data-na-theme'),buttonTheme:document.querySelector('.na-theme-toggle')?.getAttribute('data-theme'),prefersDark:matchMedia('(prefers-color-scheme: dark)').matches,stored:localStorage.getItem('nagamealert-theme'),dialog:!!document.querySelector('[role=dialog]'),busy:document.querySelector('.na-terminal-results')?.getAttribute('aria-busy'),scripts:Array.from(document.querySelectorAll('script[src]'),e=>({path:new URL(e.src).pathname,type:e.type})),resources:performance.getEntriesByType('resource').filter(e=>e.name.includes('/assets/')).map(e=>({path:new URL(e.name).pathname,duration:Math.round(e.duration),size:e.transferSize}))};")
-        def shot(name):
-            raw=base64.b64decode(wd('GET',base+'/screenshot',timeout=15));(OUT/(name+'.png')).write_bytes(raw)
-            report['screenshots'].append({'file':name+'.png','stage':'readiness-probe','ok':True,**png_info(raw)})
-        mark('client-readiness-hypothesis')
-        report['readinessBefore']=snapshot()
-        js("localStorage.removeItem('nagamealert-theme');localStorage.setItem('nagamealert.analytics-consent.v1',JSON.stringify({choice:'rejected',updatedAt:1,version:1}));return true;")
-        command(['xcrun','simctl','ui',sim_id,'appearance','light'],15);wd('POST',base+'/refresh',{})
-        deadline=time.monotonic()+45
-        while time.monotonic()<deadline:
-            state=snapshot()
-            if state['buttonTheme']=='light' and not state['dialog']:break
-            time.sleep(2)
-        report['readinessAfter']=state
-        ready=state['buttonTheme']=='light' and not state['dialog']
-        report['cases'].append({'case':'native-client-hydration-ready','status':'PASS' if ready else 'FAIL','evidence':state})
-        if not ready:
-            mark('public-entry-import-error-diagnosis')
-            report['entryImport']=wd('POST',base+'/execute/async',{'script':"const done=arguments[arguments.length-1];const s=document.querySelector('script[type=module][src]');if(!s){done({error:'No module entry'});return;}import(s.src).then(()=>done({ok:true,path:new URL(s.src).pathname})).catch(e=>done({ok:false,path:new URL(s.src).pathname,name:e.name,message:String(e.message).slice(0,1200)}));",'args':[]},20)
-            shot('failure-native');persist();return
+        def js(script):return wd('POST',base+'/execute/sync',{'script':script,'args':[]},10)
+        def state():return js("return {theme:document.documentElement.getAttribute('data-na-theme'),buttonTheme:document.querySelector('.na-theme-toggle')?.getAttribute('data-theme'),prefersDark:matchMedia('(prefers-color-scheme: dark)').matches,stored:localStorage.getItem('nagamealert-theme'),dialog:!!document.querySelector('[role=dialog]'),consent:JSON.parse(localStorage.getItem('nagamealert.analytics-consent.v1')||'null')};")
         def expect(script,wanted):
             end=time.monotonic()+12
+            value=None
             while time.monotonic()<end:
                 value=js(script)
                 if value==wanted:return value
-                time.sleep(.5)
+                time.sleep(1)
             raise AssertionError('Expected '+str(wanted)+'; got '+str(value))
-        def click(selector):
-            found=wd('POST',base+'/element',{'using':'css selector','value':selector})
-            element=found.get('element-6066-11e4-a52e-4f735466cecf')
-            wd('POST',base+'/element/'+element+'/click',{})
+        def shot(name):
+            raw=base64.b64decode(wd('GET',base+'/screenshot',timeout=15));(OUT/(name+'.png')).write_bytes(raw)
+            report['screenshots'].append({'file':name+'.png','stage':'native-user-input','ok':True,**png_info(raw)})
+        def click(using,value):
+            found=wd('POST',base+'/element',{'using':using,'value':value})
+            wd('POST',base+'/element/'+found['element-6066-11e4-a52e-4f735466cecf']+'/click',{})
+        def button(text):click('xpath',"//button[normalize-space(.)='"+text+"']")
         def test(name,fn):
             try:report['cases'].append({'case':name,'status':'PASS','evidence':fn()})
-            except Exception as e:report['cases'].append({'case':name,'status':'FAIL','error':str(e)[:1200]})
+            except CaptureDeadline:raise
+            except Exception as e:
+                report['cases'].append({'case':name,'status':'FAIL','error':str(e)[:1000],'state':state()})
+                try:shot('failure-native')
+                except Exception:pass
             persist()
-        def theme():
+        mark('native-user-click-contract')
+        js("localStorage.removeItem('nagamealert-theme');localStorage.removeItem('nagamealert.analytics-consent.v1');return true;")
+        command(['xcrun','simctl','ui',sim_id,'appearance','light'],15)
+        wd('POST',base+'/refresh',{})
+        def reject():
+            expect("return !!document.querySelector('[role=dialog]');",True)
+            button('Rechazar analítica')
+            expect("return JSON.parse(localStorage.getItem('nagamealert.analytics-consent.v1')||'null')?.choice;",'rejected')
+            expect("return !!document.querySelector('[role=dialog]');",False)
+            before=state();wd('POST',base+'/refresh',{})
+            expect("return document.querySelector('.na-theme-toggle')?.getAttribute('data-theme');",'light')
+            expect("return !!document.querySelector('[role=dialog]');",False)
+            shot('native-light-header');return {'before':before,'after':state()}
+        test('native-actual-consent-reject-persistence',reject)
+        if report['cases'][-1]['status']!='PASS':
+            report['remainingNativeCases']='dependent menu/theme HOLD; consent user click failed';return
+        def menu():
+            click('css selector','.na-public-mobile-nav summary')
+            expect("return document.querySelector('.na-public-mobile-nav').open;",True)
+            shot('native-header')
+            result=js("const e=document.querySelector('.na-public-nav--mobile'),r=e.getBoundingClientRect();return {left:r.left,right:r.right,viewport:innerWidth,links:Array.from(e.querySelectorAll('a'),a=>a.textContent)};")
+            if result['left']<0 or result['right']>result['viewport']:raise AssertionError('Menu clipped')
+            click('css selector','.na-public-mobile-nav summary');expect("return document.querySelector('.na-public-mobile-nav').open;",False)
+            return result
+        test('native-menu-user-click-geometry',menu)
+        def system():
             command(['xcrun','simctl','ui',sim_id,'appearance','dark'],15)
             expect("return matchMedia('(prefers-color-scheme: dark)').matches;",True)
             expect("return document.documentElement.getAttribute('data-na-theme');",'dark')
-            shot('native-dark-header')
+            shot('native-dark-header');dark=state()
             command(['xcrun','simctl','ui',sim_id,'appearance','light'],15)
+            expect("return matchMedia('(prefers-color-scheme: dark)').matches;",False)
             expect("return document.documentElement.getAttribute('data-na-theme');",'light')
-            click('.na-theme-toggle');expect("return localStorage.getItem('nagamealert-theme');",'dark')
-            wd('POST',base+'/refresh',{});expect("return document.querySelector('.na-theme-toggle')?.getAttribute('data-theme');",'dark')
-            return snapshot()
-        test('native-system-follow-manual-persistence-ready',theme)
-        def menu():
-            click('.na-public-mobile-nav summary');expect("return document.querySelector('.na-public-mobile-nav').open;",True)
-            shot('native-header');click('.na-public-mobile-nav summary');expect("return document.querySelector('.na-public-mobile-nav').open;",False)
-            return {'nativeWebDriverOpenClose':True}
-        test('native-menu-after-readiness',menu)
-        def consent():
-            js("localStorage.removeItem('nagamealert.analytics-consent.v1');return true;");wd('POST',base+'/refresh',{})
+            if state()['stored'] is not None:raise AssertionError('Unexpected manual override')
+            return {'dark':dark,'light':state()}
+        test('native-real-system-change-after-consent-click',system)
+        def manual():
+            command(['xcrun','simctl','ui',sim_id,'appearance','light'],15)
+            js("localStorage.removeItem('nagamealert-theme');return true;");wd('POST',base+'/refresh',{})
+            expect("return document.querySelector('.na-theme-toggle')?.getAttribute('data-theme');",'light')
+            click('css selector','.na-theme-toggle')
+            expect("return localStorage.getItem('nagamealert-theme');",'dark')
+            wd('POST',base+'/refresh',{})
             expect("return document.querySelector('.na-theme-toggle')?.getAttribute('data-theme');",'dark')
-            click('[data-consent-accept]')
+            shot('native-dark-header');return state()
+        test('native-manual-theme-click-reload',manual)
+        def accept():
+            js("localStorage.removeItem('nagamealert.analytics-consent.v1');return true;");wd('POST',base+'/refresh',{})
+            expect("return !!document.querySelector('[role=dialog]');",True)
+            button('Aceptar analítica')
             expect("return JSON.parse(localStorage.getItem('nagamealert.analytics-consent.v1')||'null')?.choice;",'accepted')
-            return {'accepted':True}
-        # Consent selectors are diagnosed, not guessed or replaced with a storage write.
-        report['remainingNativeCases']='keyboard/gestures/rotation remain HOLD; final-head consent/filter/search matrix still required'
+            expect("return !!document.querySelector('[role=dialog]');",False)
+            wd('POST',base+'/refresh',{})
+            expect("return document.querySelector('.na-theme-toggle')?.getAttribute('data-theme');",'dark')
+            expect("return !!document.querySelector('[role=dialog]');",False)
+            return state()
+        test('native-actual-consent-accept-persistence',accept)
+        report['remainingNativeCases']='native filters/search/map/back and keyboard/gestures/rotation HOLD'
         persist()
 
     def expire(_sig, _frame):
-        raise CaptureDeadline("Independent 420-second capture deadline exceeded")
+        raise CaptureDeadline("Independent 360-second capture deadline exceeded")
 
     signal.signal(signal.SIGALRM, expire)
-    signal.alarm(420)
+    signal.alarm(360)
     try:
         mark("runner")
         if platform.system() != "Darwin" or os.environ.get("GITHUB_REPOSITORY") != "cgam-coder/vigia-aesan-feed":
