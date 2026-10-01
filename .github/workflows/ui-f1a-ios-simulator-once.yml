@@ -18,126 +18,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  safari-ios-viability:
-    if: >-
-      github.repository == 'cgam-coder/vigia-aesan-feed' &&
-      github.event.repository.private == false &&
-      github.ref == 'refs/heads/diag/ui-f1a-ios-simulator-20261001' &&
-      github.run_attempt == '1'
-    runs-on: macos-15
-    timeout-minutes: 10
-    steps:
-      - name: Checkout reviewed diagnostic and security checks
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-          sparse-checkout: |
-            .diagnostics
-            .github/workflows
-            security-checks
-      - name: Verify exact authorized script and existing security contracts
-        id: security
-        run: |
-          echo '96e23695b1916c5d59b8e7bea38369b5f505f5180a85da8b0ae7ff9eef9f9ea5  .diagnostics/ios_safari_smoke.py' | shasum -a 256 -c -
-          node --test security-checks/workflow-security.test.mjs
-          python3 .diagnostics/ios_safari_smoke.py --self-test
-      - name: Foreground Simulator and capture before and after navigation
-        run: python3 .diagnostics/ios_safari_smoke.py
-      - name: Preserve only the public-page screenshot and bounded JSON
-        if: always() && steps.security.outcome == 'success'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: ios-safari-viability-${{ github.run_id }}
-          path: |
-            ios-safari-evidence/report.json
-            ios-safari-evidence/iphone-simulator.png
-            ios-safari-evidence/simulator-ready.png
-            ios-safari-evidence/safari-before.png
-            ios-safari-evidence/safari-after.png
-            ios-safari-evidence/failure-native.png
-            ios-safari-evidence/native-header.png
-            ios-safari-evidence/native-dark.png
-            ios-safari-evidence/native-dark-native.png
-            ios-safari-evidence/native-header-fixed.png
-            ios-safari-evidence/native-header-fixed-native.png
-            ios-safari-evidence/native-menu.png
-            ios-safari-evidence/native-menu-native.png
-            ios-safari-evidence/native-filters.png
-            ios-safari-evidence/native-filters-native.png
-            ios-safari-evidence/native-search.png
-            ios-safari-evidence/native-search-native.png
-            ios-safari-evidence/native-map.png
-            ios-safari-evidence/native-map-native.png
-            ios-safari-evidence/native-detail.png
-            ios-safari-evidence/native-detail-native.png
-            ios-safari-evidence/f7-before.png
-            ios-safari-evidence/f7-before-native.png
-            ios-safari-evidence/f7-candidate.png
-            ios-safari-evidence/f7-candidate-native.png
-          if-no-files-found: error
-          retention-days: 1
-          compression-level: 6
-
-  chromium-matrix:
-    if: >-
-      github.repository == 'cgam-coder/vigia-aesan-feed' &&
-      github.event.repository.private == false &&
-      github.ref == 'refs/heads/diag/ui-f1a-ios-simulator-20261001' &&
-      github.run_attempt == '1'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout reviewed diagnostic and security checks
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-          sparse-checkout: |
-            .diagnostics
-            .github/workflows
-            security-checks
-      - name: Verify exact reviewed scripts and security contracts
-        id: security
-        run: |
-          echo 'dee9d130f0c3e3b66003012bbd00c9b669872a389d1f5df17c0d2f3f3e04883d  .diagnostics/chromium_matrix.mjs' | sha256sum -c -
-          node --test security-checks/workflow-security.test.mjs
-      - name: Install pinned diagnostic libraries without install scripts
-        run: timeout 120s npm install --prefix "$RUNNER_TEMP/ui-probe" playwright@1.62.1 pixelmatch@7.1.0 pngjs@7.0.0 --ignore-scripts --no-audit --no-fund
-      - name: Execute public-page Chromium matrix with external deadline
-        run: timeout 360s node .diagnostics/chromium_matrix.mjs "$RUNNER_TEMP/ui-probe"
-      - name: Preserve only reviewed public-page captures and bounded JSON
-        if: always() && steps.security.outcome == 'success'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: chromium-ui-f1a-${{ github.run_id }}
-          path: |
-            chromium-evidence/report.json
-            chromium-evidence/mobile-header.png
-            chromium-evidence/desktop-header.png
-            chromium-evidence/tablet-header.png
-            chromium-evidence/narrow-header.png
-            chromium-evidence/mobile-dark.png
-            chromium-evidence/mobile-menu.png
-            chromium-evidence/mobile-filters.png
-            chromium-evidence/mobile-search.png
-            chromium-evidence/mobile-map.png
-            chromium-evidence/mobile-detail.png
-            chromium-evidence/mobile-landscape.png
-            chromium-evidence/mobile-f7-baseline.png
-            chromium-evidence/mobile-f7-candidate.png
-            chromium-evidence/mobile-f7-diff.png
-            chromium-evidence/desktop-f7-baseline.png
-            chromium-evidence/desktop-f7-candidate.png
-            chromium-evidence/desktop-f7-diff.png
-            chromium-evidence/tablet-f7-baseline.png
-            chromium-evidence/tablet-f7-candidate.png
-            chromium-evidence/tablet-f7-diff.png
-            chromium-evidence/narrow-f7-baseline.png
-            chromium-evidence/narrow-f7-candidate.png
-            chromium-evidence/narrow-f7-diff.png
-          if-no-files-found: error
-          retention-days: 1
-          compression-level: 6
-
   native-ui-os-interactions:
     if: >-
       github.repository == 'cgam-coder/vigia-aesan-feed' &&
@@ -158,8 +38,8 @@ jobs:
       - name: Verify reviewed native UI probe and existing contracts
         id: security
         run: |
-          echo 'ab2117268e4224b1df484d552e0bc2b16265cdf035f5c81c4177a86682e1f86e  .diagnostics/native_ui_probe.py' | shasum -a 256 -c -
-          echo '413b2a9afff6e04db12000e18bd3cfe2792380fbb29439314a93c0394c526342  .diagnostics/native_ui_project.rb' | shasum -a 256 -c -
+          echo '45a01df50b3c87ddb898272d38c6ad10bbb6efdf1d8638e56b7ad230de97d7ec  .diagnostics/native_ui_probe.py' | shasum -a 256 -c -
+          echo '10899a1e6a185d9cc92dff022a1e941f64144866f996b397bbc60a22a78c35cb  .diagnostics/native_ui_project.rb' | shasum -a 256 -c -
           node --test security-checks/workflow-security.test.mjs
       - name: Test native keyboard rotation and pinch with independent deadline and owned simulator cleanup
         run: python3 .diagnostics/native_ui_probe.py

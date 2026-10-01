@@ -39,6 +39,8 @@ try:
  require(['xcrun','simctl','boot',sim]);require(['xcrun','simctl','bootstatus',sim,'-b'],120)
  require(['defaults','write','com.apple.iphonesimulator','ConnectHardwareKeyboard','-bool','NO'])
  developer=require(['xcode-select','-p']).strip();require(['open','-a',developer+'/Applications/Simulator.app','--args','-CurrentDeviceUDID',sim],15)
+ mark('early-native-capture')
+ rc,_=cmd(['xcrun','simctl','io',sim,'screenshot',str(OUT/'native-before.png')],20);report['earlyScreenshotAcknowledged']=rc==0
  mark('generate-disposable-test-project')
  require(['ruby',str(Path(__file__).with_name('native_ui_project.rb'))],20)
  mark('open-public-preview')
@@ -75,11 +77,19 @@ try:
      try:info=smoke.png_info(raw)
      except RuntimeError:continue
      shutil.copyfile(source,OUT/(stem+'.png'));report['screenshots'].append({'file':stem+'.png',**info})
-except Exception as e:report['hold']=type(e).__name__+': '+str(e)[:1800]
+except Exception as e:
+ report['hold']=type(e).__name__+': '+str(e)[:1800]
+ if sim:
+  try:cmd(['xcrun','simctl','io',sim,'screenshot',str(OUT/'native-after.png')],20)
+  except Exception:pass
 finally:
  signal.alarm(0)
  if sim and re.fullmatch('[a-fA-F0-9-]{36}',sim):
   for action in ['shutdown','delete']:
-   try:rc,_=cmd(['xcrun','simctl',action,sim],20);report['cleanup'][action]=rc==0
-   except Exception:report['cleanup'][action]=False
+   try:rc,detail=cmd(['xcrun','simctl',action,sim],45 if action=='shutdown' else 25);report['cleanup'][action]=rc==0
+   except Exception as e:report['cleanup'][action]=False;report['cleanup'][action+'Error']=str(e)[:500]
+   else:
+    if rc:report['cleanup'][action+'Error']=detail[-700:]
  persist();print('NATIVE_UI_RESULT '+json.dumps(report),flush=True)
+
+raise SystemExit(0 if report.get("xcodeTestExit")==0 and report["cleanup"].get("shutdown") and report["cleanup"].get("delete") else 1)

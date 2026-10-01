@@ -19,7 +19,7 @@ final class NativeUITests: XCTestCase {
  override func setUpWithError() throws { continueAfterFailure=false;safari.activate();XCUIDevice.shared.orientation = .portrait }
  func test00NativeHeaderControls() throws {
   let reject=safari.buttons["Rechazar analítica"]
-  if reject.waitForExistence(timeout:8) { reject.tap();XCTAssertFalse(reject.waitForExistence(timeout:2)) }
+  if reject.waitForExistence(timeout:8) { reject.tap();let gone=XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:reject);XCTAssertEqual(XCTWaiter.wait(for:[gone],timeout:5),.completed) }
   let web=safari.webViews.firstMatch
   let dark=web.buttons["Activar modo oscuro"]
   XCTAssertTrue(dark.waitForExistence(timeout:8));dark.tap()
@@ -87,5 +87,5 @@ tests.build_configurations.each { |c| c.build_settings['TEST_TARGET_NAME']='Harn
 project.save
 scheme=Xcodeproj::XCScheme.new
 scheme.add_build_target(app);scheme.add_build_target(tests);scheme.add_test_target(tests)
-scheme.launch_action.runnable=Xcodeproj::XCScheme::BuildableProductRunnable.new(app)
+scheme.set_launch_target(app)
 scheme.save_as(project.path,'NativeUI',true)
