@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHash } from "node:crypto";
 
 import {
   FLOATING_ACTION_EXCEPTIONS,
@@ -47,11 +48,18 @@ test("retired GH-FIXES workflow surfaces stay absent", () => {
   assert.equal(repositoryWorkflows.has("gh-fixes-closure-verify.yml"), false);
 });
 
-test("only the bounded public SEO snapshot may publish an artifact", () => {
+test("permanent SEO-only publishing plus exact owner-authorized temporary UI campaign", () => {
   const uploaders = [...repositoryWorkflows.entries()]
     .filter(([, source]) => /uses:\s*actions\/upload-artifact@/u.test(source))
     .map(([file]) => file);
-  assert.deepEqual(uploaders, ["seo-public-snapshot.yml"]);
+  const expected = ["seo-public-snapshot.yml"];
+  const temporary = repositoryWorkflows.get("temp-public-native-ui.yml");
+  if (temporary !== undefined) {
+    assert.equal(createHash("sha256").update(temporary).digest("hex"),
+      "3143051d64611093f07689143ad359e256a56087e7ac2fb48596cc1ee47b7f38", "Temporary publisher must match the entire reviewed workflow");
+    expected.push("temp-public-native-ui.yml");
+  }
+  assert.deepEqual(uploaders.sort(), expected.sort());
   assert.match(
     repositoryWorkflows.get("seo-public-snapshot.yml"),
     /path:\s*public-monitoring\/seo\/seo-validation-evidence\//u,
