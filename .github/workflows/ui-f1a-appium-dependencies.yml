@@ -1,5 +1,5 @@
 name: TEMP Appium dependency repair and clean installation
-# Revision 2: use the already-tested graph checker and preserve generated inputs before gates.
+# Revision 3: no global overrides of the driver shrinkwrap; validate actual runtime graph and imports.
 # Preparation only; this workflow cannot allocate macOS or interact with the product.
 "on":
   push:
@@ -53,5 +53,7 @@ jobs:
             ${{ runner.temp }}/appium-reviewed-deps/07-appium-version.log
             ${{ runner.temp }}/appium-reviewed-deps/08-discovery.json
             ${{ runner.temp }}/appium-reviewed-deps/09-darwin-resolution-dry-run.log
+            ${{ runner.temp }}/appium-reviewed-deps/10-runtime-graph.json
+            ${{ runner.temp }}/appium-reviewed-deps/11-runtime-imports.json
           if-no-files-found: error
           retention-days: 2
