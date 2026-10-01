@@ -259,7 +259,17 @@ return {url:location.href,title:document.title,viewport:{width:innerWidth,height
         wd('POST',base+'/refresh',{})
         def reject():
             expect("return !!document.querySelector('[role=dialog]');",True)
+            report['clickBefore']=js("window.__nativeInputEvents=[];for(const type of ['pointerdown','pointerup','mousedown','mouseup','click'])document.addEventListener(type,e=>window.__nativeInputEvents.push({type:e.type,trusted:e.isTrusted,target:e.target.closest('button')?.textContent||e.target.tagName,x:e.clientX,y:e.clientY}),true);const e=Array.from(document.querySelectorAll('button')).find(e=>e.textContent.trim()==='Rechazar analítica'),r=e.getBoundingClientRect();return {button:{left:r.left,top:r.top,right:r.right,bottom:r.bottom},hit:document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)?.textContent,readyState:document.readyState};")
+            shot('native-light-header')
             button('Rechazar analítica')
+            report['clickEvents']=js("return window.__nativeInputEvents;")
+            persist()
+            if not any(e.get('type')=='click' and e.get('trusted') for e in report['clickEvents']):
+                report['touchRoute']='W3C touch pointer actions; no JS click or dispatched synthetic DOM event'
+                js("getSelection()?.removeAllRanges();return true;")
+                found=wd('POST',base+'/element',{'using':'xpath','value':"//button[normalize-space(.)='Rechazar analítica']"})
+                wd('POST',base+'/actions',{'actions':[{'type':'pointer','id':'native-touch','parameters':{'pointerType':'touch'},'actions':[{'type':'pointerMove','duration':0,'origin':found,'x':0,'y':0},{'type':'pointerDown','button':0},{'type':'pause','duration':80},{'type':'pointerUp','button':0}]}]})
+                report['touchEvents']=js("return window.__nativeInputEvents;");persist()
             expect("return JSON.parse(localStorage.getItem('nagamealert.analytics-consent.v1')||'null')?.choice;",'rejected')
             expect("return !!document.querySelector('[role=dialog]');",False)
             before=state();wd('POST',base+'/refresh',{})
