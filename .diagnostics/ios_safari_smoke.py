@@ -236,7 +236,7 @@ return {url:location.href,title:document.title,viewport:{width:innerWidth,height
         report["host"] = {"macOS": command(["sw_vers"]).decode().strip(), "arch": platform.machine(),
                           "xcode": command(["xcodebuild", "-version"]).decode().strip(), "simulatorSDK": sdk}
         mark("inventory")
-        inventory = json.loads(command(["xcrun", "simctl", "list", "--json"], 30))
+        inventory = json.loads(command(["xcrun", "simctl", "list", "--json"], 75))
         device, runtime = choose_device(inventory, sdk)
         report["selected"] = {"model": device["name"], "runtime": runtime["name"],
                               "runtimeVersion": runtime.get("version"), "runtimeBuild": runtime.get("buildversion")}
