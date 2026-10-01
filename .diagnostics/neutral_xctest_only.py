@@ -33,15 +33,16 @@ def main():
  signal.signal(signal.SIGALRM,alarm);signal.alarm(420)
  try:
   if platform.system()!='Darwin' or os.environ.get('GITHUB_REPOSITORY')!='cgam-coder/vigia-aesan-feed':raise RuntimeError('Authorized public standard macOS runner only')
-  mark('targeted-preinstalled-runtime-inventory')
+  mark('direct-preinstalled-simulator-create-without-inventory')
   sdk=cmd(['xcrun','--sdk','iphonesimulator','--show-sdk-version'],20).strip()
   if sdk!='18.5':raise RuntimeError('Preinstalled Xcode16.4/iOS18.5 contract mismatch; no downloads')
-  runtimes=json.loads(cmd(['xcrun','simctl','list','runtimes','--json'],40))['runtimes']
-  devices=json.loads(cmd(['xcrun','simctl','list','devicetypes','--json'],40))['devicetypes']
-  runtime=next(x for x in runtimes if x.get('isAvailable') and x.get('version')=='18.5' and '.iOS-' in x.get('identifier',''))
-  device=next(x for x in devices if x.get('name')=='iPhone 16')
-  r['environment']={'model':device['name'],'iOS':runtime['version'],'build':runtime.get('buildversion'),'xcode':cmd(['xcodebuild','-version']),'macOS':cmd(['sw_vers'])}
-  sim=cmd(['xcrun','simctl','create','Neutral-XCTest-'+os.environ.get('GITHUB_RUN_ID','local'),device['identifier'],runtime['identifier']],45).strip()
+  # Availability already proven by the completed isolation run; avoid another cold inventory query.
+  # Creating a requested concrete identifier validates it; a mismatch fails rather than choosing another runtime.
+  device_id='com.apple.CoreSimulator.SimDeviceType.iPhone-16'
+  runtime_id='com.apple.CoreSimulator.SimRuntime.iOS-18-5'
+  r['requestedEnvironment']={'model':'iPhone 16','runtime':'iOS 18.5','deviceTypeIdentifier':device_id,'runtimeIdentifier':runtime_id,'runtimeBuild':'not queried in this microtest'}
+  r['host']={'simulatorSDK':sdk,'xcode':cmd(['xcodebuild','-version']),'macOS':cmd(['sw_vers'])}
+  sim=cmd(['xcrun','simctl','create','Neutral-XCTest-'+os.environ.get('GITHUB_RUN_ID','local'),device_id,runtime_id],75).strip()
   if not re.fullmatch('[a-fA-F0-9-]{36}',sim):raise RuntimeError('Invalid disposable simulator ID')
   r['simulatorUDID']=sim
   mark('boot-own-simulator');cmd(['xcrun','simctl','boot',sim],20);cmd(['xcrun','simctl','bootstatus',sim,'-b'],120)

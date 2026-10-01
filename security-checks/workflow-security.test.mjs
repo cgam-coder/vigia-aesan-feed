@@ -316,7 +316,7 @@ test("temporary diagnostic cannot expand its artifact, privileges, code pin or t
     ["retention-days: 1", "retention-days: 90"],
     ["persist-credentials: false", "persist-credentials: true"],
     ["runs-on: macos-15", "runs-on: macos-15-large"],
-    ["fe6dbe19e0972ca85e716fd8a281abc22fb0994694959512debcbe92c78d5b53", "0".repeat(64)],
+    ["5652b086ea2dd573ae7d22edcaa0633bd886cbf6ac1a00865ffbe7270681f2df", "0".repeat(64)],
     ["branches: [diag/ui-f1a-ios-simulator-20261001]", "branches: [main]"],
   ]) {
     assert.ok(source.includes(from));
