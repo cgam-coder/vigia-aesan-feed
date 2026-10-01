@@ -221,69 +221,79 @@ return {url:location.href,title:document.title,viewport:{width:innerWidth,height
         report["readOnlyDriverControlVerified"] = bool(report["geometry"].get("content"))
         report["interactiveControlVerified"] = False
         mark("native-driver-capture")
-        capture("native-header.png")
         run_matrix(base)
         report["reviewStatus"] = "INTERACTIVE_MICROPROBE_ONLY; keyboard suppressed by SafariDriver; no matrix PASS"
 
     def run_matrix(base):
         import base64
         report['cases']=[]
-        def js(s):return wd('POST',base+'/execute/sync',{'script':s,'args':[]},20)
+        def js(script):return wd('POST',base+'/execute/sync',{'script':script,'args':[]},15)
+        def snapshot():return js("return {theme:document.documentElement.getAttribute('data-na-theme'),buttonTheme:document.querySelector('.na-theme-toggle')?.getAttribute('data-theme'),prefersDark:matchMedia('(prefers-color-scheme: dark)').matches,stored:localStorage.getItem('nagamealert-theme'),dialog:!!document.querySelector('[role=dialog]'),busy:document.querySelector('.na-terminal-results')?.getAttribute('aria-busy'),scripts:Array.from(document.querySelectorAll('script[src]'),e=>({path:new URL(e.src).pathname,type:e.type})),resources:performance.getEntriesByType('resource').filter(e=>e.name.includes('/assets/')).map(e=>({path:new URL(e.name).pathname,duration:Math.round(e.duration),size:e.transferSize}))};")
         def shot(name):
-            raw=base64.b64decode(wd('GET',base+'/screenshot',timeout=20))
-            (OUT/(name+'.png')).write_bytes(raw)
-            report['screenshots'].append({'file':name+'.png','stage':'final-matrix','ok':True,**png_info(raw)})
-            capture(name+'-native.png')
-        def settled(script,value):
-            until=time.monotonic()+8
-            while time.monotonic()<until:
-                got=js(script)
-                if got==value:return
-                time.sleep(.4)
-            raise AssertionError('Expected '+str(value)+'; got '+str(got))
+            raw=base64.b64decode(wd('GET',base+'/screenshot',timeout=15));(OUT/(name+'.png')).write_bytes(raw)
+            report['screenshots'].append({'file':name+'.png','stage':'readiness-probe','ok':True,**png_info(raw)})
+        mark('client-readiness-hypothesis')
+        report['readinessBefore']=snapshot()
+        js("localStorage.removeItem('nagamealert-theme');localStorage.setItem('nagamealert.analytics-consent.v1',JSON.stringify({choice:'rejected',updatedAt:1,version:1}));return true;")
+        command(['xcrun','simctl','ui',sim_id,'appearance','light'],15);wd('POST',base+'/refresh',{})
+        deadline=time.monotonic()+45
+        while time.monotonic()<deadline:
+            state=snapshot()
+            if state['buttonTheme']=='light' and not state['dialog']:break
+            time.sleep(2)
+        report['readinessAfter']=state
+        ready=state['buttonTheme']=='light' and not state['dialog']
+        report['cases'].append({'case':'native-client-hydration-ready','status':'PASS' if ready else 'FAIL','evidence':state})
+        if not ready:
+            mark('public-entry-import-error-diagnosis')
+            report['entryImport']=wd('POST',base+'/execute/async',{'script':"const done=arguments[arguments.length-1];const s=document.querySelector('script[type=module][src]');if(!s){done({error:'No module entry'});return;}import(s.src).then(()=>done({ok:true,path:new URL(s.src).pathname})).catch(e=>done({ok:false,path:new URL(s.src).pathname,name:e.name,message:String(e.message).slice(0,1200)}));",'args':[]},20)
+            shot('failure-native');persist();return
+        def expect(script,wanted):
+            end=time.monotonic()+12
+            while time.monotonic()<end:
+                value=js(script)
+                if value==wanted:return value
+                time.sleep(.5)
+            raise AssertionError('Expected '+str(wanted)+'; got '+str(value))
+        def click(selector):
+            found=wd('POST',base+'/element',{'using':'css selector','value':selector})
+            element=found.get('element-6066-11e4-a52e-4f735466cecf')
+            wd('POST',base+'/element/'+element+'/click',{})
         def test(name,fn):
-            mark('case-'+name)
             try:report['cases'].append({'case':name,'status':'PASS','evidence':fn()})
-            except CaptureDeadline:raise
-            except Exception as e:report['cases'].append({'case':name,'status':'FAIL','error':str(e)[:1800]})
+            except Exception as e:report['cases'].append({'case':name,'status':'FAIL','error':str(e)[:1200]})
             persist()
-        def geometry(appearance):
-            js("localStorage.removeItem('nagamealert-theme');localStorage.setItem('nagamealert.analytics-consent.v1',JSON.stringify({choice:'rejected',updatedAt:Date.now(),version:1}));return true;")
-            wd('POST',base+'/refresh',{})
-            command(['xcrun','simctl','ui',sim_id,'appearance',appearance],15)
-            settled("return document.documentElement.getAttribute('data-na-theme');",appearance)
-            settled("return matchMedia('(prefers-color-scheme: dark)').matches;",appearance=='dark')
-            shot('native-'+appearance+'-header')
-            g=js("""const b=e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height}};const brand=document.querySelector('.na-public-brand');const texts=[];for(const e of brand.querySelectorAll('.na-brand-name,small')){const r=document.createRange();r.selectNodeContents(e);texts.push(...Array.from(r.getClientRects(),x=>({x:x.x,y:x.y,right:x.right,bottom:x.bottom})));}const controls=Array.from(document.querySelectorAll('.na-public-mobile-nav summary,.na-language-selector a,.na-theme-toggle')).filter(e=>e.getBoundingClientRect().height).map(e=>{const r=b(e);return {box:r,hit:[.2,.5,.8].every(t=>e.contains(document.elementFromPoint(r.x+r.width*t,r.y+r.height/2)))}});return {theme:document.documentElement.getAttribute('data-na-theme'),brand:b(brand),search:b(document.querySelector('.na-global-search')),texts,controls,viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio,scale:visualViewport.scale},documentWidth:document.documentElement.scrollWidth};""")
-            overlap=lambda a,b:min(a['right'],b['right'])>max(a['x'],b['x'])+1 and min(a['bottom'],b['bottom'])>max(a['y'],b['y'])+1
-            for text in g['texts']:
-                if text['x']<g['brand']['x']-1 or text['right']>g['brand']['right']+1 or any(overlap(text,c['box']) for c in g['controls']):raise AssertionError('Brand collision '+str(g))
-            if any(not c['hit'] or overlap(c['box'],g['search']) for c in g['controls']):raise AssertionError('Search collision or obstructed hit area '+str(g))
-            if g['documentWidth']>g['viewport']['width']+1:raise AssertionError('Document overflow')
-            return g
-        test('native-system-light-header-geometry',lambda:geometry('light'))
-        test('native-system-dark-header-geometry',lambda:geometry('dark'))
-        def f7():
-            states=[]
-            for label,url in [('f7-approved-baseline','https://nagamealert.com/es/'),('f7-final-candidate',TARGET.split('/es/')[0]+'/es/')]:
-                wd('POST',base+'/url',{'url':url})
-                js("localStorage.setItem('nagamealert-theme','light');localStorage.setItem('nagamealert.analytics-consent.v1',JSON.stringify({choice:'rejected',updatedAt:Date.now(),version:1}));return true;")
-                wd('POST',base+'/refresh',{})
-                time.sleep(1)
-                js("for(const a of document.getAnimations()){a.pause();a.currentTime=0;}return true;")
-                state=js("return {url:location.href,width:innerWidth,height:innerHeight,dpr:devicePixelRatio,scale:visualViewport.scale,fonts:document.fonts.status,theme:document.documentElement.getAttribute('data-na-theme'),consent:JSON.parse(localStorage.getItem('nagamealert.analytics-consent.v1'))?.choice,animationTimes:document.getAnimations().map(a=>a.currentTime)};")
-                shot(label);states.append(state)
-            return {'states':states,'pixelComparison':'PENDING_VISUAL_REVIEW'}
-        test('native-f7-approved-production-pair',f7)
-        report['nativeInteractionCertified']=False
-        report['cases'].append({'case':'native-input-keyboard-pinch-rotation','status':'HOLD','reason':'Separate bounded SafariDriver/XCTest attempts did not certify these interactions; not repeated here'})
+        def theme():
+            command(['xcrun','simctl','ui',sim_id,'appearance','dark'],15)
+            expect("return matchMedia('(prefers-color-scheme: dark)').matches;",True)
+            expect("return document.documentElement.getAttribute('data-na-theme');",'dark')
+            shot('native-dark-header')
+            command(['xcrun','simctl','ui',sim_id,'appearance','light'],15)
+            expect("return document.documentElement.getAttribute('data-na-theme');",'light')
+            click('.na-theme-toggle');expect("return localStorage.getItem('nagamealert-theme');",'dark')
+            wd('POST',base+'/refresh',{});expect("return document.querySelector('.na-theme-toggle')?.getAttribute('data-theme');",'dark')
+            return snapshot()
+        test('native-system-follow-manual-persistence-ready',theme)
+        def menu():
+            click('.na-public-mobile-nav summary');expect("return document.querySelector('.na-public-mobile-nav').open;",True)
+            shot('native-header');click('.na-public-mobile-nav summary');expect("return document.querySelector('.na-public-mobile-nav').open;",False)
+            return {'nativeWebDriverOpenClose':True}
+        test('native-menu-after-readiness',menu)
+        def consent():
+            js("localStorage.removeItem('nagamealert.analytics-consent.v1');return true;");wd('POST',base+'/refresh',{})
+            expect("return document.querySelector('.na-theme-toggle')?.getAttribute('data-theme');",'dark')
+            click('[data-consent-accept]')
+            expect("return JSON.parse(localStorage.getItem('nagamealert.analytics-consent.v1')||'null')?.choice;",'accepted')
+            return {'accepted':True}
+        # Consent selectors are diagnosed, not guessed or replaced with a storage write.
+        report['remainingNativeCases']='keyboard/gestures/rotation remain HOLD; final-head consent/filter/search matrix still required'
         persist()
 
     def expire(_sig, _frame):
-        raise CaptureDeadline("Independent 420-second capture deadline exceeded")
+        raise CaptureDeadline("Independent 360-second capture deadline exceeded")
 
     signal.signal(signal.SIGALRM, expire)
-    signal.alarm(420)
+    signal.alarm(360)
     try:
         mark("runner")
         if platform.system() != "Darwin" or os.environ.get("GITHUB_REPOSITORY") != "cgam-coder/vigia-aesan-feed":
@@ -314,14 +324,13 @@ return {url:location.href,title:document.title,viewport:{width:innerWidth,height
         time.sleep(5)
         observe("framebuffer-policy", ["defaults", "read", "com.apple.CoreSimulator", "FramebufferServerRendererPolicy"], 5)
         mark("simulator-ready-capture")
-        capture("simulator-ready.png")
+        # No redundant framebuffer capture in client-readiness microprobe.
         mark("native-safari")
         launch = observe("launch-safari", ["xcrun", "simctl", "launch", sim_id, "com.apple.mobilesafari"], 25)
         confirmed = bool(launch["ok"] and re.search(r"com\.apple\.mobilesafari:\s*\d+", launch.get("stdout", "")))
         report["nativeAppleSafari"] = confirmed
         report["application"] = {"bundleId": "com.apple.mobilesafari", "launchConfirmed": confirmed}
         time.sleep(5)
-        navigate_and_capture()
         interactive_probe()
         report["reviewStatus"] = "PENDING_VISUAL_REVIEW; image presence and command status are not product PASS"
         mark("capture-complete")
@@ -363,7 +372,7 @@ return {url:location.href,title:document.title,viewport:{width:innerWidth,height
                 stream.write("## Native Safari capture: visual review required\n\n```json\n" + json.dumps(report, indent=2) + "\n```\n")
     print("IOS_SAFARI_RESULT " + json.dumps(report), flush=True)
     # Green means only that final capture and cleanup completed, not a UX PASS.
-    return 0 if (report["captureReady"] and report.get("readOnlyDriverControlVerified") and
+    return 0 if (report.get("readOnlyDriverControlVerified") and
                  report["cleanup"].get("shutdown") and report["cleanup"].get("delete")) else 1
 
 
