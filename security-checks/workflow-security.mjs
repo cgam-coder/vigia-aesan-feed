@@ -1,10 +1,12 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 
 const OFFLINE_PUBLIC_WORKFLOWS = new Set([
   "ci.yml",
   "seo-public-snapshot.yml",
   "seo-public-watchdog.yml",
+  "temp-public-native-ui.yml",
 ]);
 
 const CONTENTS_WRITE_PUBLISHERS = new Set([
@@ -315,7 +317,11 @@ function checkArtifacts(file, source, violations) {
   const lines = source.split(/\r?\n/);
   for (let index = 0; index < lines.length; index += 1) {
     if (!/uses:\s*actions\/upload-artifact@/.test(lines[index])) continue;
-    if (!PUBLIC_ARTIFACT_PUBLISHERS.has(file)) {
+    // Temporary owner-authorized public UI evidence, exact reviewed workflow bytes only.
+    // All other permission, event, source, token and artifact-path checks still apply.
+    const exactNative = file === "temp-public-native-ui.yml" &&
+      createHash("sha256").update(source).digest("hex") === "01c0ce0b5a63a31dc240f1dce0f230fd4fda6442640fca767f4c65543439a9bc";
+    if (!PUBLIC_ARTIFACT_PUBLISHERS.has(file) && !exactNative) {
       violations.push(problem(file, "UNEXPECTED_PUBLIC_ARTIFACT",
         "Only the bounded public SEO snapshot may publish a workflow artifact.", index + 1));
     }

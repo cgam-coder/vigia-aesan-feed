@@ -1,0 +1,91 @@
+name: TEMP public native Safari UI campaign A
+# Owner authorization: at most two standard macOS jobs, ten minutes each; no reruns.
+# Native screenshots only. This file and its exact artifact exception are removed afterward.
+"on":
+  push:
+    branches: [diag/ui-f1a-ios-simulator-20261001]
+    paths: [.github/workflows/temp-public-native-ui.yml]
+permissions:
+  contents: read
+concurrency:
+  group: nagamealert-public-native-campaign-a
+  cancel-in-progress: false
+jobs:
+  core:
+    if: >-
+      github.repository == 'cgam-coder/vigia-aesan-feed' &&
+      github.event.repository.private == false &&
+      github.ref == 'refs/heads/diag/ui-f1a-ios-simulator-20261001' &&
+      github.run_attempt == '1'
+    runs-on: macos-15
+    timeout-minutes: 10
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    outputs:
+      proceed: ${{ steps.campaign.outputs.proceed }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .diagnostics/native-public-ui
+            .github/workflows
+            security-checks
+      - name: Verify public scope, original security tests and frozen sources
+        id: security
+        run: |
+          echo '82404f37dc8be6d535a0fc764b20b35f25a6b8ac77e5b15dd970fe89969b0c99  .diagnostics/native-public-ui/hashes.json' | shasum -a 256 -c -
+          ruby -c .diagnostics/native-public-ui/project.rb
+          python3 -m unittest discover -s .diagnostics/native-public-ui -p test_runner.py -v
+          node --test security-checks/workflow-security.test.mjs .diagnostics/native-public-ui/security.test.mjs
+      - name: One native core block, compilation before simulator creation
+        id: campaign
+        continue-on-error: true
+        run: python3 .diagnostics/native-public-ui/runner.py core
+      - name: Preserve only the reviewed public evidence archive
+        if: always() && steps.security.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: public-native-core-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/public-ui-core/evidence.zip
+            ${{ runner.temp }}/public-ui-core/integrity.json
+          if-no-files-found: error
+          retention-days: 1
+  journey:
+    needs: core
+    if: >-
+      needs.core.result == 'success' && needs.core.outputs.proceed == 'true' &&
+      github.run_attempt == '1'
+    runs-on: macos-15
+    timeout-minutes: 10
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .diagnostics/native-public-ui
+            .github/workflows
+            security-checks
+      - name: Verify frozen sources and public scope
+        id: security
+        run: |
+          echo '82404f37dc8be6d535a0fc764b20b35f25a6b8ac77e5b15dd970fe89969b0c99  .diagnostics/native-public-ui/hashes.json' | shasum -a 256 -c -
+          python3 -m unittest discover -s .diagnostics/native-public-ui -p test_runner.py -v
+          node --test security-checks/workflow-security.test.mjs .diagnostics/native-public-ui/security.test.mjs
+      - name: One fresh consent acceptance and public map-detail journey
+        id: campaign
+        continue-on-error: true
+        run: python3 .diagnostics/native-public-ui/runner.py journey
+      - name: Preserve only the reviewed public evidence archive
+        if: always() && steps.security.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: public-native-journey-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/public-ui-journey/evidence.zip
+            ${{ runner.temp }}/public-ui-journey/integrity.json
+          if-no-files-found: error
+          retention-days: 1
