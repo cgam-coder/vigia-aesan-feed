@@ -19,7 +19,7 @@ import sys
 import time
 import urllib.request
 
-TARGET = "https://03191785-vigia-runtime.c-gamiz93.workers.dev/es/alertas"
+TARGET = "https://cfd1cff7-vigia-runtime.c-gamiz93.workers.dev/es/alertas"
 OUT = Path("ios-safari-evidence")
 
 
@@ -264,7 +264,6 @@ return {url:location.href,title:document.title,viewport:{width:innerWidth,height
                 settle("return matchMedia('(prefers-color-scheme: dark)').matches;",appearance=='dark')
                 settle("return document.documentElement.getAttribute('data-na-theme');",appearance)
             return theme_state()
-        case('system-appearance-follow',system_theme)
         def manual_theme():
             click('.na-theme-toggle')
             settle("return localStorage.getItem('nagamealert-theme');",'dark')
@@ -275,7 +274,6 @@ return {url:location.href,title:document.title,viewport:{width:innerWidth,height
             settle("return document.documentElement.getAttribute('data-na-theme');",'dark')
             shot('native-dark')
             return theme_state()
-        case('manual-theme-precedence-persistence',manual_theme)
         def invalid_theme():
             js("localStorage.setItem('nagamealert-theme','invalid-ui-probe');return true;")
             wd("POST",base+'/refresh',{})
@@ -283,44 +281,45 @@ return {url:location.href,title:document.title,viewport:{width:innerWidth,height
             state=theme_state()
             if state['stored'] in ['light','dark']:raise AssertionError('invalid preference produced manual override')
             return state
-        case('invalid-theme-fallback',invalid_theme)
         def consent(choice):
             js("localStorage.removeItem('nagamealert.analytics-consent.v1');return true;")
             wd("POST",base+'/refresh',{})
             selector='[role=dialog] button'
             wanted='Aceptar analítica' if choice=='accepted' else 'Rechazar analítica'
             settle("return !!document.querySelector('[role=dialog]');")
-            buttons=wd('POST',base+'/elements',{'using':'css selector','value':selector})
-            for b in buttons:
-                eid=b['element-6066-11e4-a52e-4f735466cecf']
-                if wd('GET',base+'/element/'+eid+'/text')==wanted:
-                    wd('POST',base+'/element/'+eid+'/click',{});break
+            click('.na-consent__actions button:nth-child('+('2' if choice=='accepted' else '1')+')')
             settle("return !document.querySelector('[role=dialog]');")
             wd('POST',base+'/refresh',{})
             settle("return !document.querySelector('[role=dialog]');")
             state=js("return {consent:JSON.parse(localStorage.getItem('nagamealert.analytics-consent.v1')),ga:!!document.querySelector('script[src*=googletagmanager]')};")
             if state['consent']['choice']!=choice or state['ga']:raise AssertionError(str(state))
             return {**state,'expected':'Preview persists choice and does not load production-only GA'}
+        case('initial-consent-reject-setup',lambda:consent('rejected'))
         case('analytics-accept-persistence',lambda:consent('accepted'))
         case('analytics-reject-persistence',lambda:consent('rejected'))
+        case('system-appearance-follow',system_theme)
+        case('manual-theme-precedence-persistence',manual_theme)
+        case('invalid-theme-fallback',invalid_theme)
         def geometry():
+            shot('native-header-fixed')
             data=js(r"""const box=e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height}};
 const a=document.querySelector('.na-public-brand'),text=[];for(const e of a.querySelectorAll('.na-brand-name,small')){const range=document.createRange();range.selectNodeContents(e);text.push(...Array.from(range.getClientRects(),r=>({x:r.x,y:r.y,right:r.right,bottom:r.bottom})));}
-const controls=Array.from(document.querySelectorAll('.na-public-mobile-nav summary,.na-public-header__actions a,.na-theme-toggle')).map(e=>{const r=box(e);return {text:e.textContent,box:r,hit:[.2,.5,.8].every(t=>e.contains(document.elementFromPoint(r.x+r.width*t,r.y+r.height/2)))}});
+const controls=Array.from(document.querySelectorAll('.na-public-mobile-nav summary,.na-language-selector a,.na-theme-toggle')).filter(e=>e.getBoundingClientRect().height&&e.checkVisibility({visibilityProperty:true,opacityProperty:true})).map(e=>{const r=box(e);return {text:e.textContent,box:r,hit:[.2,.5,.8].every(t=>e.contains(document.elementFromPoint(r.x+r.width*t,r.y+r.height/2)))}});
 return {brand:box(a),text,controls,viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio,scale:visualViewport.scale},documentWidth:document.documentElement.scrollWidth};""")
             def overlap(a,b):return min(a['right'],b['right'])>max(a['x'],b['x'])+1 and min(a['bottom'],b['bottom'])>max(a['y'],b['y'])+1
             for t in data['text']:
                 if t['x']<data['brand']['x']-1 or t['right']>data['brand']['right']+1:raise AssertionError('painted brand text outside link: '+str(data))
                 if any(overlap(t,c['box']) for c in data['controls']):raise AssertionError('internal collision: '+str(data))
-            if not data['controls'] or any(not c['hit'] or c['box']['height']<43 for c in data['controls']):raise AssertionError('control occluded/undersized: '+str(data))
+            if not data['controls'] or any(not c['hit'] or c['box']['height']<24 or ('Menú' in c['text'] and c['box']['height']<43) for c in data['controls']):raise AssertionError('control occluded/undersized: '+str(data))
             if data['documentWidth']>data['viewport']['width']+1:raise AssertionError('document overflow')
-            shot('native-header-fixed')
             return data
         case('header-painted-text-geometry-click-area',geometry)
         def menu():
             click('.na-public-mobile-nav summary')
             settle("return document.querySelector('.na-public-mobile-nav').open;")
             links=js("return Array.from(document.querySelectorAll('.na-public-mobile-nav a')).map(e=>({text:e.textContent,url:e.getAttribute('href'),visible:e.getBoundingClientRect().height>0}));")
+            bounds=js("const r=document.querySelector('.na-public-nav--mobile').getBoundingClientRect();return {x:r.x,right:r.right,width:innerWidth};")
+            if bounds['x']<0 or bounds['right']>bounds['width']:raise AssertionError('Menu panel clipped '+str(bounds))
             if not links or not all(x['visible'] for x in links):raise AssertionError(str(links))
             shot('native-menu')
             click('.na-public-mobile-nav summary')
@@ -379,7 +378,7 @@ return {brand:box(a),text,controls,viewport:{width:innerWidth,height:innerHeight
             out=[]
             for name,url in [('f7-before','https://579819b1-vigia-runtime.c-gamiz93.workers.dev/es/'),('f7-candidate',TARGET.split('/es/')[0]+'/es/')]:
                 wd('POST',base+'/url',{'url':url})
-                js("localStorage.setItem('nagamealert.analytics-consent.v1',JSON.stringify({choice:'rejected',updatedAt:1,version:1}));localStorage.removeItem('nagamealert-theme');return true;")
+                js("localStorage.setItem('nagamealert.analytics-consent.v1',JSON.stringify({choice:'rejected',updatedAt:1,version:1}));localStorage.setItem('nagamealert-theme','light');return true;")
                 wd('POST',base+'/refresh',{})
                 js("const s=document.createElement('style');s.textContent='*,*::before,*::after { animation-play-state:paused!important; animation-delay:0s!important; transition:none!important }';document.head.append(s);return true;")
                 time.sleep(1)

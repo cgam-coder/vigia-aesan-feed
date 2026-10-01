@@ -6,6 +6,8 @@ name: TEMP UI-F1A bounded native and Chromium matrix
     paths:
       - .diagnostics/ios_safari_smoke.py
       - .diagnostics/chromium_matrix.mjs
+      - .diagnostics/native_ui_probe.py
+      - .diagnostics/native_ui_project.rb
       - .github/workflows/ui-f1a-ios-simulator-once.yml
 
 permissions:
@@ -36,7 +38,7 @@ jobs:
       - name: Verify exact authorized script and existing security contracts
         id: security
         run: |
-          echo '6b50b4976956752646ef9c1fa931c0c3363e4828e9cc4e32ae60113647b3759e  .diagnostics/ios_safari_smoke.py' | shasum -a 256 -c -
+          echo '96e23695b1916c5d59b8e7bea38369b5f505f5180a85da8b0ae7ff9eef9f9ea5  .diagnostics/ios_safari_smoke.py' | shasum -a 256 -c -
           node --test security-checks/workflow-security.test.mjs
           python3 .diagnostics/ios_safari_smoke.py --self-test
       - name: Foreground Simulator and capture before and after navigation
@@ -96,7 +98,7 @@ jobs:
       - name: Verify exact reviewed scripts and security contracts
         id: security
         run: |
-          echo '38825bb0fb00c8211691f0c05a47119d60b36730c1e0d9de28b304c08cbbfeb2  .diagnostics/chromium_matrix.mjs' | sha256sum -c -
+          echo 'dee9d130f0c3e3b66003012bbd00c9b669872a389d1f5df17c0d2f3f3e04883d  .diagnostics/chromium_matrix.mjs' | sha256sum -c -
           node --test security-checks/workflow-security.test.mjs
       - name: Install pinned diagnostic libraries without install scripts
         run: timeout 120s npm install --prefix "$RUNNER_TEMP/ui-probe" playwright@1.62.1 pixelmatch@7.1.0 pngjs@7.0.0 --ignore-scripts --no-audit --no-fund
@@ -132,6 +134,52 @@ jobs:
             chromium-evidence/narrow-f7-baseline.png
             chromium-evidence/narrow-f7-candidate.png
             chromium-evidence/narrow-f7-diff.png
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 6
+
+  native-ui-os-interactions:
+    if: >-
+      github.repository == 'cgam-coder/vigia-aesan-feed' &&
+      github.event.repository.private == false &&
+      github.ref == 'refs/heads/diag/ui-f1a-ios-simulator-20261001' &&
+      github.run_attempt == '1'
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - name: Checkout reviewed public diagnostics and guards
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .diagnostics
+            .github/workflows
+            security-checks
+      - name: Verify reviewed native UI probe and existing contracts
+        id: security
+        run: |
+          echo 'ab2117268e4224b1df484d552e0bc2b16265cdf035f5c81c4177a86682e1f86e  .diagnostics/native_ui_probe.py' | shasum -a 256 -c -
+          echo '413b2a9afff6e04db12000e18bd3cfe2792380fbb29439314a93c0394c526342  .diagnostics/native_ui_project.rb' | shasum -a 256 -c -
+          node --test security-checks/workflow-security.test.mjs
+      - name: Test native keyboard rotation and pinch with independent deadline and owned simulator cleanup
+        run: python3 .diagnostics/native_ui_probe.py
+      - name: Preserve only reviewed public-page native captures and bounded report
+        if: always() && steps.security.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-ui-os-${{ github.run_id }}
+          path: |
+            native-ui-evidence/report.json
+            native-ui-evidence/native-before.png
+            native-ui-evidence/native-after.png
+            native-ui-evidence/native-ui-dark.png
+            native-ui-evidence/native-ui-menu.png
+            native-ui-evidence/native-keyboard.png
+            native-ui-evidence/native-keyboard-results.png
+            native-ui-evidence/native-landscape-bars.png
+            native-ui-evidence/native-scroll-bars.png
+            native-ui-evidence/native-portrait-bars.png
+            native-ui-evidence/native-pinch-zoom.png
           if-no-files-found: error
           retention-days: 1
           compression-level: 6
