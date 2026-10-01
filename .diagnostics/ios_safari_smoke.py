@@ -290,10 +290,10 @@ return {url:location.href,title:document.title,viewport:{width:innerWidth,height
         persist()
 
     def expire(_sig, _frame):
-        raise CaptureDeadline("Independent 360-second capture deadline exceeded")
+        raise CaptureDeadline("Independent 420-second capture deadline exceeded")
 
     signal.signal(signal.SIGALRM, expire)
-    signal.alarm(360)
+    signal.alarm(420)
     try:
         mark("runner")
         if platform.system() != "Darwin" or os.environ.get("GITHUB_REPOSITORY") != "cgam-coder/vigia-aesan-feed":
@@ -331,6 +331,7 @@ return {url:location.href,title:document.title,viewport:{width:innerWidth,height
         report["nativeAppleSafari"] = confirmed
         report["application"] = {"bundleId": "com.apple.mobilesafari", "launchConfirmed": confirmed}
         time.sleep(5)
+        navigate_and_capture()
         interactive_probe()
         report["reviewStatus"] = "PENDING_VISUAL_REVIEW; image presence and command status are not product PASS"
         mark("capture-complete")

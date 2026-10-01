@@ -38,7 +38,7 @@ jobs:
       - name: Verify exact authorized script and existing security contracts
         id: security
         run: |
-          echo '085331337d235a73ede8aad58ddce4a7d8c0cccc22984331b47218b91f92bf2f  .diagnostics/ios_safari_smoke.py' | shasum -a 256 -c -
+          echo '78d191527943c83acc174ef9af11f49f0465327fdd38897fb2d9c59a1fa78f9f  .diagnostics/ios_safari_smoke.py' | shasum -a 256 -c -
           node --test security-checks/workflow-security.test.mjs
           python3 .diagnostics/ios_safari_smoke.py --self-test
       - name: Foreground Simulator and capture before and after navigation
