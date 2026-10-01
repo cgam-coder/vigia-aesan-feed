@@ -5,7 +5,7 @@ name: TEMP UI-F1A bounded native and Chromium matrix
     branches: [diag/ui-f1a-ios-simulator-20261001]
     paths:
       - .diagnostics/ios_safari_smoke.py
-      - .diagnostics/chromium_matrix.mjs
+      - .diagnostics/chromium_two_cases.mjs
       - .diagnostics/native_ui_probe.py
       - .diagnostics/native_ui_project.rb
       - .github/workflows/ui-f1a-ios-simulator-once.yml
@@ -38,7 +38,7 @@ jobs:
       - name: Verify exact authorized script and existing security contracts
         id: security
         run: |
-          echo 'd1f695dff4cf973d25a884e5d91fc275738c6a1a05dbf945d4e002e143bf09cb  .diagnostics/ios_safari_smoke.py' | shasum -a 256 -c -
+          echo '35793924f6066c501b4037fd2ed03c25878dd2a392f0f01baa96f86b09843036  .diagnostics/ios_safari_smoke.py' | shasum -a 256 -c -
           node --test security-checks/workflow-security.test.mjs
           python3 .diagnostics/ios_safari_smoke.py --self-test
       - name: Foreground Simulator and capture before and after navigation
@@ -68,14 +68,14 @@ jobs:
           retention-days: 1
           compression-level: 6
 
-  chromium-matrix:
+  chromium-two-cases:
     if: >-
       github.repository == 'cgam-coder/vigia-aesan-feed' &&
       github.event.repository.private == false &&
       github.ref == 'refs/heads/diag/ui-f1a-ios-simulator-20261001' &&
       github.run_attempt == '1'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 6
     steps:
       - name: Checkout reviewed diagnostic and security checks
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -88,48 +88,24 @@ jobs:
       - name: Verify exact reviewed scripts and security contracts
         id: security
         run: |
-          echo 'a0bb0e11ce5d5581e05ece166ae8e27620c5a0717baf0fc4b3cb521d11c8dc4b  .diagnostics/chromium_matrix.mjs' | sha256sum -c -
+          echo 'eeb31a7535082d650462df3b0da36088c197883c2792b5f8808ba29e5ee78797  .diagnostics/chromium_two_cases.mjs' | sha256sum -c -
           node --test security-checks/workflow-security.test.mjs
       - name: Install pinned diagnostic libraries without install scripts
         run: timeout 120s npm install --prefix "$RUNNER_TEMP/ui-probe" playwright@1.62.1 pixelmatch@7.1.0 pngjs@7.0.0 --ignore-scripts --no-audit --no-fund
       - name: Execute public-page Chromium matrix with external deadline
-        run: timeout 360s node .diagnostics/chromium_matrix.mjs "$RUNNER_TEMP/ui-probe"
+        run: timeout 180s node .diagnostics/chromium_two_cases.mjs "$RUNNER_TEMP/ui-probe"
       - name: Preserve only reviewed public-page captures and bounded JSON
         if: always() && steps.security.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: chromium-ui-f1a-${{ github.run_id }}
+          name: chromium-two-cases-${{ github.run_id }}
           path: |
-            chromium-evidence/report.json
-            chromium-evidence/mobile-header.png
-            chromium-evidence/desktop-header.png
-            chromium-evidence/tablet-header.png
-            chromium-evidence/narrow-header.png
-            chromium-evidence/mobile-dark.png
-            chromium-evidence/mobile-menu.png
-            chromium-evidence/mobile-filters.png
-            chromium-evidence/mobile-search.png
-            chromium-evidence/mobile-map.png
-            chromium-evidence/mobile-detail.png
-            chromium-evidence/mobile-landscape.png
-            chromium-evidence/mobile-dark-header.png
-            chromium-evidence/desktop-dark-header.png
-            chromium-evidence/tablet-dark-header.png
-            chromium-evidence/narrow-dark-header.png
-            chromium-evidence/mobile-dark-menu.png
-            chromium-evidence/narrow-dark-menu.png
-            chromium-evidence/mobile-f7-baseline.png
-            chromium-evidence/mobile-f7-candidate.png
-            chromium-evidence/mobile-f7-diff.png
-            chromium-evidence/desktop-f7-baseline.png
-            chromium-evidence/desktop-f7-candidate.png
-            chromium-evidence/desktop-f7-diff.png
-            chromium-evidence/tablet-f7-baseline.png
-            chromium-evidence/tablet-f7-candidate.png
-            chromium-evidence/tablet-f7-diff.png
-            chromium-evidence/narrow-f7-baseline.png
-            chromium-evidence/narrow-f7-candidate.png
-            chromium-evidence/narrow-f7-diff.png
+            two-case-evidence/report.json
+            two-case-evidence/system-dark.png
+            two-case-evidence/system-light.png
+            two-case-evidence/f7-desktop-baseline.png
+            two-case-evidence/f7-desktop-candidate.png
+            two-case-evidence/f7-desktop-diff.png
           if-no-files-found: error
           retention-days: 1
           compression-level: 6

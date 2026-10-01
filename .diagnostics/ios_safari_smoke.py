@@ -87,7 +87,7 @@ def self_test() -> None:
 
 def main() -> int:
     OUT.mkdir(exist_ok=True)
-    report = {"scope": "single-page native Safari capture; not a compatibility matrix",
+    report = {"scope": "final native header geometry in real system themes and F7 production comparison; input/gestures not certified",
               "target": TARGET, "diagnosticSha": os.environ.get("GITHUB_SHA"),
               "runId": os.environ.get("GITHUB_RUN_ID"), "runnerImage": os.environ.get("ImageVersion"),
               "captureReady": False, "productPass": None, "nativeAppleSafari": False,
@@ -291,14 +291,13 @@ return {url:location.href,title:document.title,viewport:{width:innerWidth,height
         sdk = command(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-version"]).decode().strip()
         report["host"] = {"macOS": command(["sw_vers"]).decode().strip(), "arch": platform.machine(),
                           "xcode": command(["xcodebuild", "-version"]).decode().strip(), "simulatorSDK": sdk}
-        mark("reuse-verified-checkpoint-runtime")
-        if sdk != "18.5":raise RuntimeError("Selected SDK changed from verified checkpoint; no runtime installation or inventory retry")
-        device={"name":"iPhone 16","deviceTypeIdentifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-16"}
-        runtime={"name":"iOS 18.5","version":"18.5","buildversion":"22F77","identifier":"com.apple.CoreSimulator.SimRuntime.iOS-18-5"}
+        mark("inventory-verified-route")
+        inventory=json.loads(command(["xcrun","simctl","list","--json"],75))
+        device,runtime=choose_device(inventory,sdk)
         report["selected"] = {"model": device["name"], "runtime": runtime["name"],
                               "runtimeVersion": runtime.get("version"), "runtimeBuild": runtime.get("buildversion")}
         mark("create-disposable-simulator")
-        sim_id = command(["xcrun", "simctl", "create", "UI-F1A-native-capture", device["deviceTypeIdentifier"], runtime["identifier"]], 30).decode().strip()
+        sim_id = command(["xcrun", "simctl", "create", "UI-F1A-native-"+os.environ.get("GITHUB_RUN_ID","local"), device["deviceTypeIdentifier"], runtime["identifier"]], 75).decode().strip()
         if not re.fullmatch(r"[A-Fa-f0-9-]{36}", sim_id):
             raise RuntimeError("Invalid simulator ID")
         report["simulatorUDID"] = sim_id
