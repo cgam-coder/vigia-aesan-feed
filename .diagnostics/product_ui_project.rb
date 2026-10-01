@@ -24,7 +24,7 @@ final class ProductUITests:XCTestCase {
  func check(_ ok:Bool,_ text:String) throws { if !ok { throw Stop.blocked(text) } }
  func snapshot(_ caseName:String,_ phase:String,_ values:[String:Any]=[:]) {
   var data=values;data["case"]=caseName;data["stage"]=caseName+"-"+phase;data["phase"]=phase;data["dateMs"]=Int64(Date().timeIntervalSince1970*1000);data["testIdentifier"]="ProductUITests/testProductBlock()"
-  data["webFrame"]=web.exists ? NSStringFromCGRect(web.frame) : "unavailable";data["keyboardVisible"]=safari.keyboards.firstMatch.exists
+  data["webFrame"]=web.exists ? NSCoder.string(for:web.frame) : "unavailable";data["keyboardVisible"]=safari.keyboards.firstMatch.exists
   if let bytes=try? JSONSerialization.data(withJSONObject:data,options:[.sortedKeys]) {
    let state=XCTAttachment(data:bytes,uniformTypeIdentifier:"public.json");state.name="product-state-"+caseName+"-"+phase;state.lifetime = .keepAlways;add(state)
   }
@@ -87,7 +87,7 @@ final class ProductUITests:XCTestCase {
    let menu=self.web.buttons.matching(NSPredicate(format:"label BEGINSWITH %@","Menú")).firstMatch
    try self.tap(menu,"Menu")
    let link=self.web.links["Fuentes"];try self.check(link.waitForExistence(timeout:5) && link.isHittable,"Mobile menu link not accessible")
-   self.snapshot("menu","open",["linkFrame":NSStringFromCGRect(link.frame)])
+   self.snapshot("menu","open",["linkFrame":NSCoder.string(for:link.frame)])
    try self.tap(menu,"Menu close");try self.check(!link.isHittable,"Mobile links remain hittable after close")
    return ["openedClosed":true]
   }
@@ -118,7 +118,7 @@ final class ProductUITests:XCTestCase {
    let input=self.web.searchFields.firstMatch.exists ? self.web.searchFields.firstMatch : self.web.textFields["Buscar en todo el archivo NagameAlert"]
    try self.tap(input,"Global search")
    try self.check(self.safari.keyboards.firstMatch.waitForExistence(timeout:5),"Native software keyboard absent")
-   self.snapshot("keyboard","focused",["inputFrame":NSStringFromCGRect(input.frame),"keyboardFrame":NSStringFromCGRect(self.safari.keyboards.firstMatch.frame),"inputValue":String(describing:input.value)])
+   self.snapshot("keyboard","focused",["inputFrame":NSCoder.string(for:input.frame),"keyboardFrame":NSCoder.string(for:self.safari.keyboards.firstMatch.frame),"inputValue":String(describing:input.value)])
    input.typeText("cacahuete")
    if self.safari.keyboards.buttons["Search"].exists { self.safari.keyboards.buttons["Search"].tap() } else { input.typeText("\n") }
    let result=self.web.staticTexts.matching(NSPredicate(format:"label CONTAINS[c] %@","Advertencia para personas")).firstMatch

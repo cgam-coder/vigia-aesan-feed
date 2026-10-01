@@ -11,7 +11,7 @@ class Deadline(Exception):pass
 
 def main():
  OUT.mkdir(exist_ok=False)
- report={'candidateSha':'df5ea1f2918ae232c22e7a31bb0866ab910eb881','preview':'https://8c4df878-vigia-runtime.c-gamiz93.workers.dev/es/alertas','diagnosticSha':os.environ.get('GITHUB_SHA'),'runId':os.environ.get('GITHUB_RUN_ID'),'runAttempt':os.environ.get('GITHUB_RUN_ATTEMPT'),'physicalIPhone':False,'calibrationRepeated':False,'canonicalCIRepeated':False,'stages':[],'execution':{'status':'UNKNOWN'},'productGate':'HOLD','cleanup':{},'evidence':{},'cases':{}}
+ report={'candidateSha':'df5ea1f2918ae232c22e7a31bb0866ab910eb881','preview':'https://8c4df878-vigia-runtime.c-gamiz93.workers.dev/es/alertas','diagnosticSha':os.environ.get('GITHUB_SHA'),'runId':os.environ.get('GITHUB_RUN_ID'),'runAttempt':os.environ.get('GITHUB_RUN_ATTEMPT'),'physicalIPhone':False,'calibrationRepeated':False,'canonicalCIRepeated':False,'stages':[],'execution':{'status':'UNKNOWN'},'productGate':'HOLD','cleanup':{},'evidence':{},'cases':{},'buildStarted':False,'buildSucceeded':False}
  sim=None;old_keyboard=None;tests={};recovery={}
  def persist():(OUT/'report.json').write_text(json.dumps(report,indent=2))
  def mark(stage):report['stages'].append({'stage':stage,'timeMs':int(time.time()*1000)});report['lastStage']=stage;persist();print('PRODUCT_RUN_STAGE '+stage,flush=True)
@@ -38,6 +38,7 @@ def main():
   report['host']={'simulatorSDK':sdk,'xcode':cmd(['xcodebuild','-version']),'macOS':cmd(['sw_vers'])}
   mark('generate-product-project-and-build')
   cmd(['ruby',str(Path(__file__).with_name('product_ui_project.rb'))],20)
+  report['buildStarted']=True;persist()
   cmd(['xcodebuild','build-for-testing','-project','ProductUI/ProductUI.xcodeproj','-scheme','ProductUI','-sdk','iphonesimulator','-destination','generic/platform=iOS Simulator','-derivedDataPath','product-derived','CODE_SIGNING_ALLOWED=NO'],110)
   report['buildSucceeded']=True
   sim=cmd(['xcrun','simctl','create','Product-XCTest-'+os.environ['GITHUB_RUN_ID'],'com.apple.CoreSimulator.SimDeviceType.iPhone-16','com.apple.CoreSimulator.SimRuntime.iOS-18-5'],75).strip()
@@ -95,6 +96,8 @@ def main():
   finally:signal.alarm(0)
   log=(OUT/'test.log').read_text(errors='replace') if (OUT/'test.log').exists() else ''
   report['execution']=collector.classify_execution(tests,{},log)
+  if report['buildStarted'] and not report['buildSucceeded'] and not report.get('testCommandStarted'):
+   report['execution'].update(status='NOT_EXECUTED_BUILD_BLOCKED',xctestStarted=False)
   report['cases']=collector.case_results(recovery,report['execution'])
   if sim:
    try:report['osAppearanceAfter']=cmd(['xcrun','simctl','ui',sim,'appearance'],10).strip()
@@ -109,12 +112,15 @@ def main():
    for action in ['shutdown','delete']:
     try:cmd(['xcrun','simctl',action,sim],20);report['cleanup'][action]=True
     except Exception as e:report['cleanup'][action]=False;report['cleanup'][action+'Error']=str(e)[:500]
-  report['cleanup']['gate']='PASS' if all(report['cleanup'].get(k) for k in ('shutdown','delete','keyboardPreferenceRestored')) else 'HOLD'
+  if sim is None and old_keyboard is None:
+   report['cleanup'].update(gate='PASS_NO_RESOURCES_CREATED',simulator='NOT_CREATED',keyboardPreference='NOT_CHANGED')
+  else:
+   report['cleanup']['gate']='PASS' if all(report['cleanup'].get(k) for k in ('shutdown','delete','keyboardPreferenceRestored')) else 'HOLD'
   integrity=[]
   for path in sorted(OUT.iterdir()):
    if path.is_file() and path.name not in ['report.json','upload-integrity.json']:
     raw=path.read_bytes();integrity.append({'path':path.name,'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()})
   (OUT/'upload-integrity.json').write_text(json.dumps({'files':integrity},indent=2));persist();print('PRODUCT_XCTEST_RESULT '+json.dumps(report),flush=True)
- return 0 if report['cleanup']['gate']=='PASS' else 1
+ return 0 if report['cleanup']['gate'].startswith('PASS') else 1
 
 if __name__=='__main__':sys.exit(main())

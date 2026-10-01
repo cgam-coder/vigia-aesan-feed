@@ -186,7 +186,7 @@ def case_results(report,execution):
         evidence=bool(ordered and report.get('imagePairs',{}).get(case) and not report.get('errors'))
         observed=after.get('product','UNKNOWN')
         # XCTest composite Passed describes harness completion, never nine product PASSes.
-        result[case]={'execution':after.get('execution','UNKNOWN'),'productObservation':observed,'evidence':'RECOVERED_PENDING_VISUAL_REVIEW' if evidence else 'HOLD','chronologyVerified':ordered,'visualReview':'PENDING','productGate':'HOLD','reason':after.get('error',after.get('reason')),'dependency':str(after.get('error','')).find('DEPENDENCY:')>=0,'testExecution':execution.get('status','UNKNOWN')}
+        result[case]={'execution':after.get('execution','NOT_EXECUTED' if execution.get('status')=='NOT_EXECUTED_BUILD_BLOCKED' else 'UNKNOWN'),'productObservation':observed,'evidence':'RECOVERED_PENDING_VISUAL_REVIEW' if evidence else 'HOLD','chronologyVerified':ordered,'visualReview':'PENDING','productGate':'HOLD','reason':after.get('error',after.get('reason')),'dependency':str(after.get('error','')).find('DEPENDENCY:')>=0,'testExecution':execution.get('status','UNKNOWN')}
     result['consent-accept']={'execution':'NOT_EXECUTED','productGate':'HOLD','reason':'Independent clean acceptance deferred within the single-job budget'}
     return result
 
