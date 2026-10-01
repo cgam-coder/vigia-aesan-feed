@@ -19,7 +19,7 @@ import sys
 import time
 import urllib.request
 
-TARGET = "https://579819b1-vigia-runtime.c-gamiz93.workers.dev/es/alertas"
+TARGET = "https://03191785-vigia-runtime.c-gamiz93.workers.dev/es/alertas"
 OUT = Path("ios-safari-evidence")
 
 
@@ -220,8 +220,179 @@ return {url:location.href,title:document.title,viewport:{width:innerWidth,height
         report["geometry"] = wd("POST", base + "/execute/sync", {"script": script, "args": []})
         report["interactiveControlVerified"] = bool(report["geometry"].get("content"))
         mark("native-driver-capture")
-        capture("safari-after.png")
+        capture("native-header.png")
+        run_matrix(base)
         report["reviewStatus"] = "INTERACTIVE_MICROPROBE_ONLY; keyboard suppressed by SafariDriver; no matrix PASS"
+
+    def run_matrix(base):
+        import base64
+        report["cases"] = []
+        def js(script):
+            return wd("POST", base+"/execute/sync", {"script":script,"args":[]}, 20)
+        def find(css):
+            return wd("POST", base+"/element", {"using":"css selector","value":css})["element-6066-11e4-a52e-4f735466cecf"]
+        def click(css):
+            wd("POST", base+"/element/"+find(css)+"/click",{})
+        def settle(script, expected=True):
+            end=time.monotonic()+8
+            while time.monotonic()<end:
+                value=js(script)
+                if value==expected:return value
+                time.sleep(.4)
+            raise AssertionError("Expected state missing: "+script[:180]+"; got "+str(value)[:500])
+        def shot(name):
+            raw=base64.b64decode(wd("GET",base+"/screenshot",timeout=20))
+            (OUT/(name+".png")).write_bytes(raw)
+            report["screenshots"].append({"file":name+".png","stage":"matrix","ok":True,**png_info(raw)})
+            capture(name+"-native.png")
+        def case(name,fn):
+            mark("case-"+name)
+            try:
+                evidence=fn()
+                report["cases"].append({"case":name,"status":"PASS","evidence":evidence})
+            except CaptureDeadline:raise
+            except Exception as e:
+                report["cases"].append({"case":name,"status":"FAIL","error":str(e)[:1400]})
+            persist()
+        def theme_state():
+            return js("return {theme:document.documentElement.getAttribute('data-na-theme'),stored:localStorage.getItem('nagamealert-theme'),dark:matchMedia('(prefers-color-scheme: dark)').matches};")
+        def system_theme():
+            js("localStorage.removeItem('nagamealert-theme');return true;")
+            wd("POST",base+"/refresh",{})
+            for appearance in ['light','dark','light']:
+                command(['xcrun','simctl','ui',sim_id,'appearance',appearance],15)
+                settle("return matchMedia('(prefers-color-scheme: dark)').matches;",appearance=='dark')
+                settle("return document.documentElement.getAttribute('data-na-theme');",appearance)
+            return theme_state()
+        case('system-appearance-follow',system_theme)
+        def manual_theme():
+            click('.na-theme-toggle')
+            settle("return localStorage.getItem('nagamealert-theme');",'dark')
+            wd("POST",base+'/refresh',{})
+            settle("return document.documentElement.getAttribute('data-na-theme');",'dark')
+            command(['xcrun','simctl','ui',sim_id,'appearance','dark'],15)
+            command(['xcrun','simctl','ui',sim_id,'appearance','light'],15)
+            settle("return document.documentElement.getAttribute('data-na-theme');",'dark')
+            shot('native-dark')
+            return theme_state()
+        case('manual-theme-precedence-persistence',manual_theme)
+        def invalid_theme():
+            js("localStorage.setItem('nagamealert-theme','invalid-ui-probe');return true;")
+            wd("POST",base+'/refresh',{})
+            settle("return document.documentElement.getAttribute('data-na-theme');",'light')
+            state=theme_state()
+            if state['stored'] in ['light','dark']:raise AssertionError('invalid preference produced manual override')
+            return state
+        case('invalid-theme-fallback',invalid_theme)
+        def consent(choice):
+            js("localStorage.removeItem('nagamealert.analytics-consent.v1');return true;")
+            wd("POST",base+'/refresh',{})
+            selector='[role=dialog] button'
+            wanted='Aceptar analítica' if choice=='accepted' else 'Rechazar analítica'
+            settle("return !!document.querySelector('[role=dialog]');")
+            buttons=wd('POST',base+'/elements',{'using':'css selector','value':selector})
+            for b in buttons:
+                eid=b['element-6066-11e4-a52e-4f735466cecf']
+                if wd('GET',base+'/element/'+eid+'/text')==wanted:
+                    wd('POST',base+'/element/'+eid+'/click',{});break
+            settle("return !document.querySelector('[role=dialog]');")
+            wd('POST',base+'/refresh',{})
+            settle("return !document.querySelector('[role=dialog]');")
+            state=js("return {consent:JSON.parse(localStorage.getItem('nagamealert.analytics-consent.v1')),ga:!!document.querySelector('script[src*=googletagmanager]')};")
+            if state['consent']['choice']!=choice or state['ga']:raise AssertionError(str(state))
+            return {**state,'expected':'Preview persists choice and does not load production-only GA'}
+        case('analytics-accept-persistence',lambda:consent('accepted'))
+        case('analytics-reject-persistence',lambda:consent('rejected'))
+        def geometry():
+            data=js(r"""const box=e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height}};
+const a=document.querySelector('.na-public-brand'),text=[];for(const e of a.querySelectorAll('.na-brand-name,small')){const range=document.createRange();range.selectNodeContents(e);text.push(...Array.from(range.getClientRects(),r=>({x:r.x,y:r.y,right:r.right,bottom:r.bottom})));}
+const controls=Array.from(document.querySelectorAll('.na-public-mobile-nav summary,.na-public-header__actions a,.na-theme-toggle')).map(e=>{const r=box(e);return {text:e.textContent,box:r,hit:[.2,.5,.8].every(t=>e.contains(document.elementFromPoint(r.x+r.width*t,r.y+r.height/2)))}});
+return {brand:box(a),text,controls,viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio,scale:visualViewport.scale},documentWidth:document.documentElement.scrollWidth};""")
+            def overlap(a,b):return min(a['right'],b['right'])>max(a['x'],b['x'])+1 and min(a['bottom'],b['bottom'])>max(a['y'],b['y'])+1
+            for t in data['text']:
+                if t['x']<data['brand']['x']-1 or t['right']>data['brand']['right']+1:raise AssertionError('painted brand text outside link: '+str(data))
+                if any(overlap(t,c['box']) for c in data['controls']):raise AssertionError('internal collision: '+str(data))
+            if not data['controls'] or any(not c['hit'] or c['box']['height']<43 for c in data['controls']):raise AssertionError('control occluded/undersized: '+str(data))
+            if data['documentWidth']>data['viewport']['width']+1:raise AssertionError('document overflow')
+            shot('native-header-fixed')
+            return data
+        case('header-painted-text-geometry-click-area',geometry)
+        def menu():
+            click('.na-public-mobile-nav summary')
+            settle("return document.querySelector('.na-public-mobile-nav').open;")
+            links=js("return Array.from(document.querySelectorAll('.na-public-mobile-nav a')).map(e=>({text:e.textContent,url:e.getAttribute('href'),visible:e.getBoundingClientRect().height>0}));")
+            if not links or not all(x['visible'] for x in links):raise AssertionError(str(links))
+            shot('native-menu')
+            click('.na-public-mobile-nav summary')
+            settle("return document.querySelector('.na-public-mobile-nav').open;",False)
+            return links
+        case('mobile-menu-open-close',menu)
+        def filters():
+            click('.na-terminal-filter-trigger')
+            settle("return document.querySelector('.na-terminal-filters').open;")
+            click('#terminal-country option[value=ES]')
+            settle("return new URL(location.href).searchParams.get('country');",'ES')
+            settle("return document.querySelector('.na-terminal-results').getAttribute('aria-busy');",'false')
+            shot('native-filters')
+            buttons=wd('POST',base+'/elements',{'using':'css selector','value':'.na-terminal-filters__body button'})
+            for b in buttons:
+                eid=b['element-6066-11e4-a52e-4f735466cecf']
+                if 'Restablecer' in wd('GET',base+'/element/'+eid+'/text'):
+                    wd('POST',base+'/element/'+eid+'/click',{});break
+            settle("return new URL(location.href).searchParams.has('country');",False)
+            click('.na-terminal-filters__close')
+            settle("return document.querySelector('.na-terminal-filters').open;",False)
+            return js("return {country:document.querySelector('#terminal-country').value,count:document.querySelector('.na-terminal-results__count')?.textContent,focus:document.activeElement.className};")
+        case('apply-clear-filters-and-focus',filters)
+        def search():
+            element=find('#global-alert-search')
+            wd('POST',base+'/element/'+element+'/click',{})
+            focus=js("return document.activeElement.id;")
+            if focus!='global-alert-search':raise AssertionError('search input not focused')
+            wd('POST',base+'/element/'+element+'/value',{'text':'cacahuete','value':list('cacahuete')})
+            click('.na-global-search button')
+            settle("return new URL(location.href).searchParams.get('q');",'cacahuete')
+            settle("return document.querySelector('.na-terminal-results').getAttribute('aria-busy');",'false')
+            content=js("return document.querySelector('.na-terminal-results').textContent;")
+            if 'cacahuete' not in content.lower():raise AssertionError('Expected search result content absent: '+content[:500])
+            shot('native-search')
+            return {'focus':focus,'q':'cacahuete','expectedResultFound':True,'softwareKeyboard':'HOLD: suppressed by SafariDriver'}
+        case('search-focus-results',search)
+        def map_detail():
+            wd('POST',base+'/url',{'url':TARGET+'?source=AESAN'})
+            settle("return document.querySelector('.na-terminal-results').getAttribute('aria-busy');",'false')
+            settle("return !!document.querySelector('.na-terminal-map');")
+            content=js("return {source:document.querySelector('[data-source=AESAN]').getAttribute('aria-current'),map:document.querySelector('.na-terminal-map').textContent,links:Array.from(document.querySelectorAll('.na-terminal-results a[href*=\"/alerta/\"]')).map(e=>({text:e.textContent,url:e.href}))};")
+            if content['source']!='page' or not content['links']:raise AssertionError('source/map/results state absent')
+            shot('native-map')
+            chosen=next((x for x in content['links'] if 'cacahuete' in x['text'].lower()),content['links'][0])
+            wd('POST',base+'/url',{'url':chosen['url']})
+            settle("return !!document.querySelector('h1');")
+            heading=js("return document.querySelector('h1').textContent;")
+            if not heading.strip():raise AssertionError('detail heading absent')
+            shot('native-detail')
+            wd('POST',base+'/back',{})
+            settle("return !!document.querySelector('#terminal-results-title');")
+            return {'source':'AESAN','mapText':content['map'][:500],'detailTitle':heading,'returnedToResults':True}
+        case('source-map-detail-back',map_detail)
+        def f7_pair():
+            out=[]
+            for name,url in [('f7-before','https://579819b1-vigia-runtime.c-gamiz93.workers.dev/es/'),('f7-candidate',TARGET.split('/es/')[0]+'/es/')]:
+                wd('POST',base+'/url',{'url':url})
+                js("localStorage.setItem('nagamealert.analytics-consent.v1',JSON.stringify({choice:'rejected',updatedAt:1,version:1}));localStorage.removeItem('nagamealert-theme');return true;")
+                wd('POST',base+'/refresh',{})
+                js("const s=document.createElement('style');s.textContent='*,*::before,*::after { animation-play-state:paused!important; animation-delay:0s!important; transition:none!important }';document.head.append(s);return true;")
+                time.sleep(1)
+                state=js("return {url:location.href,width:innerWidth,height:innerHeight,dpr:devicePixelRatio,scale:visualViewport.scale,fonts:document.fonts.status,theme:document.documentElement.getAttribute('data-na-theme')};")
+                shot(name);out.append(state)
+            return {'states':out,'baseline':'pre-patch immutable candidate; approved-baseline comparison remains separate','pixelComparison':'PENDING'}
+        case('f7-same-engine-regression-captures',f7_pair)
+        report['cases'] += [{'case':x,'status':'HOLD','reason':r} for x,r in [
+            ('native-software-keyboard','SafariDriver suppresses iOS software keyboard'),
+            ('native-pinch-zoom','No native gesture executed'),
+            ('native-orientation-safe-areas-browser-bars','Portrait captures only; rotation and changing bars not executed')]]
+        report['fullCompatibilityCertified']=False
+        persist()
 
     def expire(_sig, _frame):
         raise CaptureDeadline("Independent 420-second capture deadline exceeded")
@@ -274,7 +445,7 @@ return {url:location.href,title:document.title,viewport:{width:innerWidth,height
         report["error"] = f"{type(exc).__name__}: {exc}"
         if sim_id:
             try:
-                capture("iphone-simulator.png")
+                capture("failure-native.png")
             except Exception:
                 pass
         print("IOS_SAFARI_HOLD " + report["error"], flush=True)
