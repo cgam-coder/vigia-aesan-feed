@@ -22,6 +22,9 @@ try:
     shutil.copy2(ROOT/'package.json',WORK/'package.json')
     cmd(['npm','install','--package-lock-only','--ignore-scripts','--include=optional','--no-audit','--no-fund'],WORK,180,'03-resolve.log')
     lock=WORK/'package-lock.json';before=sha(lock)
+    for name in ('package.json','package-lock.json'):shutil.copy2(WORK/name,OUT/name)
+    proof['hashes']={n:sha(OUT/n) for n in ('package.json','package-lock.json')}
+    (OUT/'dependency-proof.json').write_text(json.dumps(proof,indent=2))
     cmd(['node',str(ROOT/'check-graph.cjs'),str(WORK)],WORK,30,'04-graph.json')
     cmd(['npm','ci','--ignore-scripts','--include=optional','--no-audit','--no-fund'],WORK,180,'05-clean-install.log')
     assert sha(lock)==before,'npm ci changed the lock'
@@ -39,5 +42,8 @@ try:
     assert sha(cross/'package-lock.json')==before,'Cross-platform check changed lock'
     for name in ('package.json','package-lock.json'):shutil.copy2(WORK/name,OUT/name)
     proof.update(status='DEPENDENCIES_VERIFIED_LINUX',darwin='RESOLUTION_DRY_RUN_ONLY',hashes={n:sha(OUT/n) for n in ('package.json','package-lock.json')})
+except Exception as exc:
+    proof.update(status='DEPENDENCY_PREPARATION_FAILED',error=type(exc).__name__+': '+str(exc))
+    raise
 finally:
     (OUT/'dependency-proof.json').write_text(json.dumps(proof,indent=2))

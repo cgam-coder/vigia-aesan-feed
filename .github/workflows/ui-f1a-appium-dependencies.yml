@@ -1,4 +1,5 @@
 name: TEMP Appium dependency repair and clean installation
+# Revision 2: use the already-tested graph checker and preserve generated inputs before gates.
 # Preparation only; this workflow cannot allocate macOS or interact with the product.
 "on":
   push:
