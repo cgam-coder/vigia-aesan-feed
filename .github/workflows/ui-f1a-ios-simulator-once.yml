@@ -1,0 +1,44 @@
+name: TEMP UI-F1A Safari iOS Simulator viability
+# Diagnostic branch only. DO NOT MERGE. No account registration or production writes.
+"on":
+  push:
+    branches: [diag/ui-f1a-ios-simulator-20261001]
+    paths:
+      - .diagnostics/ios_safari_smoke.py
+      - .github/workflows/ui-f1a-ios-simulator-once.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-f1a-ios-simulator-viability-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  safari-ios-viability:
+    if: >-
+      github.repository == 'cgam-coder/vigia-aesan-feed' &&
+      github.event.repository.private == false &&
+      github.ref == 'refs/heads/diag/ui-f1a-ios-simulator-20261001' &&
+      github.run_attempt == '1'
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - name: Checkout diagnostic only
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: .diagnostics
+      - name: Validate probe logic without a browser
+        run: python3 .diagnostics/ios_safari_smoke.py --self-test
+      - name: One Safari session on a preinstalled iOS Simulator
+        run: python3 .diagnostics/ios_safari_smoke.py
+      - name: Preserve result and screenshots, even on failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ios-safari-viability-${{ github.run_id }}
+          path: ios-safari-evidence/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 6
