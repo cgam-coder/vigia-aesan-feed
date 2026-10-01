@@ -312,11 +312,11 @@ test("temporary diagnostic cannot expand its artifact, privileges, code pin or t
   assert.equal(isReviewedDiagnosticWorkflow("other.yml", source), false);
   for (const [from, to] of [
     ["contents: read", "contents: write"],
-    ["native-isolation-evidence/neutral-touch-before.png", "."],
+    ["neutral-xctest-evidence/neutral-xctest-before.png", "."],
     ["retention-days: 1", "retention-days: 90"],
     ["persist-credentials: false", "persist-credentials: true"],
     ["runs-on: macos-15", "runs-on: macos-15-large"],
-    ["1345dc0992a826ab14928d376fd08f572eb0752684cbcb1192b16c4d5b196676", "0".repeat(64)],
+    ["fe6dbe19e0972ca85e716fd8a281abc22fb0994694959512debcbe92c78d5b53", "0".repeat(64)],
     ["branches: [diag/ui-f1a-ios-simulator-20261001]", "branches: [main]"],
   ]) {
     assert.ok(source.includes(from));
