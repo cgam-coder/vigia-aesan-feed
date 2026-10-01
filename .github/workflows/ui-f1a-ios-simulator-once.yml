@@ -35,7 +35,7 @@ jobs:
       - name: Verify exact harness pins, negative security checks and offline classifiers
         id: security
         run: |
-          echo '0e393bcab42cebcbad740358517f9b5963abd5e3a5df37043d41b989cded816a  .diagnostics/native_input_theme.py' | shasum -a 256 -c -
+          echo '1345dc0992a826ab14928d376fd08f572eb0752684cbcb1192b16c4d5b196676  .diagnostics/native_input_theme.py' | shasum -a 256 -c -
           echo '7669d5e101f45bd235df6fbff848c78b070953c42c0e14c511f41f58bbce0106  .diagnostics/neutral_xctest_project.rb' | shasum -a 256 -c -
           echo '52b63de8b3e2721b667e151072292a60aaab2a0a876cb8110ed71080a4192afb  .diagnostics/ios_safari_smoke.py' | shasum -a 256 -c -
           node --test security-checks/workflow-security.test.mjs

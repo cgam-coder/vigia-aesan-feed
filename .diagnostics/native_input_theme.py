@@ -104,15 +104,15 @@ def main():
             r['cleanup']['session-'+sid]=attempt(lambda:wd('DELETE','/session/'+sid,limit=10))
             session=None;persist()
     def theme_observation(label):
-        osmode=cmd(['xcrun','simctl','ui',sim,'appearance'],10).strip()
-        snapshot={'label':label,'observedAt':time.time(),'osAppearance':osmode,'page':js(MEDIA_SNAPSHOT)}
+        osquery=attempt(lambda:cmd(['xcrun','simctl','ui',sim,'appearance'],10).strip())
+        pagequery=attempt(lambda:js(MEDIA_SNAPSHOT))
+        snapshot={'label':label,'observedAt':time.time(),'osAppearance':osquery.get('value',''),'osQuery':osquery,'page':pagequery.get('value',{}),'pageQueryError':pagequery.get('error')}
         return snapshot
     def observe_theme_case(label,expected,navigate=False):
         mark(label)
-        cmd(['xcrun','simctl','ui',sim,'appearance',expected],15)
-        if navigate:wd('POST','/session/'+session+'/url',{'url':TARGET},35)
-        js(MEDIA_INSTALL)
-        case={'case':label,'expected':expected,'observations':[]}
+        case={'case':label,'expected':expected,'observations':[],'appearanceCommand':attempt(lambda:cmd(['xcrun','simctl','ui',sim,'appearance',expected],30))}
+        if navigate:case['navigation']=attempt(lambda:wd('POST','/session/'+session+'/url',{'url':TARGET},35))
+        case['observerInstall']=attempt(lambda:js(MEDIA_INSTALL))
         end=time.monotonic()+15
         while time.monotonic()<end:
             state=theme_observation(label);case['observations'].append(state)
@@ -169,8 +169,12 @@ def main():
         if not re.fullmatch('[a-fA-F0-9-]{36}',sim):raise RuntimeError('Invalid disposable simulator ID')
         r['simulatorUDID']=sim
         mark('boot-own-simulator');cmd(['xcrun','simctl','boot',sim],20);cmd(['xcrun','simctl','bootstatus',sim,'-b'],120)
+        mark('present-own-simulator')
         developer=cmd(['xcode-select','-p']).strip();cmd(['open','-a',developer+'/Applications/Simulator.app','--args','-CurrentDeviceUDID',sim],15)
-        cmd(['xcrun','simctl','ui',sim,'appearance','dark'],15)
+        # open returns before the Simulator window/services settle. Restore the measured legacy presentation wait.
+        time.sleep(5)
+        mark('dark-appearance-before-first-access')
+        r['initialDarkAppearance']=attempt(lambda:cmd(['xcrun','simctl','ui',sim,'appearance','dark'],30))
         r['safariLaunch']=attempt(lambda:cmd(['xcrun','simctl','launch',sim,'com.apple.mobilesafari'],25))
         r['initialDarkNavigation']=attempt(lambda:cmd(['xcrun','simctl','openurl',sim,TARGET],25));time.sleep(5)
         image('initial-dark-before-driver-native',True)

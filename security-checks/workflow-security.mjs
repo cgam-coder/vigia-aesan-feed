@@ -7,8 +7,8 @@ import * as baseline from "./workflow-security.baseline.mjs";
 export { FLOATING_ACTION_EXCEPTIONS, KNOWN_DEBT } from "./workflow-security.baseline.mjs";
 export const DIAGNOSTIC_FILE="ui-f1a-ios-simulator-once.yml";
 const sha256=text=>createHash("sha256").update(text).digest("hex");
-const WORKFLOW_SHA256="00c81489e6bd21e25c90d3806b4b0b611eef8954dc552b98f7c433583584ac22";
-const PINS={".diagnostics/native_input_theme.py": "0e393bcab42cebcbad740358517f9b5963abd5e3a5df37043d41b989cded816a", ".diagnostics/neutral_xctest_project.rb": "7669d5e101f45bd235df6fbff848c78b070953c42c0e14c511f41f58bbce0106", ".diagnostics/ios_safari_smoke.py": "52b63de8b3e2721b667e151072292a60aaab2a0a876cb8110ed71080a4192afb"};
+const WORKFLOW_SHA256="a50d5d9121dc3157a1f4659a80cba6d03c984b0f88768932b466d629a8270702";
+const PINS={".diagnostics/native_input_theme.py": "1345dc0992a826ab14928d376fd08f572eb0752684cbcb1192b16c4d5b196676", ".diagnostics/neutral_xctest_project.rb": "7669d5e101f45bd235df6fbff848c78b070953c42c0e14c511f41f58bbce0106", ".diagnostics/ios_safari_smoke.py": "52b63de8b3e2721b667e151072292a60aaab2a0a876cb8110ed71080a4192afb"};
 export const isReviewedDiagnosticWorkflow=(file,source)=>file===DIAGNOSTIC_FILE && typeof source==="string" && sha256(source)===WORKFLOW_SHA256;
 export async function loadWorkflows(root) {
  const workflows=await baseline.loadWorkflows(root);
