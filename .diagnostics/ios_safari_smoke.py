@@ -2,7 +2,8 @@
 """Temporary native Safari/iOS Simulator capture; no private code or credentials.
 
 Capture-only: screenshot must be visually reviewed before accepting page render.
-Uses the existing Xcode-matching runtime; no SDK downloads and no SafariDriver.
+Uses the existing Xcode-matching runtime and explicitly opens Simulator.app.
+Capture before navigation and after command failure; no SDK downloads or SafariDriver.
 """
 from __future__ import annotations
 import hashlib
@@ -10,7 +11,6 @@ import json
 import os
 from pathlib import Path
 import platform
-import plistlib
 import re
 import signal
 import struct
@@ -20,6 +20,10 @@ import time
 
 TARGET = "https://579819b1-vigia-runtime.c-gamiz93.workers.dev/es/alertas"
 OUT = Path("ios-safari-evidence")
+
+
+class CaptureDeadline(TimeoutError):
+    """Whole-probe deadline; never swallowed by a per-command observation."""
 
 
 def choose_device(inventory: dict, sdk_version: str) -> tuple[dict, dict]:
@@ -87,7 +91,7 @@ def main() -> int:
               "runId": os.environ.get("GITHUB_RUN_ID"), "runnerImage": os.environ.get("ImageVersion"),
               "captureReady": False, "productPass": None, "nativeAppleSafari": False,
               "physicalIPhone": False, "safaridriverUsed": False,
-              "fullCompatibilityCertified": False, "stages": [], "screenshots": [], "cleanup": {}}
+              "fullCompatibilityCertified": False, "stages": [], "screenshots": [], "commands": [], "cleanup": {}}
     sim_id = None
     active_stage = "start"
 
@@ -123,8 +127,55 @@ def main() -> int:
             raise RuntimeError(f"{args[0]} {args[1:3]} exit={proc.returncode}: {stderr.decode(errors='replace')[-2000:]}")
         return stdout
 
+    def observe(label, args, timeout=20):
+        started = time.monotonic()
+        record = {"label": label, "ok": False, "timedOut": False}
+        try:
+            record["stdout"] = command(args, timeout).decode(errors="replace")[-1600:]
+            record["ok"] = True
+        except CaptureDeadline:
+            raise
+        except subprocess.TimeoutExpired as exc:
+            record["timedOut"] = True
+            record["error"] = str(exc)[:1200]
+        except Exception as exc:
+            record["error"] = f"{type(exc).__name__}: {exc}"[:1600]
+        record["seconds"] = round(time.monotonic() - started, 2)
+        report["commands"].append(record)
+        persist()
+        return record
+
+    def capture(filename):
+        image_path = OUT / filename
+        record = {"file": filename, "stage": active_stage, "ok": False}
+        try:
+            command(["xcrun", "simctl", "io", sim_id, "screenshot", str(image_path)], 20)
+            record.update(png_info(image_path.read_bytes()))
+            record["ok"] = True
+        except CaptureDeadline:
+            raise
+        except Exception as exc:
+            record["error"] = f"{type(exc).__name__}: {exc}"[:1600]
+        report["screenshots"].append(record)
+        persist()
+        return record["ok"]
+
+    def navigate_and_capture():
+        # An OS command acknowledgment is NOT a rendered-page assertion.
+        # Observe captures even when launch/openurl time out or exit nonzero.
+        mark("before-navigation")
+        capture("safari-before.png")
+        mark("open-immutable-preview")
+        result = observe("openurl", ["xcrun", "simctl", "openurl", sim_id, TARGET], 25)
+        report["navigationAcknowledged"] = result["ok"]
+        mark("after-navigation-command")
+        capture("safari-after.png")
+        time.sleep(15)
+        mark("after-navigation-settle")
+        report["captureReady"] = capture("iphone-simulator.png")
+
     def expire(_sig, _frame):
-        raise TimeoutError("Independent 300-second capture deadline exceeded")
+        raise CaptureDeadline("Independent 300-second capture deadline exceeded")
 
     signal.signal(signal.SIGALRM, expire)
     signal.alarm(300)
@@ -148,26 +199,34 @@ def main() -> int:
         mark("boot")
         command(["xcrun", "simctl", "boot", sim_id], 20)
         command(["xcrun", "simctl", "bootstatus", sim_id, "-b"], 120)
+        mark("present-simulator-window")
+        developer = Path(command(["xcode-select", "-p"]).decode().strip())
+        simulator_app = developer / "Applications" / "Simulator.app"
+        if not simulator_app.is_dir():
+            raise RuntimeError("Simulator.app missing under the selected Xcode")
+        report["simulatorPresentation"] = observe(
+            "foreground-simulator", ["open", "-a", str(simulator_app), "--args", "-CurrentDeviceUDID", sim_id], 15)
+        time.sleep(5)
+        observe("framebuffer-policy", ["defaults", "read", "com.apple.CoreSimulator", "FramebufferServerRendererPolicy"], 5)
+        mark("simulator-ready-capture")
+        capture("simulator-ready.png")
         mark("native-safari")
-        # Native launch on the selected iOS runtime, without a desktop fallback.
-        launch = command(["xcrun", "simctl", "launch", sim_id, "com.apple.mobilesafari"], 25).decode().strip()
-        if not re.search(r"com\.apple\.mobilesafari:\s*\d+", launch):
-            raise RuntimeError("Native MobileSafari launch not confirmed")
-        report["nativeAppleSafari"] = True
-        report["application"] = {"bundleId": "com.apple.mobilesafari", "launch": launch}
-        mark("open-immutable-preview")
-        command(["xcrun", "simctl", "openurl", sim_id, TARGET], 25)
-        time.sleep(15)
-        mark("capture")
-        image_path = OUT / "iphone-simulator.png"
-        command(["xcrun", "simctl", "io", sim_id, "screenshot", str(image_path)], 20)
-        report["screenshots"].append({"file": image_path.name, **png_info(image_path.read_bytes())})
-        report["captureReady"] = True
-        report["reviewStatus"] = "PENDING_VISUAL_REVIEW; an openurl success alone is not product PASS"
+        launch = observe("launch-safari", ["xcrun", "simctl", "launch", sim_id, "com.apple.mobilesafari"], 25)
+        confirmed = bool(launch["ok"] and re.search(r"com\.apple\.mobilesafari:\s*\d+", launch.get("stdout", "")))
+        report["nativeAppleSafari"] = confirmed
+        report["application"] = {"bundleId": "com.apple.mobilesafari", "launchConfirmed": confirmed}
+        time.sleep(5)
+        navigate_and_capture()
+        report["reviewStatus"] = "PENDING_VISUAL_REVIEW; image presence and command status are not product PASS"
         mark("capture-complete")
     except Exception as exc:
         report["failedStage"] = active_stage
         report["error"] = f"{type(exc).__name__}: {exc}"
+        if sim_id:
+            try:
+                capture("iphone-simulator.png")
+            except Exception:
+                pass
         print("IOS_SAFARI_HOLD " + report["error"], flush=True)
     finally:
         signal.alarm(0)
@@ -184,8 +243,9 @@ def main() -> int:
             with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
                 stream.write("## Native Safari capture: visual review required\n\n```json\n" + json.dumps(report, indent=2) + "\n```\n")
     print("IOS_SAFARI_RESULT " + json.dumps(report), flush=True)
-    # Green means only that the two capture/evidence steps completed, not a UX PASS.
-    return 0 if report["captureReady"] and report["cleanup"].get("delete") else 1
+    # Green means only that final capture and cleanup completed, not a UX PASS.
+    return 0 if (report["captureReady"] and report["nativeAppleSafari"] and
+                 report["cleanup"].get("shutdown") and report["cleanup"].get("delete")) else 1
 
 
 if __name__ == "__main__":
