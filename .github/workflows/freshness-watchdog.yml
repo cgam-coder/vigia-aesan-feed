@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/freshness-watchdog.yml"
+      - "scripts/freshness-watchdog.mjs"
   schedule:
     - cron: "13,28,43,58 * * * *"
   workflow_dispatch:
@@ -31,30 +32,14 @@ jobs:
     env:
       VIGIA_FRESHNESS_URL: ${{ format('{0}/api/freshness', needs.runtime_target.outputs.base_url) }}
     steps:
-      - name: Audit official parity and run bounded recovery
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Observe, audit all sources, then run one bounded recovery
         shell: bash
         env:
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-        run: |
-          set -euo pipefail
-          test -n "$VIGIA_SYNC_TOKEN"
-          node --input-type=module - <<'NODE'
-          const sources=["AESAN","RAPNA","RASFF","SAFETY GATE","OECD"];
-          const states=[];
-          let failed=false;
-          for(const source of sources){
-            const url=new URL(process.env.VIGIA_FRESHNESS_URL);
-            url.searchParams.set("audit","1");
-            url.searchParams.set("recover","1");
-            url.searchParams.set("source",source);
-            const response=await fetch(url,{method:"POST",headers:{Authorization:`Bearer ${process.env.VIGIA_SYNC_TOKEN}`},
-              signal:AbortSignal.timeout(1_800_000)});
-            const body=await response.json();
-            const state=Array.isArray(body?.states)&&body.states.length===1?body.states[0]:null;
-            if(!state||state.source!==source) throw new Error(`Missing freshness state for ${source}`);
-            states.push(state);
-            console.log("FRESHNESS "+JSON.stringify(state));
-            if(response.status!==200||body.allFresh!==true||state.status!=="fresh") failed=true;
-          }
-          if(states.length!==5||failed) throw new Error("Five-source freshness watchdog failed closed");
-          NODE
+        run: node scripts/freshness-watchdog.mjs

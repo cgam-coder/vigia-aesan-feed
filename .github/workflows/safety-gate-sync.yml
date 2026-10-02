@@ -39,10 +39,33 @@ jobs:
         env:
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
-          root_code="$(curl --silent --show-error --location --max-time 30 \
+          # Keep every existing control; identify the exact phase before a timeout.
+          # 110s total network budget leaves 10s for validation in this 120s step.
+          preflight_started=$SECONDS
+          preflight_curl() {
+            local source="$1" phase="$2"
+            shift 2
+            local remaining=$((110 - SECONDS + preflight_started))
+            echo "PREFLIGHT source=$source phase=$phase event=start remainingSeconds=$remaining" >&2
+            if [ "$remaining" -le 0 ]; then
+              echo "PREFLIGHT source=$source phase=$phase event=blocked reason=budget" >&2
+              return 124
+            fi
+            local args=("$@") i output rc=0
+            for ((i=0; i<${#args[@]}; i++)); do
+              if [ "${args[$i]}" = "--max-time" ] && [ "${args[$((i+1))]}" -gt "$remaining" ]; then
+                args[$((i+1))]="$remaining"
+              fi
+            done
+            output="$(curl -q "${args[@]}")" || rc=$?
+            echo "PREFLIGHT source=$source phase=$phase event=end curlExit=$rc http=$output elapsedSeconds=$((SECONDS - preflight_started))" >&2
+            printf '%s' "$output"
+            return "$rc"
+          }
+          root_code="$(preflight_curl frontend root --silent --show-error --location --max-time 30 \
             --output "${RUNNER_TEMP}/vigia-root.html" --write-out '%{http_code}' \
             "${VIGIA_BASE_URL}/")"
-          alerts_code="$(curl --silent --show-error --location --max-time 60 \
+          alerts_code="$(preflight_curl api alerts --silent --show-error --location --max-time 60 \
             --output "${RUNNER_TEMP}/vigia-alerts.json" --write-out '%{http_code}' \
             "${VIGIA_BASE_URL}/api/v2/alerts?pageSize=1")"
           node -e '
@@ -64,12 +87,12 @@ jobs:
             route="${pair%%:*}"
             source="${pair#*:}"
             endpoint="${VIGIA_BASE_URL}/api/${route}/sync?mode=preflight"
-            no_token_code="$(curl --silent --show-error --location --request POST --max-time 30 \
+            no_token_code="$(preflight_curl "$source" auth-no-token --silent --show-error --location --request POST --max-time 30 \
               --output "${RUNNER_TEMP}/${route}-no-token.json" --write-out '%{http_code}' "${endpoint}")"
-            wrong_token_code="$(curl --silent --show-error --location --request POST --max-time 30 \
+            wrong_token_code="$(preflight_curl "$source" auth-wrong-token --silent --show-error --location --request POST --max-time 30 \
               --header 'Authorization: Bearer work-16-invalid-token' \
               --output "${RUNNER_TEMP}/${route}-wrong-token.json" --write-out '%{http_code}' "${endpoint}")"
-            correct_token_code="$(curl --silent --show-error --location --request POST --max-time 30 \
+            correct_token_code="$(preflight_curl "$source" auth-authorized --silent --show-error --location --request POST --max-time 30 \
               --header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}" \
               --output "${RUNNER_TEMP}/${route}-authorized.json" --write-out '%{http_code}' "${endpoint}")"
             node -e '
@@ -88,7 +111,7 @@ jobs:
               "${RUNNER_TEMP}/${route}-authorized.json"
           done
           for route in aesan safety-gate rapna oecd; do
-            observe_code="$(curl --silent --show-error --location --max-time 30 \
+            observe_code="$(preflight_curl "$route" observe --silent --show-error --location --max-time 30 \
               --header "Authorization: Bearer ${VIGIA_SYNC_TOKEN}" \
               --output "${RUNNER_TEMP}/${route}-observe.json" --write-out '%{http_code}' \
               "${VIGIA_BASE_URL}/api/${route}/sync?observe=1")"
@@ -96,7 +119,7 @@ jobs:
               echo "${route} observe GET failed with HTTP ${observe_code}"
               exit 1
             fi
-            mutation_code="$(curl --silent --show-error --location --max-time 30 \
+            mutation_code="$(preflight_curl "$route" get-recent-rejected --silent --show-error --location --max-time 30 \
               --output "${RUNNER_TEMP}/${route}-get-mutation.json" --write-out '%{http_code}' \
               "${VIGIA_BASE_URL}/api/${route}/sync?mode=recent")"
             if [ "${mutation_code}" -ne 405 ]; then
@@ -105,7 +128,7 @@ jobs:
             fi
           done
           for mode in backfill snapshot; do
-            status="$(curl --silent --show-error --location --max-time 30 \
+            status="$(preflight_curl safety-gate "get-$mode-rejected" --silent --show-error --location --max-time 30 \
               --output "${RUNNER_TEMP}/safety-gate-get-${mode}.json" --write-out '%{http_code}' \
               "${VIGIA_BASE_URL}/api/safety-gate/sync?mode=${mode}")"
             if [ "${status}" -ne 405 ]; then
@@ -344,3 +367,4 @@ jobs:
         # <= 780s network/backoff plus preflight/observe <= 90s within the 900s job.
         # A skipped response remains retryable, never successful.
         run: node scripts/oecd-normal-recent-retry.mjs
+
