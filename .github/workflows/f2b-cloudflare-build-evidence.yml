@@ -1,4 +1,4 @@
-name: PRE1 bounded Cloudflare metadata evidence
+name: PRE1 bounded source preflight
 on:
   push:
     branches: [work/scheduler-reliability-s0-evidence]
@@ -8,121 +8,90 @@ permissions:
 jobs:
   collect:
     if: >-
-      github.event.head_commit.message == 'PRE1: bounded Cloudflare metadata read 20261002'
+      github.event.head_commit.message == 'PRE1: source preflight 20261002 CP3'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Read existing metadata and natural telemetry without product writes
+      - name: Read current source state without audits or recovery
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           node --input-type=module <<'NODE'
-          // Fixed-scope metadata/log reads. No runtime sync, D1 SQL, deploy, or retry.
-          const root = 'https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
-          const worker = '/workers/scripts/vigia-runtime';
-          const token = process.env.CLOUDFLARE_API_TOKEN;
-          const uuid = v => typeof v === 'string' && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(v);
-          const pick = (o, keys) => Object.fromEntries(keys.filter(k => o && Object.hasOwn(o,k)).map(k => [k,o[k]]));
-          const deployment = d => d ? ({id:d.id,created_on:d.created_on,strategy:d.strategy,
-            versions:(d.versions ?? []).map(v => pick(v,['version_id','percentage']))}) : null;
-          const bindings = b => Array.isArray(b) ? b.filter(x => x?.type === 'd1' && x.name === 'DB')
-            .map(x => pick(x,['type','name','id','database_id'])) : [];
-          const out = {checkpoint:'PRE1-METADATA-20261002', observedAt:new Date().toISOString(),
-            zeroProductWrites:true, publicationAuthorized:false, requests:[], metadataObserved:false};
-          let blocked = false;
-          const start = performance.now();
-          const remaining = () => 210_000 - (performance.now()-start);
-          async function read(path, label, body) {
-            if (!token || blocked || remaining() <= 1000) {
-              out.requests.push({label,status:'NOT_ATTEMPTED',reason:!token?'credential-not-configured':blocked?'auth-blocked':'budget'});
-              return null;
-            }
-            // The only POST is the documented Observability read query, dry=true.
-            if (body && (path !== '/workers/observability/telemetry/query' || body.dry !== true)) throw new Error('invalid-read');
-            const entry = {label,method:body?'POST':'GET'}; out.requests.push(entry);
-            try {
-              const r = await fetch(root+path,{method:entry.method,redirect:'error',
-                headers:{Authorization:`Bearer ${token}`,...(body?{'Content-Type':'application/json'}:{})},
-                ...(body?{body:JSON.stringify(body)}:{}),
-                signal:AbortSignal.timeout(Math.floor(Math.min(body?30_000:20_000,remaining())))});
-              entry.http = r.status;
-              if (r.status === 401 || r.status === 403) { blocked=true; entry.status='AUTH_HOLD'; return null; }
-              if (!r.ok) {entry.status='HTTP_HOLD';return null;}
-              const b = await r.json();
-              if (b.success !== true || b.result == null) {entry.status='SHAPE_HOLD';return null;}
-              entry.status='OBSERVED';
-              return b.result;
-            } catch {entry.status='TRANSPORT_OR_JSON_HOLD';return null;}
+          // Fixed read-only production preflight. No sync/audit/recovery POST, SQL or retry.
+          const CF='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          const BASE='https://vigia-runtime.c-gamiz93.workers.dev';
+          const EXPECTED='4fdc2bd3-f2f2-4fb2-8fd9-51a4a47c0704';
+          const SOURCES=['AESAN','RAPNA','RASFF','SAFETY GATE','OECD'];
+          const ROUTES=['aesan','rapna','rasff','safety-gate','oecd'];
+          const tokens={cf:process.env.CLOUDFLARE_API_TOKEN, runtime:process.env.VIGIA_SYNC_TOKEN};
+          const blocked={cf:false,runtime:false};
+          const start=performance.now();
+          const remaining=()=>240000-(performance.now()-start);
+          const out={checkpoint:'PRE1-PREFLIGHT-20261002',observedAt:new Date().toISOString(),zeroProductWrites:true,
+           publicationAuthorized:false,officialParityCertified:false,calls:[],sources:[]};
+          const scalar=(o,keys)=>Object.fromEntries(keys.filter(k=>o && Object.hasOwn(o,k) &&
+           (o[k]===null||typeof o[k]==='boolean'||Number.isFinite(o[k])||typeof o[k]==='string'&&o[k].length<=100)).map(k=>[k,o[k]]));
+          const age=v=>typeof v==='string' && Number.isFinite(Date.parse(v)) && Date.parse(v)<=Date.now() ? (Date.now()-Date.parse(v))/60000:null;
+          async function read(path,plane,label,kind='json',reserve=10000){
+           const call={label,plane,method:'GET'};out.calls.push(call);
+           if((plane!=='public' && !tokens[plane])||blocked[plane]||remaining()<=reserve){call.result='NOT_ATTEMPTED';return null;}
+           const url=(plane==='cf'?CF:BASE)+path;
+           if(!((plane==='cf'&&['/workers/scripts/vigia-runtime/deployments','/workers/scripts/vigia-runtime/settings'].includes(path))||
+           (plane==='public'&&['/','/api/v2/alerts?pageSize=1'].includes(path))||
+           (plane==='runtime'&&['/api/freshness?observe=1','/api/freshness?observe=1&policy=1',...ROUTES.map(r=>`/api/${r}/sync?observe=1`)].includes(path))))throw new Error('path-not-allowed');
+           const began=performance.now();
+           try{
+            const r=await fetch(url,{method:'GET',redirect:'error',cache:'no-store',headers:plane==='public'?{}:{Authorization:`Bearer ${tokens[plane]}`},
+             signal:AbortSignal.timeout(Math.floor(Math.min(30000,remaining()-reserve)))});
+            call.http=r.status;
+            if([401,403].includes(r.status)){if(plane!=='public')blocked[plane]=true;call.result='AUTH_HOLD';return null;}
+            if(r.status!==200){call.result='HTTP_HOLD';return null;}
+            if(kind==='status'){await r.body?.cancel();call.result='OBSERVED';return true;}
+            const body=await r.json();
+            if(plane==='cf' && (body.success!==true||body.result==null)){call.result='SHAPE_HOLD';return null;}
+            call.result='OBSERVED';return plane==='cf'?body.result:body;
+           }catch{call.result='TRANSPORT_OR_JSON_HOLD';return null;}
+           finally{call.elapsedMs=Math.round(performance.now()-began);}
           }
-          const ds = await read(worker+'/deployments','deployments-before');
-          const list = Array.isArray(ds?.deployments)?ds.deployments:[];
-          const current = list[0] ?? null, previous = list[1] ?? null;
-          out.active = deployment(current); out.previous = deployment(previous);
-          const settings = await read(worker+'/settings','settings');
-          if (settings) {
-            out.settings={compatibility_date:settings.compatibility_date,db:bindings(settings.bindings),
-              modes:(settings.bindings??[]).filter(x=>x.type==='plain_text' &&
-                ['NAGAMEALERT_RECENT_SCHEDULER_MODE','NAGAMEALERT_SAFETY_GATE_RECENT_MODE'].includes(x.name))
-                .map(x=>pick(x,['name','type','text']))};
+          const deploy=d=>d?{id:d.id,versions:(d.versions??[]).map(v=>scalar(v,['version_id','percentage']))}:null;
+          const before=await read('/workers/scripts/vigia-runtime/deployments','cf','deployment-before');
+          out.deploymentBefore=deploy(before?.deployments?.[0]);
+          const settings=await read('/workers/scripts/vigia-runtime/settings','cf','settings');
+          out.bindings=settings?{db:(settings.bindings??[]).filter(b=>b.type==='d1'&&b.name==='DB').map(b=>scalar(b,['id','database_id'])),
+           modes:(settings.bindings??[]).filter(b=>b.type==='plain_text'&&['NAGAMEALERT_RECENT_SCHEDULER_MODE','NAGAMEALERT_SAFETY_GATE_RECENT_MODE'].includes(b.name)).map(b=>scalar(b,['name','text']))}:null;
+          out.rootHttp200=await read('/','public','root','status');
+          const api=await read('/api/v2/alerts?pageSize=1','public','alerts-smoke');
+          out.api=api?{...scalar(api,['apiVersion','schemaVersion']),itemCount:Array.isArray(api.items)?api.items.length:null}:null;
+          const p=await read('/api/freshness?observe=1&policy=1','runtime','policy');
+          const validPolicy=p?.policyVersion===1&&Array.isArray(p.policies)&&p.policies.length===5&&new Set(p.policies.map(x=>x.source)).size===5&&
+           p.policies.every(x=>SOURCES.includes(x.source)&&Number.isFinite(x.recent?.freshMaxAgeMinutes)&&x.recent.freshMaxAgeMinutes>0&&typeof x.revision?.required==='boolean');
+          out.policyValid=validPolicy;
+          out.policies=validPolicy?p.policies.map(x=>({source:x.source,recent:scalar(x.recent,['freshMaxAgeMinutes','staleMaxAgeMinutes']),revision:scalar(x.revision,['required','mode','scope','maxAgeMinutes','certification'])})):null;
+          const stored=await read('/api/freshness?observe=1','runtime','persisted-freshness');
+          out.persisted=Array.isArray(stored?.states)?stored.states.filter(x=>SOURCES.includes(x.source)).map(x=>({
+           ...scalar(x,['source','checkedAt','status','lastSyncSuccessAt','revisionStatus','revisionLastSuccessAt','latestIdentityParity']),
+           observationAgeMinutes:age(x.checkedAt),recentAgeMinutesNow:age(x.lastSyncSuccessAt),revisionAgeMinutesNow:age(x.revisionLastSuccessAt),
+           missingCount:Array.isArray(x.missingOfficialIdentities)?x.missingOfficialIdentities.length:null,
+           revisionMismatchCount:Array.isArray(x.revisionMismatches)?x.revisionMismatches.length:null,errorPresent:x.error!==null})):null;
+          const fields=['source','mode','status','lastSuccessAt','startedAt','completedAt','cursor','cursorKey','totalUnits','coverage','pageErrors','detailFailures','recordsObserved','recordsPersisted','newCount','updatedCount','auditStatus','auditCheckedAt','cycleId','planVersion'];
+          const state=x=>x && typeof x==='object'?{...scalar(x,fields),lastErrorPresent:Object.hasOwn(x,'lastError')?x.lastError!==null:null}:null;
+          for(let i=0;i<SOURCES.length;i++){
+           const source=SOURCES[i];const body=await read(`/api/${ROUTES[i]}/sync?observe=1`,'runtime','observe-'+source);
+           const valid=Boolean(body && body.recent?.source===source && body.recent?.mode==='recent' && Object.hasOwn(body,'lease') &&
+            (body.lease===null||body.lease?.source===source));
+           const rev=body?Object.fromEntries(Object.entries(body).filter(([k])=>/revision|reconcile|parity|historical|legacy/i.test(k))
+            .map(([k,v])=>[k,state(v)])):null;
+           out.sources.push({source,observed:valid,observedAt:new Date().toISOString(),recent:state(body?.recent),
+            recentAgeMinutes:age(body?.recent?.lastSuccessAt),lease:body&&Object.hasOwn(body,'lease')?
+            (body.lease===null?null:scalar(body.lease,['source','mode','expiresAt'])):'UNKNOWN',
+            backfill:state(body?.backfill),snapshot:body?.snapshot?scalar(body.snapshot,['status','purpose']):null,revision:rev});
           }
-          const schedules = await read(worker+'/schedules','schedules');
-          out.schedules=Array.isArray(schedules?.schedules)?schedules.schedules.map(s=>pick(s,['cron','created_on','modified_on'])):null;
-          const ids = [...new Set([...(current?.versions??[]),...(previous?.versions??[])].map(x=>x.version_id))].filter(uuid).slice(0,4);
-          out.versions=[];
-          for(const id of ids) {
-            const v=await read(worker+'/versions/'+id,'version-'+id);
-            out.versions.push({requestedId:id,readable:Boolean(v && v.id===id),
-              ...(v?{id:v.id,number:v.number,created_on:v.metadata?.created_on,
-                db:bindings(v.resources?.bindings),compatibility:v.resources?.script_runtime?.compatibility_date}: {})});
-          }
-          const dbs = out.settings?.db ?? [];
-          const dbId = dbs.length===1 ? (dbs[0].id??dbs[0].database_id) : null;
-          if(uuid(dbId)) {
-            const db = await read('/d1/database/'+dbId,'d1-metadata');
-            out.d1=db?pick(db,['uuid','name','created_at','version','file_size','num_tables']):null;
-          }
-          const until=Date.now(), since=until-30*60_000;
-          const telemetry=await read('/workers/observability/telemetry/query','s0-telemetry',{
-            queryId:'pre1-current-metadata-20261002',dry:true,view:'events',limit:700,
-            timeframe:{from:since,to:until},parameters:{filterCombination:'and',
-              filters:[{key:'$metadata.service',operation:'eq',type:'string',value:'vigia-runtime'}],
-              needle:{value:'recent-scheduler',isRegex:false,matchCase:true}}});
-          const groups=new Map(); let scanned=0;
-          function visit(v,depth=0) {
-            if(depth>10 || v==null)return;
-            if(typeof v==='string' && v.startsWith('{')) {try{visit(JSON.parse(v),depth+1);}catch{}return;}
-            if(typeof v!=='object')return;
-            if(v.component==='recent-scheduler') {
-              if(!Number.isFinite(v.scheduledTime) || v.scheduledTime<since || v.scheduledTime>until)return;
-              const key=String(v.scheduledTime), g=groups.get(key)??{scheduledTime:v.scheduledTime,sources:new Set(),s0:null,pilots:[]};
-              if(v.stage==='S0' && v.kind==='source' && ['AESAN','RAPNA','RASFF','SAFETY GATE','OECD'].includes(v.source))g.sources.add(v.source);
-              if(v.stage==='S0' && v.kind==='wake-up')g.s0=pick(v,['outcome','readErrors','mutationAttempts','zeroWrite']);
-              if(typeof v.stage==='string' && v.stage.startsWith('S2-'))g.pilots.push(pick(v,['stage','outcome','mode','mutationAttempts','leaseActiveAfter','pageErrorDelta']));
-              groups.set(key,g);return;
-            }
-            for(const value of Object.values(v))visit(value,depth+1);
-          }
-          const events=telemetry?.events?.events;
-          if(Array.isArray(events))for(const e of events){scanned++;visit(e);}
-          out.telemetry={received:Array.isArray(events),from:new Date(since).toISOString(),to:new Date(until).toISOString(),
-            eventsRead:scanned,possiblyTruncated:scanned>=700,fullContinuityCertified:false,
-            wakeups:[...groups.values()].sort((a,b)=>a.scheduledTime-b.scheduledTime)
-              .map(g=>({scheduledAt:new Date(g.scheduledTime).toISOString(),sourcesObserved:g.sources.size,s0:g.s0,pilots:g.pilots}))};
-          const again=await read(worker+'/deployments','deployments-after');
-          out.activeUnchanged=Boolean(current && JSON.stringify(deployment(again?.deployments?.[0]))===JSON.stringify(out.active));
-          const validDeployment=d=>Boolean(uuid(d?.id) && Array.isArray(d.versions) && d.versions.length>0 && d.versions.length<=2 &&
-            d.versions.every(v=>uuid(v.version_id) && Number.isFinite(v.percentage) && v.percentage>=0 && v.percentage<=100) &&
-            d.versions.reduce((n,v)=>n+v.percentage,0)===100);
-          out.deploymentShapeValid=validDeployment(out.active) && validDeployment(out.previous);
-          out.activeBindingsMatch=Boolean(out.active?.versions?.length && out.active.versions.every(v=>{
-            const item=out.versions.find(x=>x.id===v.version_id);
-            return item?.readable && item.db.length===1 && (item.db[0].id??item.db[0].database_id)===dbId;
-          }));
-          out.rollbackRestorationTested=false;
-          out.metadataObserved=Boolean(out.deploymentShapeValid && out.activeBindingsMatch && out.activeUnchanged && out.active?.versions?.length &&
-            out.versions.length===ids.length && out.versions.every(v=>v.readable) &&
-            uuid(dbId) && out.d1?.uuid===dbId && out.schedules!==null);
+          const after=await read('/workers/scripts/vigia-runtime/deployments','cf','deployment-after','json',0);
+          out.deploymentAfter=deploy(after?.deployments?.[0]);
+          out.deploymentUnchanged=Boolean(out.deploymentBefore?.id===EXPECTED&&JSON.stringify(out.deploymentBefore)===JSON.stringify(out.deploymentAfter));
+          out.readsComplete=out.calls.length===12 && out.calls.every(x=>x.result==='OBSERVED') && validPolicy && out.sources.every(x=>x.observed);
           out.completedAt=new Date().toISOString();out.elapsedMs=Math.round(performance.now()-start);
-          console.log('PRE1_METADATA '+JSON.stringify(out));
-          if(!out.metadataObserved)process.exitCode=1;
+          console.log('PRE1_PREFLIGHT '+JSON.stringify(out));
+          if(!out.readsComplete||!out.deploymentUnchanged)process.exitCode=1;
           NODE
