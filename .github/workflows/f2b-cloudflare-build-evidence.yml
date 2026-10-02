@@ -1,4 +1,4 @@
-name: PRE1 bounded source preflight
+name: PERF bounded production baseline
 on:
   push:
     branches: [work/scheduler-reliability-s0-evidence]
@@ -8,90 +8,110 @@ permissions:
 jobs:
   collect:
     if: >-
-      github.event.head_commit.message == 'PRE1: release85 postrelease 20261002 CP5'
+      github.event.head_commit.message == 'PERF: bounded production baseline 20261002 CP4' &&
+      github.run_number == 16 && github.run_attempt == 1
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 3
     steps:
-      - name: Read current source state without audits or recovery
+      - name: Revalidate identity and capture one bounded terminal baseline
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           node --input-type=module <<'NODE'
-          // Fixed read-only production preflight. No sync/audit/recovery POST, SQL or retry.
-          const CF='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
-          const BASE='https://vigia-runtime.c-gamiz93.workers.dev';
-          const EXPECTED='4fdc2bd3-f2f2-4fb2-8fd9-51a4a47c0704';
-          const SOURCES=['AESAN','RAPNA','RASFF','SAFETY GATE','OECD'];
-          const ROUTES=['aesan','rapna','rasff','safety-gate','oecd'];
-          const tokens={cf:process.env.CLOUDFLARE_API_TOKEN, runtime:process.env.VIGIA_SYNC_TOKEN};
-          const blocked={cf:false,runtime:false};
-          const start=performance.now();
-          const remaining=()=>240000-(performance.now()-start);
-          const out={checkpoint:'PRE1-PREFLIGHT-20261002-RELEASE85-CP5',observedAt:new Date().toISOString(),zeroProductWrites:true,
-           publicationAuthorized:false,officialParityCertified:false,calls:[],sources:[]};
-          const scalar=(o,keys)=>Object.fromEntries(keys.filter(k=>o && Object.hasOwn(o,k) &&
-           (o[k]===null||typeof o[k]==='boolean'||Number.isFinite(o[k])||typeof o[k]==='string'&&o[k].length<=100)).map(k=>[k,o[k]]));
-          const age=v=>typeof v==='string' && Number.isFinite(Date.parse(v)) && Date.parse(v)<=Date.now() ? (Date.now()-Date.parse(v))/60000:null;
-          async function read(path,plane,label,kind='json',reserve=10000){
-           const call={label,plane,method:'GET'};out.calls.push(call);
-           if((plane!=='public' && !tokens[plane])||blocked[plane]||remaining()<=reserve){call.result='NOT_ATTEMPTED';return null;}
-           const url=(plane==='cf'?CF:BASE)+path;
-           if(!((plane==='cf'&&['/workers/scripts/vigia-runtime/deployments','/workers/scripts/vigia-runtime/settings'].includes(path))||
-           (plane==='public'&&['/','/api/v2/alerts?pageSize=1'].includes(path))||
-           (plane==='runtime'&&['/api/freshness?observe=1','/api/freshness?observe=1&policy=1',...ROUTES.map(r=>`/api/${r}/sync?observe=1`)].includes(path))))throw new Error('path-not-allowed');
-           const began=performance.now();
-           try{
-            const r=await fetch(url,{method:'GET',redirect:'error',cache:'no-store',headers:plane==='public'?{}:{Authorization:`Bearer ${tokens[plane]}`},
-             signal:AbortSignal.timeout(Math.floor(Math.min(30000,remaining()-reserve)))});
-            call.http=r.status;
-            if([401,403].includes(r.status)){if(plane!=='public')blocked[plane]=true;call.result='AUTH_HOLD';return null;}
-            if(r.status!==200){call.result='HTTP_HOLD';return null;}
-            if(kind==='status'){await r.body?.cancel();call.result='OBSERVED';return true;}
-            const body=await r.json();
-            if(plane==='cf' && (body.success!==true||body.result==null)){call.result='SHAPE_HOLD';return null;}
-            call.result='OBSERVED';return plane==='cf'?body.result:body;
-           }catch{call.result='TRANSPORT_OR_JSON_HOLD';return null;}
-           finally{call.elapsedMs=Math.round(performance.now()-began);}
+          // New #192 protocol. Never imports/reexecutes the historical STOP client.
+          export const CONTRACT=Object.freeze({base:'https://vigia-runtime.c-gamiz93.workers.dev',
+            cf:'https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f',
+            deployment:'4fdc2bd3-f2f2-4fb2-8fd9-51a4a47c0704',worker:'6b7f588f-2c2c-4dbd-b59b-62908278e162',
+            database:'55596003-1b90-4f66-aad8-decb21205f13',runtime:'31c896fdd4d64878f4d66d2cc1084a8bb36ebdbd',
+            maxTerminalGets:7,globalMs:60000,perRequestMs:5000,maxResponseBytes:512*1024,maxTotalBytes:3*1024*1024});
+          const LABELS=['list','count','country','map','represented','freshness'];
+          const PARAMS={period:'custom',from:'2026-09-25',to:'2026-10-01',source:'AESAN',pageSize:'1'};
+          const obj=x=>x&&typeof x==='object'&&!Array.isArray(x)?x:null;
+          function metrics(headers){
+            const timing={},rows={};
+            for(const entry of (headers.get('server-timing')??'').split(',')){
+              const parts=entry.trim().split(';').map(x=>x.trim()),name=parts[0];
+              if(!['route',...LABELS.map(x=>'d1-'+x)].includes(name))continue;
+              const vals=parts.slice(1).filter(x=>x.startsWith('dur='));const value=vals.length===1?Number(vals[0].slice(4)):NaN;
+              if(name in timing||!Number.isFinite(value)||value<0||value>1e9||vals[0]?.slice(4)==='')throw Error('invalid-timing');
+              timing[name]=value;
+            }
+            for(const entry of (headers.get('x-nagame-d1-rows')??'').split(',')){
+              if(!entry.trim())continue;const [name,...rest]=entry.trim().split('=');
+              if(rest.length!==1||name in rows||!/^\d+$/.test(rest[0])||!LABELS.flatMap(x=>[x+'.rows_read',x+'.rows_written']).includes(name))throw Error('invalid-rows');
+              const n=Number(rest[0]);if(!Number.isSafeInteger(n)||n>1e12)throw Error('invalid-rows');rows[name]=n;
+            }
+            if(Object.keys(timing).length!==7||Object.keys(rows).length!==12)throw Error('metadata-missing');
+            if(LABELS.some(x=>rows[x+'.rows_written']!==0))throw Error('write-observed');
+            return {timingMs:timing,rows};
           }
-          const deploy=d=>d?{id:d.id,versions:(d.versions??[]).map(v=>scalar(v,['version_id','percentage']))}:null;
-          const before=await read('/workers/scripts/vigia-runtime/deployments','cf','deployment-before');
-          out.deploymentBefore=deploy(before?.deployments?.[0]);
-          const settings=await read('/workers/scripts/vigia-runtime/settings','cf','settings');
-          out.bindings=settings?{db:(settings.bindings??[]).filter(b=>b.type==='d1'&&b.name==='DB').map(b=>scalar(b,['id','database_id'])),
-           modes:(settings.bindings??[]).filter(b=>b.type==='plain_text'&&['NAGAMEALERT_RECENT_SCHEDULER_MODE','NAGAMEALERT_SAFETY_GATE_RECENT_MODE'].includes(b.name)).map(b=>scalar(b,['name','text']))}:null;
-          out.rootHttp200=await read('/','public','root','status');
-          const api=await read('/api/v2/alerts?pageSize=1','public','alerts-smoke');
-          out.api=api?{...scalar(api,['apiVersion','schemaVersion']),itemCount:Array.isArray(api.items)?api.items.length:null}:null;
-          const p=await read('/api/freshness?observe=1&policy=1','runtime','policy');
-          const validPolicy=p?.policyVersion===1&&Array.isArray(p.policies)&&p.policies.length===5&&new Set(p.policies.map(x=>x.source)).size===5&&
-           p.policies.every(x=>SOURCES.includes(x.source)&&Number.isFinite(x.recent?.freshMaxAgeMinutes)&&x.recent.freshMaxAgeMinutes>0&&typeof x.revision?.required==='boolean');
-          out.policyValid=validPolicy;
-          out.policies=validPolicy?p.policies.map(x=>({source:x.source,recent:scalar(x.recent,['freshMaxAgeMinutes','staleMaxAgeMinutes']),revision:scalar(x.revision,['required','mode','scope','maxAgeMinutes','certification'])})):null;
-          const stored=await read('/api/freshness?observe=1','runtime','persisted-freshness');
-          out.persisted=Array.isArray(stored?.states)?stored.states.filter(x=>SOURCES.includes(x.source)).map(x=>({
-           ...scalar(x,['source','checkedAt','status','lastSyncSuccessAt','revisionStatus','revisionLastSuccessAt','latestIdentityParity']),
-           observationAgeMinutes:age(x.checkedAt),recentAgeMinutesNow:age(x.lastSyncSuccessAt),revisionAgeMinutesNow:age(x.revisionLastSuccessAt),
-           missingCount:Array.isArray(x.missingOfficialIdentities)?x.missingOfficialIdentities.length:null,
-           revisionMismatchCount:Array.isArray(x.revisionMismatches)?x.revisionMismatches.length:null,errorPresent:x.error!==null})):null;
-          const fields=['source','mode','status','lastSuccessAt','startedAt','completedAt','cursor','cursorKey','totalUnits','coverage','pageErrors','detailFailures','recordsObserved','recordsPersisted','newCount','updatedCount','auditStatus','auditCheckedAt','cycleId','planVersion'];
-          const state=x=>x && typeof x==='object'?{...scalar(x,fields),lastErrorPresent:Object.hasOwn(x,'lastError')?x.lastError!==null:null}:null;
-          for(let i=0;i<SOURCES.length;i++){
-           const source=SOURCES[i];const body=await read(`/api/${ROUTES[i]}/sync?observe=1`,'runtime','observe-'+source);
-           const valid=Boolean(body && body.recent?.source===source && body.recent?.mode==='recent' && Object.hasOwn(body,'lease') &&
-            (body.lease===null||body.lease?.source===source));
-           const rev=body?Object.fromEntries(Object.entries(body).filter(([k])=>/revision|reconcile|parity|historical|legacy/i.test(k))
-            .map(([k,v])=>[k,state(v)])):null;
-           out.sources.push({source,observed:valid,observedAt:new Date().toISOString(),recent:state(body?.recent),
-            recentAgeMinutes:age(body?.recent?.lastSuccessAt),lease:body&&Object.hasOwn(body,'lease')?
-            (body.lease===null?null:scalar(body.lease,['source','mode','expiresAt'])):'UNKNOWN',
-            backfill:state(body?.backfill),snapshot:body?.snapshot?scalar(body.snapshot,['status','purpose']):null,revision:rev});
+          export function assessResponse(body,headers,variant,elapsedMs){
+            if(!Number.isFinite(elapsedMs)||elapsedMs<0||elapsedMs>=5000)throw Error('latency-stop');
+            if(headers.get('cf-mitigated')||!headers.get('content-type')?.includes('application/json'))throw Error('challenge-or-non-json');
+            if(body?.apiVersion!==1||body?.schemaVersion!==7||body?.pagination?.pageSize!==1||!Array.isArray(body?.items)||body.items.length>1)throw Error('response-contract');
+            const query=body.query;
+            if(!obj(query)||['period','from','to','source'].some(x=>query[x]!==PARAMS[x])||query.q!==(variant==='B'?'leche':null))throw Error('query-contract');
+            if(!Number.isFinite(body.total)||body.total<0)throw Error('invalid-total');
+            return {...metrics(headers),summary:{apiVersion:1,schemaVersion:7,total:body.total,returned:body.items.length,
+              query:Object.fromEntries(['q','period','from','to','source','domain','country','aesanType'].map(k=>[k,query[k]??null]))}};
           }
-          const after=await read('/workers/scripts/vigia-runtime/deployments','cf','deployment-after','json',0);
-          out.deploymentAfter=deploy(after?.deployments?.[0]);
-          out.deploymentUnchanged=Boolean(out.deploymentBefore?.id===EXPECTED&&JSON.stringify(out.deploymentBefore)===JSON.stringify(out.deploymentAfter));
-          out.readsComplete=out.calls.length===12 && out.calls.every(x=>x.result==='OBSERVED') && validPolicy && out.sources.every(x=>x.observed);
-          out.completedAt=new Date().toISOString();out.elapsedMs=Math.round(performance.now()-start);
-          console.log('PRE1_PREFLIGHT '+JSON.stringify(out));
-          if(!out.readsComplete||!out.deploymentUnchanged)process.exitCode=1;
+          export async function captureBaseline({fetch:network=globalThis.fetch,token,now=Date.now,monotonic=()=>performance.now()}={}){
+            const started=monotonic(),wall=now(),out={checkpoint:'PERF-BASELINE-20261002-CP4',protocol:'NEW_PRODUCTION_CAPTURE',
+              baselineRuntime:CONTRACT.runtime,zeroProductWrites:true,historicalStopClientReused:false,mutationAttempts:0,
+              redirects:false,retries:0,samples:[],calls:[],validInstrumentedSamples:0,comparisonSamples:0,comparisonUsable:false,
+              status:'PREPARED',reason:null,productVerdict:'NOT_ASSESSED',observedAt:new Date(wall).toISOString()};
+            let totalBytes=0;
+            async function get(path,cf=false,variant=null){
+              const left=CONTRACT.globalMs-(monotonic()-started);
+              if(left<=0||now()<wall||Math.abs((now()-wall)-(monotonic()-started))>2000)throw Error('clock-or-budget');
+              const call={plane:cf?'cloudflare':'terminal',method:'GET',variant};out.calls.push(call);
+              const began=monotonic();
+              const r=await network((cf?CONTRACT.cf:CONTRACT.base)+path,{method:'GET',redirect:'error',cache:'no-store',
+                headers:cf?{Authorization:'Bearer '+token}:{'X-Nagame-Perf':'1'},signal:AbortSignal.timeout(Math.max(1,Math.floor(Math.min(5000,left))))});
+              call.http=r.status;
+              if(r.status!==200){void r.body?.cancel().catch(()=>{});throw Error(cf?'metadata-http':'terminal-http');}
+              if(Number(r.headers.get('content-length')??0)>CONTRACT.maxResponseBytes){void r.body?.cancel().catch(()=>{});throw Error('byte-budget');}
+              const reader=r.body?.getReader();if(!reader)throw Error('body-missing');
+              const chunks=[];let size=0;
+              try{while(true){const chunk=await reader.read();if(chunk.done)break;size+=chunk.value.length;totalBytes+=chunk.value.length;
+                if(size>CONTRACT.maxResponseBytes||totalBytes>CONTRACT.maxTotalBytes)throw Error('byte-budget');chunks.push(chunk.value);}}
+              finally{void reader.cancel().catch(()=>{});}
+              const all=new Uint8Array(size);let offset=0;for(const c of chunks){all.set(c,offset);offset+=c.length;}
+              call.elapsedMs=monotonic()-began;const body=JSON.parse(new TextDecoder().decode(all));
+              return {body,headers:r.headers,elapsedMs:call.elapsedMs};
+            }
+            const deployed=body=>body?.success===true&&body.result?.deployments?.[0]?.id===CONTRACT.deployment&&
+              body.result.deployments[0].versions?.length===1&&body.result.deployments[0].versions[0].version_id===CONTRACT.worker&&body.result.deployments[0].versions[0].percentage===100;
+            try{
+              if(!token)throw Error('metadata-auth-unavailable');
+              const before=await get('/workers/scripts/vigia-runtime/deployments',true);if(!deployed(before.body))throw Error('deployment-identity');
+              const settings=await get('/workers/scripts/vigia-runtime/settings',true);const bindings=settings.body?.result?.bindings;
+              if(settings.body?.success!==true||!Array.isArray(bindings)||bindings.filter(x=>x.type==='d1'&&x.name==='DB').length!==1||
+                !bindings.some(x=>x.type==='d1'&&x.name==='DB'&&(x.id===CONTRACT.database||x.database_id===CONTRACT.database))||
+                !bindings.some(x=>x.name==='NAGAMEALERT_RECENT_SCHEDULER_MODE'&&x.type==='plain_text'&&x.text==='rapna-rasff-pilot')||
+                bindings.some(x=>x.name==='NAGAMEALERT_SAFETY_GATE_RECENT_MODE'||x.name==='NAGAMEALERT_WATCHDOG_OBSERVER_MODE'&&x.text==='read-only'))throw Error('bindings-or-mode');
+              out.metadataGate='VERIFIED_CURRENT_TUPLE';out.worker=CONTRACT.worker;out.deployment=CONTRACT.deployment;out.database=CONTRACT.database;
+              // One warm-up followed by three ordered A/B pairs; a STOP closes this protocol.
+              const plan=['A','A','B','A','B','A','B'];
+              for(let i=0;i<plan.length;i++){
+                const variant=plan[i],params=new URLSearchParams(PARAMS);if(variant==='B')params.set('q','leche');
+                const sample={index:i,variant,preparation:i===0,attemptedAt:new Date(now()).toISOString(),status:'ATTEMPTED'};out.samples.push(sample);
+                const response=await get('/api/terminal/alerts?'+params.toString(),false,variant);
+                const assessed=assessResponse(response.body,response.headers,variant,response.elapsedMs);
+                Object.assign(sample,{status:'VALID_INSTRUMENTED_RESPONSE',elapsedMs:response.elapsedMs,...assessed});
+                out.validInstrumentedSamples++;if(i>0)out.comparisonSamples++;
+              }
+              const after=await get('/workers/scripts/vigia-runtime/deployments',true);if(!deployed(after.body))throw Error('deployment-drift-after');
+              out.deploymentUnchanged=true;out.status='MEASUREMENT_AVAILABLE';out.comparisonUsable=true;
+            }catch(e){
+              const allowed=['clock-or-budget','metadata-http','terminal-http','byte-budget','body-missing','metadata-auth-unavailable','deployment-identity','bindings-or-mode',
+                'deployment-drift-after','latency-stop','challenge-or-non-json','response-contract','query-contract','invalid-total','invalid-timing','invalid-rows','metadata-missing','write-observed'];
+              out.status='STOP';out.reason=allowed.includes(e?.message)?e.message:'transport-or-json';out.retryAuthorized=false;
+            }
+            out.completedAt=new Date(now()).toISOString();out.elapsedMs=monotonic()-started;out.bytes=totalBytes;
+            return out;
+          }
+          const result=await captureBaseline({token:process.env.CLOUDFLARE_API_TOKEN});
+          console.log('PERF_CAPTURE '+JSON.stringify(result));
+          if(result.status!=='MEASUREMENT_AVAILABLE')process.exitCode=1;
           NODE
