@@ -1,4 +1,4 @@
-name: PRE1 observer current release preflight CP9
+name: PRE1 observer budget and coexistence preflight CP9
 on:
   push:
     branches: [work/scheduler-reliability-s0-evidence]
@@ -8,8 +8,8 @@ permissions:
 jobs:
   collect:
     if: >-
-      github.event.head_commit.message == 'PRE1: observer release read-only preflight CP9 20261002' &&
-      github.run_number == 17 && github.run_attempt == 1
+      github.event.head_commit.message == 'PRE1: observer budget and coexistence reads CP9 20261002' &&
+      github.run_number == 18 && github.run_attempt == 1
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -24,22 +24,21 @@ jobs:
           let bytes=0;
           async function read(path,body) {
            const left=90000-(Date.now()-begun); if(left<=0||!token)throw Error('budget-or-token');
-           const r=await fetch(root+path,{method:body?'POST':'GET',redirect:'error',headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(Math.min(8000,left))});
+           const r=await fetch(path==='/graphql'?'https://api.cloudflare.com/client/v4/graphql':root+path,{method:body?'POST':'GET',redirect:'error',headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(Math.min(8000,left))});
            const b=await r.text();bytes+=Buffer.byteLength(b);if(bytes>1024*1024||b.length>512*1024)throw Error('byte-budget');
-           let j;try{j=JSON.parse(b)}catch{}
-           const meta={path,http:r.status,success:j?.success===true,errorCodes:(j?.errors||[]).map(x=>x.code),observedAt:new Date().toISOString()};out.reads.push(meta);return {meta,result:j?.result};
-          }
-          try{
-           const dep=await read('/workers/scripts/vigia-runtime/deployments');out.deployments=dep.result?.deployments?.slice(0,2);
-           const settings=await read('/workers/scripts/vigia-runtime/settings');
-           const s=settings.result;out.settings=s?{logpush:s.logpush,observability:s.observability,usage_model:s.usage_model,limits:s.limits,bindings:(s.bindings||[]).filter(x=>x.type==='d1'||x.type==='plain_text').map(x=>x.type==='d1'?{name:x.name,type:x.type,id:x.id,database_id:x.database_id}:{name:x.name,type:x.type,text:/^NAGAMEALERT_(RECENT_SCHEDULER_MODE|WATCHDOG_OBSERVER_MODE|SAFETY_GATE_RECENT_MODE|PUBLIC_ORIGIN)$/.test(x.name)?x.text:'REDACTED'})}:null;
-           const schedules=await read('/workers/scripts/vigia-runtime/schedules');out.schedules=schedules.result;
-           const account=await read('/workers/account-settings');out.accountSettings=account.result;
-           const subs=await read('/subscriptions');out.subscriptions=Array.isArray(subs.result)?subs.result.map(x=>({state:x.state,rate_plan:{id:x.rate_plan?.id,public_name:x.rate_plan?.public_name,scope:x.rate_plan?.scope},current_period_start:x.current_period_start,current_period_end:x.current_period_end})):null;
-           const active=out.deployments?.[0]?.versions;if(active?.length===1){const v=await read('/workers/scripts/vigia-runtime/versions/'+active[0].version_id);out.version=v.result?{id:v.result.id,metadata:v.result.metadata,annotations:v.result.annotations,resources:{script:v.result.resources?.script,bindings:(v.result.resources?.bindings||[]).filter(x=>x.type==='d1').map(x=>({type:x.type,name:x.name,id:x.id}))}}:null;}
-           const logs=await read('/workers/observability/telemetry/query',{queryId:'observer-cp9-preflight',dry:true,view:'events',limit:20,timeframe:{from:begun-15*60000,to:begun},parameters:{datasets:[],filters:[{key:'$metadata.service',type:'string',operation:'eq',value:'vigia-runtime'}],filterCombination:'and',limit:20}});
-           out.logRead={meta:logs.meta,keys:Object.keys(logs.result||{}),events:(Array.isArray(logs.result?.events?.events)?logs.result.events.events:Array.isArray(logs.result?.events)?logs.result.events:[]).map(e=>({timestamp:e.timestamp,keys:Object.keys(e),metadata:e.$metadata?{id:e.$metadata.id,service:e.$metadata.service,origin:e.$metadata.origin,type:e.$metadata.type}:null,cloudflare:e.$cloudflare?{scriptName:e.$cloudflare.scriptName,requestId:e.$cloudflare.requestId,eventType:e.$cloudflare.eventType,outcome:e.$cloudflare.outcome}:null}))}; 
+           let j;try{
+           const month=Date.parse('2026-10-01T00:00:00Z');
+           const telemetry=async(id,view,from,filters,calculations)=>read('/workers/observability/telemetry/query',{queryId:id,dry:true,view,chart:false,chartType:'aggregate',ignoreSeries:true,limit:10,timeframe:{from,to:begun},parameters:{datasets:[],filterCombination:'and',filters,limit:10,...(calculations?{calculations}:{})}});
+           const usage=await telemetry('observer-cp9-account-log-budget','calculations',month,[],[{operator:'count',alias:'accountEvents'}]);out.accountEvents={meta:usage.meta,result:usage.result};
+           const scheduled=await telemetry('observer-cp9-s0-coexistence','events',begun-15*60000,[{key:'$metadata.service',type:'string',operation:'eq',value:'vigia-runtime'},{key:'$metadata.origin',type:'string',operation:'eq',value:'scheduled'}]);
+           const es=Array.isArray(scheduled.result?.events?.events)?scheduled.result.events.events:Array.isArray(scheduled.result?.events)?scheduled.result.events:[];
+           out.scheduledLogs={meta:scheduled.meta,resultKeys:Object.keys(scheduled.result||{}),events:es.map(e=>({timestamp:e.timestamp,metadata:e.$metadata?{id:e.$metadata.id,service:e.$metadata.service,origin:e.$metadata.origin,type:e.$metadata.type}:null,worker:e.$workers?{scriptName:e.$workers.scriptName,scriptVersion:e.$workers.scriptVersion,eventType:e.$workers.eventType,outcome:e.$workers.outcome,cron:e.$workers.event?.cron}:null,sourceKeys:Object.keys(e.source||{})}))};
+           const scripts=await read('/workers/scripts');const worker=Array.isArray(scripts.result)?scripts.result.find(x=>x.id==='vigia-runtime'):null;out.worker={id:worker?.id,tag:worker?.tag,usage_model:worker?.usage_model};
+           if(worker?.tag&&/^[a-f0-9-]+$/.test(worker.tag)){const triggers=await read('/builds/workers/'+worker.tag+'/triggers');out.triggers={meta:triggers.meta,list:(Array.isArray(triggers.result)?triggers.result:triggers.result?.triggers||[]).map(x=>({trigger_uuid:x.trigger_uuid,trigger_name:x.trigger_name,build_command:x.build_command,deploy_command:x.deploy_command,branch_includes:x.branch_includes,branch_excludes:x.branch_excludes,path_includes:x.path_includes,path_excludes:x.path_excludes,root_directory:x.root_directory,build_token_uuid_present:!!x.build_token_uuid}))}; const builds=await read('/builds/workers/'+worker.tag+'/builds?per_page=5');out.builds={meta:builds.meta,result:builds.result};}
+           const leases=await read('/d1/database/55596003-1b90-4f66-aad8-decb21205f13/query',{sql:"SELECT source, CASE WHEN owner_id IS NULL THEN 0 ELSE 1 END AS ownerPresent, mode, acquired_at AS acquiredAt, expires_at AS expiresAt FROM source_sync_locks WHERE source IN ('AESAN','RAPNA','RASFF','SAFETY GATE','OECD') ORDER BY source LIMIT 5"});out.leases={meta:leases.meta,result:leases.result};
+           const graph=await read('/graphql',{query:'query ObserverBudget($tag: string, $from: string, $to: string) { viewer { accounts(filter: {accountTag: $tag}) { workersInvocationsAdaptive(limit: 1, filter: {datetime_geq: $from, datetime_leq: $to}) { sum { requests cpuTimeUs } } } } }',variables:{tag:'9c1807c68493f14259248b5f5782cc6f',from:new Date(month).toISOString(),to:new Date(begun).toISOString()}});out.workerUsage={meta:graph.meta,data:graph.data,errors:graph.errors};
+           const dep=await read('/workers/scripts/vigia-runtime/deployments');out.finalDeployment=dep.result?.deployments?.[0];
            out.status='READS_COMPLETE';
           }catch(e){out.status='STOP';out.reason=['budget-or-token','byte-budget'].includes(e.message)?e.message:'transport-or-shape';}
-          out.completedAt=new Date().toISOString();out.bytes=bytes;console.log('OBSERVER_PREFLIGHT '+JSON.stringify(out));
+          out.completedAt=new Date().toISOString();out.bytes=bytes;console.log('OBSERVER_BUDGET_PREFLIGHT '+JSON.stringify(out));
           NODE
