@@ -8,8 +8,8 @@ permissions:
 jobs:
   collect:
     if: >-
-      github.event.head_commit.message == 'PRE1: observer budget and coexistence reads CP9 20261002' &&
-      github.run_number == 18 && github.run_attempt == 1
+      github.event.head_commit.message == 'PRE1: observer budget reader syntax fix CP9 20261002' &&
+      github.run_number == 19 && github.run_attempt == 1
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -26,7 +26,10 @@ jobs:
            const left=90000-(Date.now()-begun); if(left<=0||!token)throw Error('budget-or-token');
            const r=await fetch(path==='/graphql'?'https://api.cloudflare.com/client/v4/graphql':root+path,{method:body?'POST':'GET',redirect:'error',headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(Math.min(8000,left))});
            const b=await r.text();bytes+=Buffer.byteLength(b);if(bytes>1024*1024||b.length>512*1024)throw Error('byte-budget');
-           let j;try{
+           let j;try{j=JSON.parse(b)}catch{}
+           const meta={path,http:r.status,success:j?.success===true,errorCodes:(j?.errors||[]).map(x=>x.code),observedAt:new Date().toISOString()};out.reads.push(meta);return {meta,result:j?.result,data:j?.data,errors:(j?.errors||[]).map(x=>({code:x.code,message:typeof x.message==='string'?x.message.slice(0,200):null}))};
+          }
+          try{
            const month=Date.parse('2026-10-01T00:00:00Z');
            const telemetry=async(id,view,from,filters,calculations)=>read('/workers/observability/telemetry/query',{queryId:id,dry:true,view,chart:false,chartType:'aggregate',ignoreSeries:true,limit:10,timeframe:{from,to:begun},parameters:{datasets:[],filterCombination:'and',filters,limit:10,...(calculations?{calculations}:{})}});
            const usage=await telemetry('observer-cp9-account-log-budget','calculations',month,[],[{operator:'count',alias:'accountEvents'}]);out.accountEvents={meta:usage.meta,result:usage.result};
