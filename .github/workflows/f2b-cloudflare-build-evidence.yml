@@ -8,7 +8,7 @@ permissions:
 jobs:
   collect:
     if: >-
-      github.event.head_commit.message == 'PRE1: release85 preflight 20261002 CP4'
+      github.event.head_commit.message == 'PRE1: release85 postrelease 20261002 CP5'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -28,7 +28,7 @@ jobs:
           const blocked={cf:false,runtime:false};
           const start=performance.now();
           const remaining=()=>240000-(performance.now()-start);
-          const out={checkpoint:'PRE1-PREFLIGHT-20261002-RELEASE85-CP4',observedAt:new Date().toISOString(),zeroProductWrites:true,
+          const out={checkpoint:'PRE1-PREFLIGHT-20261002-RELEASE85-CP5',observedAt:new Date().toISOString(),zeroProductWrites:true,
            publicationAuthorized:false,officialParityCertified:false,calls:[],sources:[]};
           const scalar=(o,keys)=>Object.fromEntries(keys.filter(k=>o && Object.hasOwn(o,k) &&
            (o[k]===null||typeof o[k]==='boolean'||Number.isFinite(o[k])||typeof o[k]==='string'&&o[k].length<=100)).map(k=>[k,o[k]]));
