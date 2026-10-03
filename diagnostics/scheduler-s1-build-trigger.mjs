@@ -40,3 +40,5 @@ if(token&&txt.includes(token)) txt=JSON.stringify({status:"HOLD",reason:"output-
 await writeFile("scheduler-s1-build-trigger.json",txt);
 console.log(txt);
 if(out.status!=="EVIDENCE_RETRIEVED") process.exitCode=1;
+
+// S3 exact-head trigger configuration reread 2026-10-03
