@@ -1,0 +1,85 @@
+name: VIGIA Safety Gate historical controlled batch
+
+on:
+  push:
+    branches: [work/scheduler-reliability-s0-evidence]
+    paths:
+      - ".github/workflows/safety-gate-historical-controlled.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vigia-safety-gate-historical-controlled
+  cancel-in-progress: false
+
+jobs:
+  writer_gate:
+    uses: ./.github/workflows/runtime-writer-gate.yml
+
+  runtime_target:
+    uses: ./.github/workflows/runtime-writer-target.yml
+
+  control:
+    needs: [writer_gate, runtime_target]
+    if: needs.writer_gate.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Execute one fail-closed Safety Gate historical batch
+        env:
+          VIGIA_BASE_URL: ${{ needs.runtime_target.outputs.base_url }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const base=process.env.VIGIA_BASE_URL;
+          const headers={Authorization:`Bearer ${process.env.VIGIA_SYNC_TOKEN}`,"Content-Type":"application/json"};
+          async function get(path){
+            const r=await fetch(base+path,{headers,redirect:"follow",signal:AbortSignal.timeout(60000)});
+            const raw=await r.text(); let body;
+            try{body=JSON.parse(raw)}catch{throw new Error(path+" non-json HTTP "+r.status)}
+            if(r.status!==200)throw new Error(path+" HTTP "+r.status);
+            return body;
+          }
+          const before=await get("/api/safety-gate/sync?observe=1");
+          console.log("SAFETY_HISTORICAL_BEFORE "+JSON.stringify({
+            recent:before.recent??null,
+            historicalReconcile:before.historicalReconcile??null,
+            revisionCertification:before.revisionCertification??null,
+            lease:before.lease??null,
+            snapshot:before.snapshot??null
+          }));
+          const response=await fetch(base+"/api/safety-gate/sync?mode=historical-reconcile&batchSize=10",{
+            method:"POST",headers,redirect:"follow",signal:AbortSignal.timeout(840000)
+          });
+          const raw=await response.text(); let body;
+          try{body=JSON.parse(raw)}catch{throw new Error("historical non-json HTTP "+response.status)}
+          const state=body?.state??null;
+          console.log("SAFETY_HISTORICAL_BATCH "+JSON.stringify({
+            http:response.status,
+            skipped:body?.skipped??null,
+            state:state?{
+              source:state.source,mode:state.mode,status:state.status,cursor:state.cursor,totalUnits:state.totalUnits,
+              pagesScanned:state.pagesScanned,recordsObserved:state.recordsObserved,recordsPersisted:state.recordsPersisted,
+              newCount:state.newCount,updatedCount:state.updatedCount,detailFailures:state.detailFailures,pageErrors:state.pageErrors,
+              coverage:state.coverage,lastSuccessAt:state.lastSuccessAt,completedAt:state.completedAt,lastError:state.lastError,
+              leaseOwnerId:state.leaseOwnerId,leaseMode:state.leaseMode,leaseExpiresAt:state.leaseExpiresAt,
+              lastSkipReason:state.lastSkipReason,planVersion:state.planVersion,cursorKey:state.cursorKey
+            }:null,
+            certification:body?.certification?{
+              source:body.certification.source,mode:body.certification.mode,cycleId:body.certification.cycleId,
+              coverage:body.certification.coverage,auditStatus:body.certification.auditStatus,
+              completedAt:body.certification.completedAt,auditCheckedAt:body.certification.auditCheckedAt
+            }:null
+          }));
+          if(![200,202].includes(response.status))throw new Error("historical HTTP "+response.status+": "+raw.slice(0,1200));
+          const after=await get("/api/safety-gate/sync?observe=1");
+          console.log("SAFETY_HISTORICAL_AFTER "+JSON.stringify({
+            recent:after.recent??null,
+            historicalReconcile:after.historicalReconcile??null,
+            revisionCertification:after.revisionCertification??null,
+            lease:after.lease??null,
+            snapshot:after.snapshot??null
+          }));
+          NODE
