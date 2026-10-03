@@ -69,9 +69,11 @@ try{
   const bindings=Array.isArray(settings.body?.result?.bindings)?settings.body.result.bindings:[];
   const mode=bindings.find(b=>b?.name==="NAGAMEALERT_RECENT_SCHEDULER_MODE");
   out.schedulerMode=typeof mode?.text==="string"?mode.text:typeof mode?.value==="string"?mode.value:null;
+  const safetyMode=bindings.find(b=>b?.name==="NAGAMEALERT_SAFETY_GATE_RECENT_MODE");
+  out.safetyGateRecentMode=typeof safetyMode?.text==="string"?safetyMode.text:typeof safetyMode?.value==="string"?safetyMode.value:null;
   out.activeTrafficTotal=(out.activeDeployment?.versions??[]).reduce((n,v)=>n+(Number(v.percentage)||0),0);
   out.status=out.activeDeployment?.id&&out.activeTrafficTotal===100&&
-    out.schedules.some(s=>s.cron==="*/5 * * * *")&&out.activeVersions.length>0&&out.schedulerMode==="rapna-rasff-pilot"
+    out.schedules.some(s=>s.cron==="*/5 * * * *")&&out.activeVersions.length>0&&out.schedulerMode==="rapna-rasff-oecd-pilot"&&out.safetyGateRecentMode===null
     ?"CONTROL_EVIDENCE_RETRIEVED":"HOLD";
   if(out.status==="HOLD")out.reason="control-contract-incomplete";
 }catch(error){
