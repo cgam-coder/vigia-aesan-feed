@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 const ACCOUNT="9c1807c68493f14259248b5f5782cc6f";
 const API="https://api.cloudflare.com/client/v4";
-const TARGET="e40db08c1521330b502a270dd545a84d21983d94";
+const TARGET="88186cd365d7112419d55712dd0abf669d80889d";
 const out={status:"HOLD",operation:"s3-production-build-status",target:TARGET,matches:[]};
 try{
   const token=process.env.CLOUDFLARE_API_TOKEN;
