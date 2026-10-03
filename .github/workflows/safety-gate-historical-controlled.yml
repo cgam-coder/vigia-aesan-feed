@@ -24,62 +24,141 @@ jobs:
     needs: [writer_gate, runtime_target]
     if: needs.writer_gate.outputs.allowed == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 22
     steps:
-      - name: Execute one fail-closed Safety Gate historical batch
+      - name: Continue bounded fail-closed Safety Gate historical batches
         env:
           VIGIA_BASE_URL: ${{ needs.runtime_target.outputs.base_url }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
-          node <<'NODE'
-          const base=process.env.VIGIA_BASE_URL;
-          const headers={Authorization:`Bearer ${process.env.VIGIA_SYNC_TOKEN}`,"Content-Type":"application/json"};
-          async function get(path){
-            const r=await fetch(base+path,{headers,redirect:"follow",signal:AbortSignal.timeout(60000)});
-            const raw=await r.text(); let body;
-            try{body=JSON.parse(raw)}catch{throw new Error(path+" non-json HTTP "+r.status)}
-            if(r.status!==200)throw new Error(path+" HTTP "+r.status);
-            return body;
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          const base = process.env.VIGIA_BASE_URL;
+          const headers = { Authorization: `Bearer ${process.env.VIGIA_SYNC_TOKEN}`, 'Content-Type': 'application/json' };
+          const cfRoot = 'https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/workers/scripts/vigia-runtime';
+          const expectedDeployment = 'db36706c-96e5-4095-9d92-6922cde10543';
+          const expectedWorker = '54fe12f9-e0ea-4881-8961-f20fc1e5e447';
+          const stopReasons = new Set(['recent-priority', 'already-running', 'backfill-active']);
+          const deadline = Date.now() + 20 * 60_000;
+          let batches = 0, mutationPending = false;
+          const log = (key, body) => console.log(key + ' ' + JSON.stringify(body));
+          const finish = (status, reason, state = null) => {
+            log('SAFETY_HISTORICAL_RESULT', { status, reason, batches, state, observedAt: new Date().toISOString() });
+            if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Safety Gate historical: **${status}**, ${reason}; batches=${batches}, cursor=${state?.cursor ?? 0}/${state?.totalUnits ?? 0}.\n`);
+          };
+          async function request(url, options, timeout) {
+            const response = await fetch(url, { ...options, redirect: 'error', signal: AbortSignal.timeout(timeout) });
+            const body = await response.json();
+            return { http: response.status, body };
           }
-          const before=await get("/api/safety-gate/sync?observe=1");
-          console.log("SAFETY_HISTORICAL_BEFORE "+JSON.stringify({
-            recent:before.recent??null,
-            historicalReconcile:before.historicalReconcile??null,
-            revisionCertification:before.revisionCertification??null,
-            lease:before.lease??null,
-            snapshot:before.snapshot??null
-          }));
-          const response=await fetch(base+"/api/safety-gate/sync?mode=historical-reconcile&batchSize=10",{
-            method:"POST",headers,redirect:"follow",signal:AbortSignal.timeout(840000)
-          });
-          const raw=await response.text(); let body;
-          try{body=JSON.parse(raw)}catch{throw new Error("historical non-json HTTP "+response.status)}
-          const state=body?.state??null;
-          console.log("SAFETY_HISTORICAL_BATCH "+JSON.stringify({
-            http:response.status,
-            skipped:body?.skipped??null,
-            state:state?{
-              source:state.source,mode:state.mode,status:state.status,cursor:state.cursor,totalUnits:state.totalUnits,
-              pagesScanned:state.pagesScanned,recordsObserved:state.recordsObserved,recordsPersisted:state.recordsPersisted,
-              newCount:state.newCount,updatedCount:state.updatedCount,detailFailures:state.detailFailures,pageErrors:state.pageErrors,
-              coverage:state.coverage,lastSuccessAt:state.lastSuccessAt,completedAt:state.completedAt,lastError:state.lastError,
-              leaseOwnerId:state.leaseOwnerId,leaseMode:state.leaseMode,leaseExpiresAt:state.leaseExpiresAt,
-              lastSkipReason:state.lastSkipReason,planVersion:state.planVersion,cursorKey:state.cursorKey
-            }:null,
-            certification:body?.certification?{
-              source:body.certification.source,mode:body.certification.mode,cycleId:body.certification.cycleId,
-              coverage:body.certification.coverage,auditStatus:body.certification.auditStatus,
-              completedAt:body.certification.completedAt,auditCheckedAt:body.certification.auditCheckedAt
-            }:null
-          }));
-          if(![200,202].includes(response.status))throw new Error("historical HTTP "+response.status+": "+raw.slice(0,1200));
-          const after=await get("/api/safety-gate/sync?observe=1");
-          console.log("SAFETY_HISTORICAL_AFTER "+JSON.stringify({
-            recent:after.recent??null,
-            historicalReconcile:after.historicalReconcile??null,
-            revisionCertification:after.revisionCertification??null,
-            lease:after.lease??null,
-            snapshot:after.snapshot??null
-          }));
+          async function get(path) {
+            const r = await request(base + path, { headers }, 45_000);
+            if (r.http !== 200) throw new Error('read-http-' + r.http);
+            return r.body;
+          }
+          async function verifyProduction() {
+            const cfHeaders = { Authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}` };
+            const [dep, settings, schedules] = await Promise.all(['/deployments', '/settings', '/schedules'].map(p => request(cfRoot + p, { headers: cfHeaders }, 30_000)));
+            for (const r of [dep, settings, schedules]) if (r.http !== 200 || r.body?.success !== true) throw new Error('control-read-failed');
+            const list = dep.body.result?.deployments ?? dep.body.result;
+            const active = list?.[0], previous = list?.[1];
+            const bindings = settings.body.result?.bindings ?? [];
+            const value = name => { const b = bindings.find(b => b.name === name); return b?.text ?? b?.value ?? null; };
+            const crons = schedules.body.result?.schedules ?? schedules.body.result;
+            if (active?.id !== expectedDeployment || active.versions?.length !== 1 || active.versions[0].version_id !== expectedWorker || active.versions[0].percentage !== 100 ||
+                previous?.id !== '154e2338-b846-4734-9bd1-24b4cbb420cb' || previous.versions?.[0]?.version_id !== 'a10fce1a-e4ca-4bc9-93f0-99fd89a72723' ||
+                value('NAGAMEALERT_RECENT_SCHEDULER_MODE') !== 'rapna-rasff-oecd-pilot' || value('NAGAMEALERT_SAFETY_GATE_RECENT_MODE') !== null ||
+                !Array.isArray(crons) || crons.length !== 1 || crons[0].cron !== '*/5 * * * *') throw new Error('production-identity-or-config-drift');
+            if (batches === 0) log('SAFETY_PRODUCTION_VERIFIED', { activeDeployment: active.id, worker: expectedWorker, rollback: previous.id, scheduler: value('NAGAMEALERT_RECENT_SCHEDULER_MODE'), delta: value('NAGAMEALERT_SAFETY_GATE_RECENT_MODE'), cron: crons[0].cron });
+          }
+          function validState(s) {
+            if (!s) return;
+            if (s.source !== 'SAFETY GATE' || s.mode !== 'historical-reconcile' || !Number.isSafeInteger(s.cursor) || !Number.isSafeInteger(s.totalUnits) || s.cursor < 0 || s.cursor > s.totalUnits || s.pagesScanned !== s.cursor) throw new Error('cursor-or-state-invalid');
+            if (s.lastError !== null || s.detailFailures !== 0 || s.pageErrors !== 0 || s.status === 'failed') throw new Error('unresolved-historical-error');
+            if (s.planVersion !== null && !/^safety-gate-weekly-detail-v1:[a-f0-9]{64}$/.test(s.planVersion)) throw new Error('plan-invalid');
+            if (s.cursorKey !== null) {
+              const c = JSON.parse(s.cursorKey);
+              if (c.version !== 2 || !Number.isSafeInteger(c.offset) || c.offset < 0 || typeof c.reportUrl !== 'string' || !/^[a-f0-9]{64}$/.test(c.reportVersion)) throw new Error('detail-cursor-invalid');
+            }
+          }
+          const stateKey = s => JSON.stringify([s?.cursor ?? 0, s?.totalUnits ?? 0, s?.cursorKey ?? null, s?.planVersion ?? null, s?.recordsObserved ?? 0, s?.recordsPersisted ?? 0, s?.status ?? 'idle']);
+          function validateProgress(old, s) {
+            validState(s);
+            if (!s || !['partial', 'completed'].includes(s.status) || !s.planVersion || s.totalUnits <= 0) throw new Error('missing-safe-state');
+            if (s.leaseOwnerId !== null || s.leaseMode !== null || s.leaseExpiresAt !== null) throw new Error('batch-lease-not-released');
+            if (old?.planVersion && (s.planVersion !== old.planVersion || s.totalUnits !== old.totalUnits)) throw new Error('plan-drift');
+            const delta = s.recordsObserved - (old?.recordsObserved ?? 0);
+            if (!Number.isSafeInteger(delta) || delta < 0 || delta > 10 || s.cursor < (old?.cursor ?? 0) || s.cursor > (old?.cursor ?? 0) + 1) throw new Error('batch-bound-or-cursor-drift');
+            const beforeOffset = old?.cursorKey ? JSON.parse(old.cursorKey).offset : 0;
+            const afterOffset = s.cursorKey ? JSON.parse(s.cursorKey).offset : 0;
+            if (s.cursor === (old?.cursor ?? 0) && (delta <= 0 || afterOffset !== beforeOffset + delta)) throw new Error('no-progress-or-offset-drift');
+          }
+          function auditPass(audit, s) {
+            if (!audit || !Number.isFinite(Date.parse(audit.checkedAt)) || Date.parse(audit.checkedAt) <= Date.parse(s.completedAt)) throw new Error('audit-not-posterior');
+            for (const k of ['duplicateReferenceGroups', 'invalidIdentities', 'emptyCanonicalRows', 'invalidOfficialUrls']) if (audit.integrity?.[k] !== 0) throw new Error('audit-integrity-' + k);
+            for (const [a, b] of [['safetyGateAlerts', 'safetyGateUniqueReferences'], ['safetyGateVersions', 'safetyGateVersionCountSum']]) {
+              if (!Number.isSafeInteger(audit.counts?.[a]) || audit.counts[a] <= 0 || audit.counts[a] !== audit.counts[b]) throw new Error('audit-parity-' + a);
+            }
+          }
+          function certPass(c, s) {
+            if (!c || c.source !== 'SAFETY GATE' || c.mode !== 'historical-reconcile' || c.cycleId !== s.planVersion || c.completedAt !== s.completedAt || c.coverage !== 'official-index-complete' || c.auditStatus !== 'passed' ||
+                c.totalUnits !== s.totalUnits || c.recordsObserved !== s.recordsObserved || c.evidence?.scope !== 'full-archive' || c.evidence?.contentAuthority !== 'official-json-detail') throw new Error('certification-missing-or-invalid');
+            auditPass(c.evidence.audit, s);
+          }
+          async function verifyTerminal(o) {
+            const s = o.historicalReconcile;
+            validState(s);
+            if (!s || s.status !== 'completed' || s.coverage !== 'official-index-complete' || s.totalUnits <= 0 || s.cursor !== s.totalUnits || s.cursorKey !== null || s.recordsObserved <= 0 || !s.completedAt || !s.planVersion ||
+                s.leaseOwnerId !== null || s.leaseMode !== null || s.leaseExpiresAt !== null || o.lease !== null) throw new Error('terminal-incomplete');
+            certPass(o.revisionCertification, s);
+            const audit = (await get('/api/safety-gate/sync?audit=1')).audit;
+            auditPass(audit, s);
+            const independent = await get('/api/safety-gate/sync?observe=1');
+            if (stateKey(independent.historicalReconcile) !== stateKey(s) || independent.historicalReconcile.completedAt !== s.completedAt || independent.lease !== null) throw new Error('terminal-state-drift-or-active-lease');
+            certPass(independent.revisionCertification, s);
+            log('SAFETY_HISTORICAL_TERMINAL_AUDIT', audit);
+            log('SAFETY_HISTORICAL_TERMINAL_CERTIFICATION', independent.revisionCertification);
+            finish('PASS', 'terminal-full-archive-certified', s);
+          }
+          async function main() {
+            if (base !== 'https://vigia-runtime.c-gamiz93.workers.dev' || !process.env.VIGIA_SYNC_TOKEN || !process.env.CLOUDFLARE_API_TOKEN) throw new Error('target-or-credential-not-configured');
+            let previous = null;
+            for (; batches < 100;) {
+              if (Date.now() + 420_000 + 120_000 > deadline) { finish('HOLD', 'time-budget-exhausted', previous); return; }
+              await verifyProduction();
+              const before = await get('/api/safety-gate/sync?observe=1');
+              const old = before.historicalReconcile;
+              log('SAFETY_HISTORICAL_BEFORE', before);
+              validState(old);
+              if (previous && stateKey(old) !== stateKey(previous)) throw new Error('concurrent-cursor-drift');
+              if (before.lease && (!before.lease.ownerId || !['recent', 'backfill', 'historical-reconcile'].includes(before.lease.mode) || !Number.isFinite(Date.parse(before.lease.expiresAt)))) throw new Error('lease-ambiguous');
+              if (!before.lease && old?.leaseOwnerId) { finish('HOLD', 'state-lease-ambiguous', old); return; }
+              if (old?.status === 'completed') { await verifyTerminal(before); return; }
+              mutationPending = true;
+              const r = await request(base + '/api/safety-gate/sync?mode=historical-reconcile&batchSize=10', { method: 'POST', headers }, 420_000);
+              mutationPending = false;
+              batches++;
+              log('SAFETY_HISTORICAL_BATCH', r);
+              if (r.http === 202 && stopReasons.has(r.body?.skipped)) {
+                const after = await get('/api/safety-gate/sync?observe=1');
+                log('SAFETY_HISTORICAL_AFTER', after);
+                finish('HOLD', r.body.skipped, after.historicalReconcile); return;
+              }
+              if (r.http !== 200) { finish(r.http === 503 ? 'HOLD' : 'FAIL', 'historical-http-' + r.http, r.body?.state); process.exitCode = 1; return; }
+              validateProgress(old, r.body?.state);
+              const after = await get('/api/safety-gate/sync?observe=1');
+              log('SAFETY_HISTORICAL_AFTER', after);
+              if (stateKey(after.historicalReconcile) !== stateKey(r.body.state)) throw new Error('remote-state-drift');
+              previous = after.historicalReconcile;
+              if (previous.status === 'completed') { certPass(r.body.certification, previous); await verifyTerminal(after); return; }
+              // No sleep and no mutation retry. Each next batch rereads persisted state and production.
+            }
+            finish('HOLD', 'batch-budget-exhausted', previous);
+          }
+          try { await main(); } catch (error) {
+            finish(mutationPending ? 'FAIL' : 'HOLD', mutationPending ? 'remote-mutation-result-uncertain' : String(error.message).slice(0,200));
+            process.exitCode = 1;
+          }
           NODE
