@@ -83,3 +83,5 @@ if(token&&txt.includes(token))txt=JSON.stringify({status:"HOLD",reason:"output-s
 await writeFile("scheduler-s3-dormant-control-evidence.json",txt);
 console.log(txt);
 if(out.status!=="CONTROL_EVIDENCE_RETRIEVED")process.exitCode=1;
+
+// S3 release preflight reread 2026-10-03
