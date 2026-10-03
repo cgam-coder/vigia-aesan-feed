@@ -1,0 +1,51 @@
+name: VIGIA S3 read-only gate one-shot
+
+on:
+  push:
+    branches:
+      - work/scheduler-reliability-s0-evidence
+    paths:
+      - ".github/workflows/s3-readonly-gate-one-shot.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  runtime_target:
+    uses: ./.github/workflows/runtime-writer-target.yml
+  gate:
+    needs: [runtime_target]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read current OECD S3 gate
+        env:
+          VIGIA_BASE_URL: ${{ needs.runtime_target.outputs.base_url }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const base=process.env.VIGIA_BASE_URL;
+          const headers={Authorization:`Bearer ${process.env.VIGIA_SYNC_TOKEN}`};
+          const get=async (path)=>{
+            const r=await fetch(base+path,{headers,redirect:"follow",signal:AbortSignal.timeout(60000)});
+            const body=await r.json();
+            if(r.status!==200) throw new Error(path+" HTTP "+r.status);
+            return body;
+          };
+          const [o,a]=await Promise.all([get("/api/oecd/sync?observe=1"),get("/api/oecd/sync?audit=1")]);
+          const last=o?.recent?.lastSuccessAt ?? null;
+          const ageMin=last ? (Date.now()-Date.parse(last))/60000 : null;
+          const snapshotStatus=o?.snapshot?.status ?? null;
+          const backfillStatus=o?.backfill?.status ?? null;
+          const gapRecoveryRequired=!(Number.isFinite(ageMin) && ageMin <= 7*24*60);
+          const out={
+            recent:{status:o?.recent?.status??null,lastSuccessAt:last,ageMinutes:ageMin,lastError:o?.recent?.lastError??null},
+            historical:{status:o?.historicalReconcile?.status??null,cursor:o?.historicalReconcile?.cursor??null,totalUnits:o?.historicalReconcile?.totalUnits??null,coverage:o?.historicalReconcile?.coverage??null,pageErrors:o?.historicalReconcile?.pageErrors??null,detailFailures:o?.historicalReconcile?.detailFailures??null,lastError:o?.historicalReconcile?.lastError??null,completedAt:o?.historicalReconcile?.completedAt??null},
+            certification:{coverage:o?.revisionCertification?.coverage??null,auditStatus:o?.revisionCertification?.auditStatus??null,auditCheckedAt:o?.revisionCertification?.auditCheckedAt??null,cycleId:o?.revisionCertification?.cycleId??null},
+            lease:o?.lease??null,
+            backfillStatus,snapshotStatus,gapRecoveryRequired,
+            audit:a?.audit??null
+          };
+          console.log("OECD_S3_READONLY_GATE "+JSON.stringify(out));
+          NODE
