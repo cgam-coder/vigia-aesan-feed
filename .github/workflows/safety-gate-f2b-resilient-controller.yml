@@ -1,10 +1,8 @@
 name: Safety Gate F2B resilient historical controller
 
 on:
-  workflow_run:
-    workflows:
-      - "VIGIA Safety Gate + OECD recent sync"
-    types: [completed]
+  schedule:
+    - cron: "*/5 * * * *"
   push:
     branches:
       - work/safety-gate-f2b-resilient-controller
@@ -20,29 +18,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  writer_gate:
+    uses: ./.github/workflows/runtime-writer-gate.yml
+
+  runtime_target:
+    uses: ./.github/workflows/runtime-writer-target.yml
+
   control:
+    needs: [writer_gate, runtime_target]
+    if: needs.writer_gate.outputs.allowed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 29
-    env:
-      VIGIA_BASE_URL: https://vigia-runtime.c-gamiz93.workers.dev
-      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      GH_TOKEN: ${{ github.token }}
-      GH_REPOSITORY: ${{ github.repository }}
     steps:
       - name: Continue F2B from persisted state, tolerating truncated response bodies
+        env:
+          VIGIA_BASE_URL: ${{ needs.runtime_target.outputs.base_url }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-
           const base = process.env.VIGIA_BASE_URL;
           const token = process.env.VIGIA_SYNC_TOKEN;
           const cfToken = process.env.CLOUDFLARE_API_TOKEN;
           const ghToken = process.env.GH_TOKEN;
           const repo = process.env.GH_REPOSITORY;
           const eventName = process.env.GITHUB_EVENT_NAME;
-          const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
           const expectedPlan = 'safety-gate-weekly-detail-v1:d64a863503fafe96e91588761e24355c05f054245e2712017c1a65c53fb0894f';
           const expectedTotal = 1118;
           const started = Date.now();
@@ -114,27 +117,40 @@ jobs:
             return after.cursorKey===null;
           }
 
-          async function verifyTrigger() {
+          async function verifyNaturalRecent(recent) {
             if (eventName === 'push') {
-              log('F2B_DRY_RUN_PUSH',{ref:event.ref??null});
+              log('F2B_DRY_RUN_PUSH',{ref:process.env.GITHUB_REF??null});
               return false;
             }
-            if (eventName !== 'workflow_run') throw new Error('unexpected-event-'+eventName);
-            const run=event.workflow_run;
-            if (!run || run.event!=='schedule' || run.status!=='completed') {
-              log('F2B_TRIGGER_SKIP',{reason:'not-natural-completed',event:run?.event??null,status:run?.status??null});
+            if (eventName !== 'schedule') throw new Error('unexpected-event-'+eventName);
+            const lastSuccess=Date.parse(recent?.lastSuccessAt??'');
+            if (!Number.isFinite(lastSuccess)) {
+              log('F2B_TRIGGER_SKIP',{reason:'recent-success-missing'});
               return false;
             }
             const [owner,name]=repo.split('/');
-            const jobsUrl=`https://api.github.com/repos/${owner}/${name}/actions/runs/${run.id}/jobs?per_page=100`;
-            const jobs=await getJson(jobsUrl,{Authorization:`Bearer ${ghToken}`,Accept:'application/vnd.github+json'});
-            const sg=(jobs.jobs??[]).find(j=>j.name==='safety_gate');
-            if (!sg || sg.status!=='completed' || sg.conclusion!=='success') {
-              log('F2B_TRIGGER_SKIP',{reason:'safety-gate-job-not-success',runId:run.id,job:sg?{id:sg.id,status:sg.status,conclusion:sg.conclusion}:null});
-              return false;
+            const runsUrl=`https://api.github.com/repos/${owner}/${name}/actions/runs?event=schedule&per_page=50`;
+            const runs=await getJson(runsUrl,{Authorization:`Bearer ${ghToken}`,Accept:'application/vnd.github+json'});
+            const candidates=(runs.workflow_runs??[])
+              .filter(run=>run.path==='.github/workflows/safety-gate-sync.yml' && run.status==='completed')
+              .sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at))
+              .slice(0,12);
+            for (const run of candidates) {
+              const jobs=await getJson(`https://api.github.com/repos/${owner}/${name}/actions/runs/${run.id}/jobs?per_page=100`,
+                {Authorization:`Bearer ${ghToken}`,Accept:'application/vnd.github+json'});
+              const sg=(jobs.jobs??[]).find(j=>j.name==='safety_gate');
+              if (!sg || sg.status!=='completed' || sg.conclusion!=='success') continue;
+              const started=Date.parse(sg.started_at??'');
+              const completed=Date.parse(sg.completed_at??'');
+              if (Number.isFinite(started)&&Number.isFinite(completed)&&
+                  lastSuccess>=started-5000&&lastSuccess<=completed+5000) {
+                log('F2B_TRIGGER_PASS',{runId:run.id,jobId:sg.id,lastSuccessAt:recent.lastSuccessAt,
+                  startedAt:sg.started_at,completedAt:sg.completed_at,headSha:run.head_sha});
+                return true;
+              }
             }
-            log('F2B_TRIGGER_PASS',{runId:run.id,jobId:sg.id,headSha:run.head_sha});
-            return true;
+            log('F2B_TRIGGER_SKIP',{reason:'no-natural-safety-gate-job-matches-recent',lastSuccessAt:recent?.lastSuccessAt??null});
+            return false;
           }
 
           async function verifyProduction() {
@@ -184,10 +200,10 @@ jobs:
             return {audit,parityAlerts,parityVersions,certPass};
           }
 
-          const triggerOkay=await verifyTrigger();
           await verifyProduction();
           let current=await observe();
           let state=current.historicalReconcile;
+          const triggerOkay=await verifyNaturalRecent(current.recent);
           log('F2B_START',{status:state.status,cursor:state.cursor,totalUnits:state.totalUnits,cursorKey:state.cursorKey,
             recordsObserved:state.recordsObserved,topLease:current.lease??null,recentLastSuccessAt:current.recent?.lastSuccessAt??null,
             recentAgeMinutes:recentAgeMs(current)/60000,allowMutation:triggerOkay});
