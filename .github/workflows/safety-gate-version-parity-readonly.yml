@@ -1,0 +1,111 @@
+name: Safety Gate version parity read-only diagnostic
+
+on:
+  push:
+    branches: [work/scheduler-reliability-s0-evidence]
+    paths:
+      - ".github/workflows/safety-gate-version-parity-readonly.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect Safety Gate version parity in D1 read-only
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const account='9c1807c68493f14259248b5f5782cc6f';
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          if(!token) throw new Error('cloudflare-token-missing');
+          const headers={Authorization:`Bearer ${token}`,'Content-Type':'application/json'};
+          async function json(url,options={}){
+            const r=await fetch(url,{...options,headers:{...headers,...(options.headers??{})},signal:AbortSignal.timeout(30000)});
+            const text=await r.text();
+            let body; try{body=JSON.parse(text);}catch{throw new Error('invalid-json-http-'+r.status);}
+            if(!r.ok||body?.success===false) throw new Error('cloudflare-http-'+r.status+':'+JSON.stringify(body?.errors??[]));
+            return body;
+          }
+          const settings=await json(`https://api.cloudflare.com/client/v4/accounts/${account}/workers/scripts/vigia-runtime/settings`,{method:'GET'});
+          const bindings=settings.result?.bindings??[];
+          const d1=bindings.find(b=>/d1/i.test(String(b.type??'')) || b.name==='DB');
+          const databaseId=d1?.id??d1?.database_id??d1?.databaseId??null;
+          console.log('SG_PARITY_D1_BINDING '+JSON.stringify({name:d1?.name??null,type:d1?.type??null,databaseId}));
+          if(!databaseId) throw new Error('d1-database-id-not-found');
+          async function query(sql,params=[]){
+            const body=await json(`https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/${databaseId}/query`,{
+              method:'POST',body:JSON.stringify({sql,params})
+            });
+            const result=Array.isArray(body.result)?body.result[0]:body.result;
+            if(result?.success===false) throw new Error('d1-query-failed');
+            return result?.results??[];
+          }
+          const summary=await query(`
+            WITH vc AS (
+              SELECT alert_id, COUNT(*) AS actual_versions
+              FROM alert_versions
+              GROUP BY alert_id
+            )
+            SELECT
+              COUNT(*) AS mismatched_rows,
+              SUM(CASE WHEN a.version_count > COALESCE(vc.actual_versions,0)
+                    THEN a.version_count-COALESCE(vc.actual_versions,0) ELSE 0 END) AS over_by,
+              SUM(CASE WHEN a.version_count < COALESCE(vc.actual_versions,0)
+                    THEN COALESCE(vc.actual_versions,0)-a.version_count ELSE 0 END) AS under_by,
+              SUM(a.version_count) AS version_count_sum,
+              SUM(COALESCE(vc.actual_versions,0)) AS actual_version_rows
+            FROM alerts a
+            LEFT JOIN vc ON vc.alert_id=a.id
+            WHERE a.source='SAFETY GATE'
+              AND a.version_count <> COALESCE(vc.actual_versions,0)
+          `);
+          const distribution=await query(`
+            WITH vc AS (
+              SELECT alert_id, COUNT(*) AS actual_versions
+              FROM alert_versions
+              GROUP BY alert_id
+            )
+            SELECT
+              a.version_count AS stored_version_count,
+              COALESCE(vc.actual_versions,0) AS actual_versions,
+              COUNT(*) AS rows
+            FROM alerts a
+            LEFT JOIN vc ON vc.alert_id=a.id
+            WHERE a.source='SAFETY GATE'
+              AND a.version_count <> COALESCE(vc.actual_versions,0)
+            GROUP BY a.version_count, COALESCE(vc.actual_versions,0)
+            ORDER BY rows DESC, stored_version_count, actual_versions
+            LIMIT 30
+          `);
+          const samples=await query(`
+            WITH vc AS (
+              SELECT alert_id, COUNT(*) AS actual_versions
+              FROM alert_versions
+              GROUP BY alert_id
+            )
+            SELECT a.id,a.reference,a.version_count AS stored_version_count,
+                   COALESCE(vc.actual_versions,0) AS actual_versions,
+                   a.content_hash,a.updated_at
+            FROM alerts a
+            LEFT JOIN vc ON vc.alert_id=a.id
+            WHERE a.source='SAFETY GATE'
+              AND a.version_count <> COALESCE(vc.actual_versions,0)
+            ORDER BY ABS(a.version_count-COALESCE(vc.actual_versions,0)) DESC, a.reference
+            LIMIT 25
+          `);
+          const zeros=await query(`
+            SELECT COUNT(*) AS alerts_without_version_row
+            FROM alerts a
+            WHERE a.source='SAFETY GATE'
+              AND NOT EXISTS (SELECT 1 FROM alert_versions v WHERE v.alert_id=a.id)
+          `);
+          console.log('SG_PARITY_SUMMARY '+JSON.stringify(summary[0]??null));
+          console.log('SG_PARITY_DISTRIBUTION '+JSON.stringify(distribution));
+          console.log('SG_PARITY_SAMPLES '+JSON.stringify(samples));
+          console.log('SG_PARITY_ZEROS '+JSON.stringify(zeros[0]??null));
+          NODE
