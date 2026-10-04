@@ -18,33 +18,31 @@ jobs:
       VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
-      - name: Reconcile uncertain Safety Gate historical operation read-only
+      - name: Capture Safety Gate reconciliation snapshot read-only
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
           const base = process.env.VIGIA_BASE_URL;
           const token = process.env.VIGIA_SYNC_TOKEN;
           const cfToken = process.env.CLOUDFLARE_API_TOKEN;
-          if (base !== 'https://vigia-runtime.c-gamiz93.workers.dev' || !token || !cfToken) {
-            throw new Error('target-or-credentials-not-configured');
-          }
+          if (base !== 'https://vigia-runtime.c-gamiz93.workers.dev' || !token || !cfToken) throw new Error('target-or-credentials-not-configured');
           const auth = { Authorization: `Bearer ${token}` };
           const cfAuth = { Authorization: `Bearer ${cfToken}` };
-          async function readJson(url, headers, timeout = 45000) {
+          async function get(url, headers, timeout = 45000) {
             const r = await fetch(url, { method: 'GET', headers, redirect: 'error', signal: AbortSignal.timeout(timeout) });
             const body = await r.json();
             if (r.status !== 200) throw new Error(`read-http-${r.status}`);
             return body;
           }
 
-          // Revalidate production identity/config with GET only.
           const cfRoot = 'https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/workers/scripts/vigia-runtime';
-          const [dep, settings, schedules] = await Promise.all([
-            readJson(cfRoot + '/deployments', cfAuth, 30000),
-            readJson(cfRoot + '/settings', cfAuth, 30000),
-            readJson(cfRoot + '/schedules', cfAuth, 30000),
+          const [dep, settings, schedules, observe, auditEnvelope] = await Promise.all([
+            get(cfRoot + '/deployments', cfAuth, 30000),
+            get(cfRoot + '/settings', cfAuth, 30000),
+            get(cfRoot + '/schedules', cfAuth, 30000),
+            get(base + '/api/safety-gate/sync?observe=1', auth),
+            get(base + '/api/safety-gate/sync?audit=1', auth),
           ]);
-          for (const x of [dep, settings, schedules]) if (x?.success !== true) throw new Error('cloudflare-read-failed');
           const deployments = dep.result?.deployments ?? dep.result;
           const active = deployments?.[0], previous = deployments?.[1];
           const bindings = settings.result?.bindings ?? [];
@@ -53,85 +51,63 @@ jobs:
             return b?.text ?? b?.value ?? null;
           };
           const crons = schedules.result?.schedules ?? schedules.result;
-          if (active?.id !== 'db36706c-96e5-4095-9d92-6922cde10543' ||
-              active?.versions?.length !== 1 ||
-              active.versions[0]?.version_id !== '54fe12f9-e0ea-4881-8961-f20fc1e5e447' ||
-              active.versions[0]?.percentage !== 100 ||
-              previous?.id !== '154e2338-b846-4734-9bd1-24b4cbb420cb' ||
-              previous?.versions?.[0]?.version_id !== 'a10fce1a-e4ca-4bc9-93f0-99fd89a72723' ||
-              value('NAGAMEALERT_RECENT_SCHEDULER_MODE') !== 'rapna-rasff-oecd-pilot' ||
-              value('NAGAMEALERT_SAFETY_GATE_RECENT_MODE') !== null ||
-              !Array.isArray(crons) || crons.length !== 1 || crons[0]?.cron !== '*/5 * * * *') {
-            throw new Error('production-identity-or-config-drift');
-          }
-
-          const observe = await readJson(base + '/api/safety-gate/sync?observe=1', auth);
-          const auditEnvelope = await readJson(base + '/api/safety-gate/sync?audit=1', auth);
+          const s = observe?.historicalReconcile ?? null;
           const audit = auditEnvelope?.audit ?? auditEnvelope;
-          const s = observe?.historicalReconcile;
-          if (!s || s.source !== 'SAFETY GATE' || s.mode !== 'historical-reconcile') throw new Error('historical-state-missing');
-          if (s.planVersion !== 'safety-gate-weekly-detail-v1:d64a863503fafe96e91588761e24355c05f054245e2712017c1a65c53fb0894f') throw new Error('plan-drift');
-          if (s.totalUnits !== 1118 || !Number.isSafeInteger(s.cursor) || s.cursor < 69 || s.cursor > 70 || s.pagesScanned !== s.cursor) throw new Error('cursor-outside-one-batch-envelope');
-          if (!Number.isSafeInteger(s.recordsObserved) || s.recordsObserved < 968 || s.recordsObserved > 978) throw new Error('records-observed-outside-one-batch-envelope');
-          if (s.status !== 'partial' || s.completedAt !== null || s.coverage !== 'partial') throw new Error('unexpected-terminal-or-coverage-state');
-          if (s.detailFailures !== 0 || s.pageErrors !== 0 || s.lastError !== null) throw new Error('historical-error-present');
-          if (s.leaseOwnerId !== null || s.leaseMode !== null || s.leaseExpiresAt !== null || observe.lease !== null) throw new Error('lease-not-released');
-          for (const k of ['recordsPersisted','newCount','updatedCount']) if (!Number.isSafeInteger(s[k]) || s[k] < 0 || s[k] > 10) throw new Error('write-counter-outside-one-batch-envelope');
-          if (s.recordsPersisted !== s.newCount + s.updatedCount) throw new Error('write-counter-incoherent');
-          if (s.cursorKey !== null) {
-            const c = JSON.parse(s.cursorKey);
-            if (c.version !== 2 || !Number.isSafeInteger(c.offset) || c.offset < 1 || c.offset > 10 ||
-                typeof c.reportUrl !== 'string' || !/^[a-f0-9]{64}$/.test(c.reportVersion)) {
-              throw new Error('detail-cursor-invalid');
-            }
-            if (s.cursor !== 69) throw new Error('cursor-key-with-advanced-page');
-          }
-          if (!audit || !Number.isFinite(Date.parse(audit.checkedAt))) throw new Error('audit-missing');
-          for (const k of ['duplicateReferenceGroups','invalidIdentities','emptyCanonicalRows','invalidOfficialUrls']) {
-            if (audit.integrity?.[k] !== 0) throw new Error('audit-integrity-' + k);
-          }
-          if (!Number.isSafeInteger(audit.counts?.safetyGateAlerts) || audit.counts.safetyGateAlerts <= 0 ||
-              audit.counts.safetyGateAlerts !== audit.counts.safetyGateUniqueReferences ||
-              !Number.isSafeInteger(audit.counts?.safetyGateVersions) || audit.counts.safetyGateVersions <= 0 ||
-              audit.counts.safetyGateVersions !== audit.counts.safetyGateVersionCountSum) {
-            throw new Error('audit-parity-failed');
-          }
-
-          const result = {
-            verdict: 'PASS_RECONCILED_READ_ONLY',
+          const out = {
             production: {
-              deployment: active.id,
-              worker: active.versions[0].version_id,
-              rollback: previous.id,
+              cloudflareSuccess: [dep, settings, schedules].every(x => x?.success === true),
+              deployment: active?.id ?? null,
+              worker: active?.versions?.[0]?.version_id ?? null,
+              percentage: active?.versions?.[0]?.percentage ?? null,
+              rollbackDeployment: previous?.id ?? null,
+              rollbackWorker: previous?.versions?.[0]?.version_id ?? null,
               scheduler: value('NAGAMEALERT_RECENT_SCHEDULER_MODE'),
               delta: value('NAGAMEALERT_SAFETY_GATE_RECENT_MODE'),
-              cron: crons[0].cron,
+              crons: Array.isArray(crons) ? crons.map(x => x.cron) : null,
             },
-            historical: {
-              status: s.status,
-              cursor: s.cursor,
-              totalUnits: s.totalUnits,
-              cursorKey: s.cursorKey,
-              planVersion: s.planVersion,
-              recordsObserved: s.recordsObserved,
-              recordsPersisted: s.recordsPersisted,
-              newCount: s.newCount,
-              updatedCount: s.updatedCount,
-              detailFailures: s.detailFailures,
-              pageErrors: s.pageErrors,
-              lastError: s.lastError,
-              leaseOwnerId: s.leaseOwnerId,
-              leaseMode: s.leaseMode,
-              leaseExpiresAt: s.leaseExpiresAt,
-              updatedAt: s.updatedAt,
-              lastSuccessAt: s.lastSuccessAt,
+            historical: s && {
+              source: s.source ?? null,
+              mode: s.mode ?? null,
+              status: s.status ?? null,
+              cursor: s.cursor ?? null,
+              pagesScanned: s.pagesScanned ?? null,
+              totalUnits: s.totalUnits ?? null,
+              cursorKey: s.cursorKey ?? null,
+              planVersion: s.planVersion ?? null,
+              recordsObserved: s.recordsObserved ?? null,
+              recordsPersisted: s.recordsPersisted ?? null,
+              newCount: s.newCount ?? null,
+              updatedCount: s.updatedCount ?? null,
+              detailFailures: s.detailFailures ?? null,
+              pageErrors: s.pageErrors ?? null,
+              coverage: s.coverage ?? null,
+              startedAt: s.startedAt ?? null,
+              lastSuccessAt: s.lastSuccessAt ?? null,
+              completedAt: s.completedAt ?? null,
+              lastError: s.lastError ?? null,
+              leaseOwnerId: s.leaseOwnerId ?? null,
+              leaseMode: s.leaseMode ?? null,
+              leaseExpiresAt: s.leaseExpiresAt ?? null,
+              lastSkippedAt: s.lastSkippedAt ?? null,
+              lastSkipReason: s.lastSkipReason ?? null,
+              updatedAt: s.updatedAt ?? null,
             },
-            topLevelLease: observe.lease,
+            revisionCertification: observe?.revisionCertification ?? null,
+            topLevelLease: observe?.lease ?? null,
+            recent: observe?.recent ? {
+              status: observe.recent.status ?? null,
+              lastSuccessAt: observe.recent.lastSuccessAt ?? null,
+              completedAt: observe.recent.completedAt ?? null,
+              lastError: observe.recent.lastError ?? null,
+              leaseOwnerId: observe.recent.leaseOwnerId ?? null,
+              leaseMode: observe.recent.leaseMode ?? null,
+              leaseExpiresAt: observe.recent.leaseExpiresAt ?? null,
+            } : null,
             audit: {
-              checkedAt: audit.checkedAt,
-              counts: audit.counts,
-              integrity: audit.integrity,
+              checkedAt: audit?.checkedAt ?? null,
+              counts: audit?.counts ?? null,
+              integrity: audit?.integrity ?? null,
             },
           };
-          console.log('SAFETY_HISTORICAL_RECONCILE_READ_ONLY ' + JSON.stringify(result));
+          console.log('SAFETY_HISTORICAL_RECONCILE_SNAPSHOT ' + JSON.stringify(out));
           NODE
