@@ -77,6 +77,48 @@ jobs:
           const dupIds=[...byId.entries()].filter(([,v])=>v.length>1).map(([id,v])=>({id,count:v.length,rows:v}));
           const dupRefs=[...byRef.entries()].filter(([,v])=>v.length>1).map(([reference,v])=>({reference,count:v.length,rows:v}));
           console.log('SG_DIAG_DUPLICATES '+JSON.stringify({dupIds,dupRefs}));
+          for(const group of dupRefs){
+            const details=[];
+            for(const row of group.rows){
+              const url=base+'/public/api/notification/'+row.id+'?language=es';
+              const r=await fetch(url,{headers:{Accept:'application/json'},signal:AbortSignal.timeout(25000)});
+              const text=await r.text();
+              let body=null,error=null;
+              try{body=JSON.parse(text);}catch(e){error=String(e?.message??e);}
+              const safe=body?{
+                id:body.id??null,reference:body.reference??null,
+                creationDate:body.creationDate??null,publicationDate:body.publicationDate??null,modificationDate:body.modificationDate??null,
+                corrigendum:body.corrigendum??null,
+                country:body.country??null,
+                notificationType:body.notificationType??null,
+                product:body.product??null,
+                risk:body.risk??null,
+                measureTaken:body.measureTaken??null,
+                traceability:body.traceability??null,
+                reactingCountries:body.reactingCountries??null,
+                onlineTraderProductIdentifierReference:body.onlineTraderProductIdentifierReference??null
+              }:null;
+              details.push({status:r.status,id:row.id,bytes:Buffer.byteLength(text),error,body:safe});
+            }
+            const normalize=v=>{
+              const x=structuredClone(v);
+              if(x){ delete x.id; }
+              return x;
+            };
+            const stable=v=>{
+              if(Array.isArray(v)) return v.map(stable);
+              if(v&&typeof v==='object') return Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b)).map(([k,val])=>[k,stable(val)]));
+              return v;
+            };
+            const normalized=details.map(d=>stable(normalize(d.body)));
+            const hashes=[];
+            for(const item of normalized){
+              const bytes=new TextEncoder().encode(JSON.stringify(item));
+              const digest=await crypto.subtle.digest('SHA-256',bytes);
+              hashes.push([...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join(''));
+            }
+            console.log('SG_DIAG_DUP_DETAIL '+JSON.stringify({reference:group.reference,details,normalizedHashes:hashes,equivalentIgnoringId:hashes.every(h=>h===hashes[0])}));
+          }
           const targets=rows.slice(0,10);
           for(const row of targets){
             const url=base+'/public/api/notification/'+row.id+'?language=es';
