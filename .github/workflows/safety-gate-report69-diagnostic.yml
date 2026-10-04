@@ -69,6 +69,14 @@ jobs:
             return reference&&Number.isSafeInteger(id)?[{reference,id,official}]:[];
           }).sort((a,b)=>a.reference.localeCompare(b.reference,'en',{numeric:true})||a.id-b.id);
           console.log('SG_DIAG_ROWS '+JSON.stringify({weeklyMs:wr.ms,blocks:nblocks.length,valid:rows.length,first20:rows.slice(0,20).map(x=>({id:x.id,reference:x.reference}))}));
+          const byId=new Map(),byRef=new Map();
+          for(const row of rows){
+            byId.set(String(row.id),[...(byId.get(String(row.id))??[]),row]);
+            byRef.set(row.reference,[...(byRef.get(row.reference)??[]),row]);
+          }
+          const dupIds=[...byId.entries()].filter(([,v])=>v.length>1).map(([id,v])=>({id,count:v.length,rows:v}));
+          const dupRefs=[...byRef.entries()].filter(([,v])=>v.length>1).map(([reference,v])=>({reference,count:v.length,rows:v}));
+          console.log('SG_DIAG_DUPLICATES '+JSON.stringify({dupIds,dupRefs}));
           const targets=rows.slice(0,10);
           for(const row of targets){
             const url=base+'/public/api/notification/'+row.id+'?language=es';
