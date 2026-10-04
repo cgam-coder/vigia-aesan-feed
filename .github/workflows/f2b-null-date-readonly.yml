@@ -1,0 +1,31 @@
+name: Safety Gate recovered null publication date read-only verification
+on:
+  push:
+    branches: [work/scheduler-reliability-s0-evidence]
+    paths: [".github/workflows/f2b-null-date-readonly.yml"]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Verify recovered alert has unknown official date and no dated-filter inclusion
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const base='https://vigia-runtime.c-gamiz93.workers.dev';
+          const reference='A11/00026/21';
+          const read=async(extra={})=>{
+            const p=new URLSearchParams({source:'SAFETY GATE',reference,pageSize:'2',...extra});
+            const r=await fetch(base+'/api/v2/alerts?'+p,{method:'GET',redirect:'error',signal:AbortSignal.timeout(30000)});
+            const b=await r.json();if(r.status!==200)throw Error('public-read-http-'+r.status);
+            return b;
+          };
+          const [plain,dated]=await Promise.all([read(),read({from:'2021-04-01',to:'2021-04-30'})]);
+          const row=plain.items?.[0];
+          const unknown=plain.items?.length===1&&row?.reference===reference&&row?.source==='SAFETY GATE'&&row?.publishedAt===null&&row?.dateStatus==='undetermined';
+          const excluded=Array.isArray(dated.items)&&dated.items.length===0;
+          console.log('F2B_NULL_DATE_PUBLIC_VERIFICATION '+JSON.stringify({checkedAt:new Date().toISOString(),reference,unknownOfficialDate:unknown,excludedFromDatedRange:excluded,publicRow:row&&{id:row.id,reference:row.reference,source:row.source,publishedAt:row.publishedAt,dateStatus:row.dateStatus,updatedAt:row.updatedAt,versionCount:row.versionCount},plainReturned:plain.items?.length,datedReturned:dated.items?.length,readOnly:true}));
+          if(!unknown||!excluded)throw Error('unknown-official-date-contract-mismatch');
+          NODE
