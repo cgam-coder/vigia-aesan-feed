@@ -119,3 +119,5 @@ jobs:
 # CP32 observer epoch 4: renew read-only snapshots before GitHub rerun ceiling.
 
 # CP40 observer epoch 5: renew read-only snapshots before GitHub rerun ceiling.
+
+# CP44 observer epoch 6: renew read-only snapshots before GitHub rerun ceiling.
