@@ -4,7 +4,7 @@ on:
   push:
     branches: [work/scheduler-reliability-s0-evidence]
     paths:
-      - ".github/workflows/safety-gate-f2b-abort244-readonly.yml"
+      - ".github/workflows/f2b-abort244-readonly.yml"
 
 permissions:
   contents: read
