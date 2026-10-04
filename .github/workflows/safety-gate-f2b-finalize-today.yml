@@ -34,7 +34,7 @@ jobs:
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           GH_TOKEN: ${{ github.token }}
-          F2B_EXECUTE: "true"
+          F2B_EXECUTE: "false"
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
@@ -90,23 +90,24 @@ jobs:
           }
           function validateState(s) {
             if (!s || s.source!=='SAFETY GATE' || s.mode!=='historical-reconcile') throw new Error('historical-state-missing');
-            const knownOrphan = !knownFailureRecovered && s.status==='running' &&
-              s.cursor===244 && s.pagesScanned===244 && s.cursorKey===null &&
-              s.recordsObserved===5701 && s.recordsPersisted===0 && s.newCount===0 && s.updatedCount===0 &&
-              s.detailFailures===0 && s.pageErrors===0 && s.lastError===null &&
-              s.updatedAt==='2026-10-04T13:48:40.810Z' &&
-              s.leaseOwnerId==='1d5f5003-9735-4f27-9798-82dc5fd6fe2c' &&
-              s.leaseMode==='historical-reconcile' &&
-              s.leaseExpiresAt==='2026-10-04T14:03:40.628Z' &&
-              Date.parse(s.leaseExpiresAt) < Date.now();
-            if (!['partial','completed'].includes(s.status) && !knownOrphan) throw new Error('historical-status-'+s.status);
+            const knownFailure = !knownFailureRecovered && s.status==='failed' &&
+              s.cursor===837 && s.pagesScanned===837 && s.cursorKey===null &&
+              s.recordsObserved===28571 && s.recordsPersisted===2747 && s.newCount===25 && s.updatedCount===2722 &&
+              s.detailFailures===1 && s.pageErrors===1 &&
+              s.lastError==="Safety Gate historical detail coverage failed for Report-2021-15: 9/10, failures=1; ids=10003468,10003526,10003525,10003487,10003485,10003380,10003460,10003469,10003404,10003480" &&
+              s.updatedAt==='2026-10-04T18:29:17.557Z' &&
+              s.lastSuccessAt==='2026-10-04T18:29:10.456Z' &&
+              s.startedAt==='2026-10-03T17:41:29.330Z' &&
+              s.coverage==='partial' && s.completedAt===null &&
+              s.leaseOwnerId===null && s.leaseMode===null && s.leaseExpiresAt===null;
+            if (!['partial','completed'].includes(s.status) && !knownFailure) throw new Error('historical-status-'+s.status);
             if (s.planVersion!==expectedPlan || s.totalUnits!==expectedTotal) throw new Error('historical-plan-drift');
-            if (!Number.isSafeInteger(s.cursor)||s.cursor<244||s.cursor>expectedTotal||s.pagesScanned!==s.cursor) throw new Error('historical-cursor-invalid');
-            if (!Number.isSafeInteger(s.recordsObserved)||s.recordsObserved<5701) throw new Error('historical-record-count-invalid');
+            if (!Number.isSafeInteger(s.cursor)||s.cursor<837||s.cursor>expectedTotal||s.pagesScanned!==s.cursor) throw new Error('historical-cursor-invalid');
+            if (!Number.isSafeInteger(s.recordsObserved)||s.recordsObserved<28571) throw new Error('historical-record-count-invalid');
             if (![s.recordsPersisted,s.newCount,s.updatedCount,s.detailFailures,s.pageErrors].every(n=>Number.isSafeInteger(n)&&n>=0)) throw new Error('historical-counter-invalid');
             if (s.recordsPersisted!==s.newCount+s.updatedCount) throw new Error('historical-write-counter-incoherent');
-            if (!knownOrphan && (s.detailFailures!==0||s.pageErrors!==0||s.lastError!==null)) throw new Error('historical-error-present');
-            if (!knownOrphan && (s.leaseOwnerId!==null || s.leaseMode!==null || s.leaseExpiresAt!==null)) throw new Error('historical-internal-lease-present');
+            if (!knownFailure && (s.detailFailures!==0||s.pageErrors!==0||s.lastError!==null)) throw new Error('historical-error-present');
+            if (!knownFailure && (s.leaseOwnerId!==null || s.leaseMode!==null || s.leaseExpiresAt!==null)) throw new Error('historical-internal-lease-present');
             if (!validCursorKey(s.cursorKey)) throw new Error('historical-cursor-key-invalid');
             if (s.status==='completed' && (s.coverage!=='official-index-complete'||s.cursor!==expectedTotal||s.cursorKey!==null||!s.completedAt)) throw new Error('historical-terminal-invalid');
             return s;
@@ -195,11 +196,11 @@ jobs:
             const bindings=settings.result?.bindings??[];
             const value=name=>{const b=bindings.find(x=>x.name===name);return b?.text??b?.value??null;};
             const crons=schedules.result?.schedules??schedules.result;
-            if (active?.id!=='bb41c605-6c70-4c76-b95f-a2e73d08d6f8' ||
-                active?.versions?.length!==1 || active.versions[0]?.version_id!=='cd2c243c-0458-4dd7-b559-f0223a3cede4' ||
+            if (active?.id!=='954c79e9-724b-4a89-896f-56a7b580cca9' ||
+                active?.versions?.length!==1 || active.versions[0]?.version_id!=='99ac5ce2-6d3f-4400-afad-59f4ea91a8ab' ||
                 active.versions[0]?.percentage!==100 ||
-                previous?.id!=='a71a6a27-06a4-46c0-81c8-1bff8ffa5d0d' ||
-                previous?.versions?.[0]?.version_id!=='df80672f-6e72-4f58-a22f-fabb367f2545' ||
+                previous?.id!=='bb41c605-6c70-4c76-b95f-a2e73d08d6f8' ||
+                previous?.versions?.[0]?.version_id!=='cd2c243c-0458-4dd7-b559-f0223a3cede4' ||
                 value('NAGAMEALERT_RECENT_SCHEDULER_MODE')!=='rapna-rasff-oecd-pilot' ||
                 value('NAGAMEALERT_SAFETY_GATE_RECENT_MODE')!==null ||
                 !Array.isArray(crons)||crons.length!==1||crons[0]?.cron!=='*/5 * * * *') throw new Error('production-identity-or-config-drift');
@@ -236,7 +237,7 @@ jobs:
           await verifyProduction();
           const versionEnvelope=await getJson('https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/workers/scripts/vigia-runtime/versions',cfAuth,30000);
           const versionList=versionEnvelope.result?.items ?? versionEnvelope.result;
-          const version=Array.isArray(versionList)?versionList.find(v=>v.id==='cd2c243c-0458-4dd7-b559-f0223a3cede4'):null;
+          const version=Array.isArray(versionList)?versionList.find(v=>v.id==='99ac5ce2-6d3f-4400-afad-59f4ea91a8ab'):null;
           if (!version || versionEnvelope.success!==true) throw new Error('production-version-missing');
           log('F2B_PRODUCTION_VERSION',{id:version.id,createdOn:version.created_on,metadata:version.metadata,annotations:version.annotations});
           let current=await observe();
@@ -294,8 +295,8 @@ jobs:
               current=beforeObs; state=before; break;
             }
           
-            // Only the exact expired cursor-244 orphan is eligible for one single-identity recovery.
-            const batchSize=before.status==='running' ? 1 : 10;
+            // Only the exact diagnosed cursor-837 failure is eligible for one single-identity recovery.
+            const batchSize=before.status==='failed' ? 1 : 10;
             if (batchSize===1) singleBatchRecoveries++;
           
             const post=await raw(base+`/api/safety-gate/sync?mode=historical-reconcile&batchSize=${batchSize}`,
