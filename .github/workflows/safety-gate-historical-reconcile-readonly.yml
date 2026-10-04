@@ -113,3 +113,5 @@ jobs:
           NODE
 
 # CP28 observer epoch 2: new read-only run after exhausted prior reruns.
+
+# CP30 observer epoch 3: rotate read-only snapshots before GitHub rerun ceiling.
