@@ -1,0 +1,59 @@
+name: Safety Gate report 837 read-only diagnostic
+on:
+  push:
+    branches: [work/scheduler-reliability-s0-evidence]
+    paths: [".github/workflows/f2b-abort837-readonly.yml"]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: cgam-coder/vigia-runtime
+          ref: 398202c87435d13b6e0523181c30e5d288da864d
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install pinned read-only parser dependencies
+        run: npm ci --ignore-scripts
+      - name: Diagnose exact failed ten identities without production writes
+        run: |
+          set -euo pipefail
+          node --import tsx --input-type=module <<'NODE'
+          import {fetchSafetyGateCertifiedWeeklyReportIndex, fetchSafetyGateWeeklyReport, fetchSafetyGateHistoricalDetail, normalizeSafetyGateRecord} from './lib/safety-gate.ts';
+          const expected=[10003468,10003526,10003525,10003487,10003485,10003380,10003460,10003469,10003404,10003480];
+          const client={retries:0,timeoutMs:25000,fetchImpl:async(url,init)=>{
+            if(!String(url).startsWith('https://ec.europa.eu/safety-gate-alerts/')||(init?.method??'GET')!=='GET')throw new Error('read-only-authority-violation');
+            const t=Date.now();const r=await fetch(url,init);
+            let body=null;
+            if(String(url).includes('/public/api/notification/')){try{body=await r.clone().json();}catch{}}
+            console.log('SG837_HTTP '+JSON.stringify({url,status:r.status,ms:Date.now()-t,bytes:r.headers.get('content-length'),body:body&&{id:body.id,reference:body.reference,publicationDate:body.publicationDate,modificationDate:body.modificationDate,keys:Object.keys(body),productKeys:body.product&&Object.keys(body.product)}}));
+            return r;
+          }};
+          const reports=await fetchSafetyGateCertifiedWeeklyReportIndex(client);
+          const report=reports[837];
+          if(reports.length!==1118||report.reference!=='Report-2021-15')throw new Error('unexpected-official-index');
+          console.log('SG837_REPORT '+JSON.stringify(report));
+          const parsed=await fetchSafetyGateWeeklyReport(report,client);
+          const records=parsed.records.map((v,index)=>({...v,index})).sort((a,b)=>a.item.reference.localeCompare(b.item.reference,'en',{numeric:true})||a.item.id-b.item.id);
+          const selected=records.slice(0,10);
+          if(parsed.invalidCount!==0||JSON.stringify(selected.map(x=>x.item.id))!==JSON.stringify(expected))throw new Error('failed-identity-selection-drift');
+          console.log('SG837_SELECTION '+JSON.stringify({reportRecords:records.length,invalidCount:parsed.invalidCount,items:selected.map(x=>({id:x.item.id,reference:x.item.reference}))}));
+          let failures=0;const results=[];
+          for(const {item} of selected){
+            try{
+              const detail=await fetchSafetyGateHistoricalDetail(item,client);
+              const version=detail.product.versions?.find(x=>x.language?.key==='ES')??detail.product.versions?.[0];
+              const reference=detail.reference.trim().replace(/(?:\s*<br\s*\/?>)+\s*$/giu,'').trim();
+              const authoritativeItem={id:detail.id,reference,publicationDate:detail.publicationDate,modificationDate:detail.modificationDate,corrigendum:detail.corrigendum,product:{name:version?.name?.trim()??'',brands:detail.product.brands??[],photos:detail.product.photos??[]},risk:{riskType:detail.risk?.riskType??[]}};
+              const alert=await normalizeSafetyGateRecord(authoritativeItem,detail,new Date().toISOString());
+              const row={id:item.id,expectedReference:item.reference,actualReference:detail.reference,publicationDate:detail.publicationDate,normalizedReference:alert.reference,contentHash:alert.contentHash??null,ok:true};results.push(row);console.log('SG837_DETAIL '+JSON.stringify(row));
+            }catch(e){failures++;const row={id:item.id,expectedReference:item.reference,ok:false,errorName:e?.name??null,error:String(e?.message??e),kind:e?.kind??null,status:e?.status??null};results.push(row);console.log('SG837_DETAIL '+JSON.stringify(row));}
+          }
+          console.log('SG837_RESULT '+JSON.stringify({readOnly:true,report:report.reference,checked:selected.length,failures,results}));
+          if(failures)process.exitCode=1;
+          NODE
