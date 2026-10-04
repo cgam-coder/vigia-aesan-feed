@@ -34,7 +34,7 @@ jobs:
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           GH_TOKEN: ${{ github.token }}
-          F2B_EXECUTE: "true"
+          F2B_EXECUTE: "false"
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
@@ -44,7 +44,6 @@ jobs:
           const expectedPlan = 'safety-gate-weekly-detail-v1:d64a863503fafe96e91588761e24355c05f054245e2712017c1a65c53fb0894f';
           const expectedTotal = 1118;
           if (base !== 'https://vigia-runtime.c-gamiz93.workers.dev' || !token || !cfToken) throw new Error('target-or-credential-invalid');
-          let knownFailureRecovered = false;
           const started = Date.now();
           const deadline = started + 300 * 60_000;
           const auth = { Authorization: `Bearer ${token}`, 'Content-Type':'application/json' };
@@ -90,24 +89,14 @@ jobs:
           }
           function validateState(s) {
             if (!s || s.source!=='SAFETY GATE' || s.mode!=='historical-reconcile') throw new Error('historical-state-missing');
-            const knownFailure = !knownFailureRecovered && s.status==='failed' &&
-              s.cursor===837 && s.pagesScanned===837 && s.cursorKey===null &&
-              s.recordsObserved===28571 && s.recordsPersisted===2747 && s.newCount===25 && s.updatedCount===2722 &&
-              s.detailFailures===1 && s.pageErrors===1 &&
-              s.lastError==="Safety Gate historical detail coverage failed for Report-2021-15: 9/10, failures=1; ids=10003468,10003526,10003525,10003487,10003485,10003380,10003460,10003469,10003404,10003480" &&
-              s.updatedAt==='2026-10-04T18:29:17.557Z' &&
-              s.lastSuccessAt==='2026-10-04T18:29:10.456Z' &&
-              s.startedAt==='2026-10-03T17:41:29.330Z' &&
-              s.coverage==='partial' && s.completedAt===null &&
-              s.leaseOwnerId===null && s.leaseMode===null && s.leaseExpiresAt===null;
-            if (!['partial','completed'].includes(s.status) && !knownFailure) throw new Error('historical-status-'+s.status);
+            if (!['partial','completed'].includes(s.status)) throw new Error('historical-status-'+s.status);
             if (s.planVersion!==expectedPlan || s.totalUnits!==expectedTotal) throw new Error('historical-plan-drift');
-            if (!Number.isSafeInteger(s.cursor)||s.cursor<837||s.cursor>expectedTotal||s.pagesScanned!==s.cursor) throw new Error('historical-cursor-invalid');
-            if (!Number.isSafeInteger(s.recordsObserved)||s.recordsObserved<28571) throw new Error('historical-record-count-invalid');
+            if (!Number.isSafeInteger(s.cursor)||s.cursor<880||s.cursor>expectedTotal||s.pagesScanned!==s.cursor) throw new Error('historical-cursor-invalid');
+            if (!Number.isSafeInteger(s.recordsObserved)||s.recordsObserved<30409) throw new Error('historical-record-count-invalid');
             if (![s.recordsPersisted,s.newCount,s.updatedCount,s.detailFailures,s.pageErrors].every(n=>Number.isSafeInteger(n)&&n>=0)) throw new Error('historical-counter-invalid');
             if (s.recordsPersisted!==s.newCount+s.updatedCount) throw new Error('historical-write-counter-incoherent');
-            if (!knownFailure && (s.detailFailures!==0||s.pageErrors!==0||s.lastError!==null)) throw new Error('historical-error-present');
-            if (!knownFailure && (s.leaseOwnerId!==null || s.leaseMode!==null || s.leaseExpiresAt!==null)) throw new Error('historical-internal-lease-present');
+            if ((s.detailFailures!==0||s.pageErrors!==0||s.lastError!==null)) throw new Error('historical-error-present');
+            if ((s.leaseOwnerId!==null || s.leaseMode!==null || s.leaseExpiresAt!==null)) throw new Error('historical-internal-lease-present');
             if (!validCursorKey(s.cursorKey)) throw new Error('historical-cursor-key-invalid');
             if (s.status==='completed' && (s.coverage!=='official-index-complete'||s.cursor!==expectedTotal||s.cursorKey!==null||!s.completedAt)) throw new Error('historical-terminal-invalid');
             return s;
@@ -196,11 +185,11 @@ jobs:
             const bindings=settings.result?.bindings??[];
             const value=name=>{const b=bindings.find(x=>x.name===name);return b?.text??b?.value??null;};
             const crons=schedules.result?.schedules??schedules.result;
-            if (active?.id!=='954c79e9-724b-4a89-896f-56a7b580cca9' ||
-                active?.versions?.length!==1 || active.versions[0]?.version_id!=='99ac5ce2-6d3f-4400-afad-59f4ea91a8ab' ||
+            if (active?.id!=='dd79b5e8-8fff-410e-b13c-f89a733181f2' ||
+                active?.versions?.length!==1 || active.versions[0]?.version_id!=='3cfa78c1-eafd-4ef8-9c5a-c11a4947595e' ||
                 active.versions[0]?.percentage!==100 ||
-                previous?.id!=='bb41c605-6c70-4c76-b95f-a2e73d08d6f8' ||
-                previous?.versions?.[0]?.version_id!=='cd2c243c-0458-4dd7-b559-f0223a3cede4' ||
+                previous?.id!=='954c79e9-724b-4a89-896f-56a7b580cca9' ||
+                previous?.versions?.[0]?.version_id!=='99ac5ce2-6d3f-4400-afad-59f4ea91a8ab' ||
                 value('NAGAMEALERT_RECENT_SCHEDULER_MODE')!=='rapna-rasff-oecd-pilot' ||
                 value('NAGAMEALERT_SAFETY_GATE_RECENT_MODE')!==null ||
                 !Array.isArray(crons)||crons.length!==1||crons[0]?.cron!=='*/5 * * * *') throw new Error('production-identity-or-config-drift');
@@ -228,16 +217,26 @@ jobs:
             const certPass=Boolean(cert && cert.source==='SAFETY GATE' && cert.mode==='historical-reconcile' &&
               cert.cycleId===s.planVersion && cert.completedAt===s.completedAt && cert.coverage==='official-index-complete' &&
               cert.auditStatus==='passed' && cert.evidence?.scope==='full-archive' && cert.evidence?.contentAuthority==='official-json-detail');
+            const dateQuery=base+'/api/v2/alerts?source=SAFETY%20GATE&reference=A11%2F00026%2F21&pageSize=2';
+            const [plain,dated]=await Promise.all([
+              getJson(dateQuery,{}),getJson(dateQuery+'&from=2021-04-01&to=2021-04-30',{})
+            ]);
+            const plainItems=plain.items;
+            const datedItems=dated.items;
+            const item=plainItems?.[0];
+            const datePass=Array.isArray(plainItems) && Array.isArray(datedItems) && plainItems.length===1 && item?.reference==='A11/00026/21' &&
+              item?.source==='SAFETY GATE' && item?.publishedAt===null &&
+              item?.dateStatus==='undetermined' && datedItems.length===0;
             log('F2B_TERMINAL_CHECK',{cursor:s.cursor,totalUnits:s.totalUnits,recordsObserved:s.recordsObserved,
-              parityAlerts,parityVersions,versions:audit?.counts?.safetyGateVersions??null,
+              datePass,publicDateItem:item??null,datedReturned:datedItems?.length??null,parityAlerts,parityVersions,versions:audit?.counts?.safetyGateVersions??null,
               versionCountSum:audit?.counts?.safetyGateVersionCountSum??null,certPass,auditCheckedAt:audit?.checkedAt??null});
-            return {audit,parityAlerts,parityVersions,certPass};
+            return {audit,parityAlerts,parityVersions,certPass,datePass};
           }
           
           await verifyProduction();
           const versionEnvelope=await getJson('https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/workers/scripts/vigia-runtime/versions',cfAuth,30000);
           const versionList=versionEnvelope.result?.items ?? versionEnvelope.result;
-          const version=Array.isArray(versionList)?versionList.find(v=>v.id==='99ac5ce2-6d3f-4400-afad-59f4ea91a8ab'):null;
+          const version=Array.isArray(versionList)?versionList.find(v=>v.id==='3cfa78c1-eafd-4ef8-9c5a-c11a4947595e'):null;
           if (!version || versionEnvelope.success!==true) throw new Error('production-version-missing');
           log('F2B_PRODUCTION_VERSION',{id:version.id,createdOn:version.created_on,metadata:version.metadata,annotations:version.annotations});
           let current=await observe();
@@ -269,11 +268,11 @@ jobs:
           
           if (state.status==='completed') {
             const term=await terminalCheck(current);
-            if (term.parityAlerts&&term.parityVersions&&term.certPass) {
+            if (term.parityAlerts&&term.parityVersions&&term.certPass&&term.datePass) {
               log('F2B_PASS',{reason:'already-terminal-certified',cursor:state.cursor,totalUnits:state.totalUnits});
               process.exit(0);
             }
-            log('F2B_HOLD',{reason:'terminal-certification-or-parity-pending'});
+            log('F2B_HOLD',{reason:'terminal-certification-parity-or-date-pending'});
             process.exit(0);
           }
           
@@ -295,9 +294,7 @@ jobs:
               current=beforeObs; state=before; break;
             }
           
-            // Only the exact diagnosed cursor-837 failure is eligible for one single-identity recovery.
-            const batchSize=before.status==='failed' ? 1 : 10;
-            if (batchSize===1) singleBatchRecoveries++;
+            const batchSize=10;
           
             const post=await raw(base+`/api/safety-gate/sync?mode=historical-reconcile&batchSize=${batchSize}`,
               {method:'POST',headers:auth},90000);
@@ -322,7 +319,6 @@ jobs:
           
             if (stateProgress(before,after,batchSize)) {
               successfulBatches++;
-              knownFailureRecovered=true;
               consecutiveSingleNoProgress=0;
               log('F2B_PROGRESS',{batchSize,fromCursor:before.cursor,toCursor:after.cursor,
                 fromRecords:before.recordsObserved,toRecords:after.recordsObserved,cursorKey:after.cursorKey,
@@ -344,7 +340,7 @@ jobs:
           state=current.historicalReconcile;
           if (state.status==='completed') {
             let term=await terminalCheck(current);
-            if (!term.certPass && term.parityAlerts && term.parityVersions && !current.lease) {
+            if (!term.certPass && term.parityAlerts && term.parityVersions && term.datePass && !current.lease) {
               // A terminal state may have been persisted even if the response carrying
               // automatic certification was cut. Refresh recent only as an execution-safety
               // interlock; it is not certification evidence.
@@ -358,12 +354,12 @@ jobs:
               current=await observe();
               term=await terminalCheck(current);
             }
-            if (term.parityAlerts&&term.parityVersions&&term.certPass) {
+            if (term.parityAlerts&&term.parityVersions&&term.certPass&&term.datePass) {
               log('F2B_PASS',{reason:'terminal-full-archive-certified',cursor:state.cursor,totalUnits:state.totalUnits,
                 recordsObserved:state.recordsObserved,successfulBatches,ambiguousBodies,singleBatchRecoveries});
               process.exit(0);
             }
-            log('F2B_HOLD',{reason:'terminal-parity-or-certification-pending',cursor:state.cursor,totalUnits:state.totalUnits,
+            log('F2B_HOLD',{reason:'terminal-parity-certification-or-date-pending',cursor:state.cursor,totalUnits:state.totalUnits,
               successfulBatches,ambiguousBodies,singleBatchRecoveries});
             process.exit(0);
           }
