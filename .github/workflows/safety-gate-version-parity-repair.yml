@@ -1,0 +1,147 @@
+name: Safety Gate version parity targeted repair
+
+on:
+  push:
+    branches: [work/safety-gate-version-parity-repair]
+    paths:
+      - ".github/workflows/safety-gate-version-parity-repair.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  writer_gate:
+    uses: ./.github/workflows/runtime-writer-gate.yml
+
+  repair:
+    needs: [writer_gate]
+    if: needs.writer_gate.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Repair only proven inflated Safety Gate version counters
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const account='9c1807c68493f14259248b5f5782cc6f';
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          if(!token) throw new Error('cloudflare-token-missing');
+          const headers={Authorization:`Bearer ${token}`,'Content-Type':'application/json'};
+          async function json(url,options={}){
+            const r=await fetch(url,{...options,headers:{...headers,...(options.headers??{})},signal:AbortSignal.timeout(30000)});
+            const text=await r.text();
+            let body; try{body=JSON.parse(text);}catch{throw new Error('invalid-json-http-'+r.status);}
+            if(!r.ok||body?.success===false) throw new Error('cloudflare-http-'+r.status+':'+JSON.stringify(body?.errors??[]));
+            return body;
+          }
+          const settings=await json(`https://api.cloudflare.com/client/v4/accounts/${account}/workers/scripts/vigia-runtime/settings`,{method:'GET'});
+          const bindings=settings.result?.bindings??[];
+          const d1=bindings.find(b=>/d1/i.test(String(b.type??'')) || b.name==='DB');
+          const databaseId=d1?.id??d1?.database_id??d1?.databaseId??null;
+          console.log('SG_PARITY_D1_BINDING '+JSON.stringify({name:d1?.name??null,type:d1?.type??null,databaseId}));
+          if(!databaseId) throw new Error('d1-database-id-not-found');
+          async function query(sql,params=[]){
+            const body=await json(`https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/${databaseId}/query`,{
+              method:'POST',body:JSON.stringify({sql,params})
+            });
+            const result=Array.isArray(body.result)?body.result[0]:body.result;
+            if(result?.success===false) throw new Error('d1-query-failed');
+            return result?.results??[];
+          }
+          const summary=await query(`
+            WITH vc AS (
+              SELECT alert_id, COUNT(*) AS actual_versions
+              FROM alert_versions
+              GROUP BY alert_id
+            )
+            SELECT
+              COUNT(*) AS mismatched_rows,
+              SUM(CASE WHEN a.version_count > COALESCE(vc.actual_versions,0)
+                    THEN a.version_count-COALESCE(vc.actual_versions,0) ELSE 0 END) AS over_by,
+              SUM(CASE WHEN a.version_count < COALESCE(vc.actual_versions,0)
+                    THEN COALESCE(vc.actual_versions,0)-a.version_count ELSE 0 END) AS under_by,
+              SUM(a.version_count) AS version_count_sum,
+              SUM(COALESCE(vc.actual_versions,0)) AS actual_version_rows
+            FROM alerts a
+            LEFT JOIN vc ON vc.alert_id=a.id
+            WHERE a.source='SAFETY GATE'
+              AND a.version_count <> COALESCE(vc.actual_versions,0)
+          `);
+          const distribution=await query(`
+            WITH vc AS (
+              SELECT alert_id, COUNT(*) AS actual_versions
+              FROM alert_versions
+              GROUP BY alert_id
+            )
+            SELECT
+              a.version_count AS stored_version_count,
+              COALESCE(vc.actual_versions,0) AS actual_versions,
+              COUNT(*) AS rows
+            FROM alerts a
+            LEFT JOIN vc ON vc.alert_id=a.id
+            WHERE a.source='SAFETY GATE'
+              AND a.version_count <> COALESCE(vc.actual_versions,0)
+            GROUP BY a.version_count, COALESCE(vc.actual_versions,0)
+            ORDER BY rows DESC, stored_version_count, actual_versions
+            LIMIT 30
+          `);
+          const samples=await query(`
+            WITH vc AS (
+              SELECT alert_id, COUNT(*) AS actual_versions
+              FROM alert_versions
+              GROUP BY alert_id
+            )
+            SELECT a.id,a.reference,a.version_count AS stored_version_count,
+                   COALESCE(vc.actual_versions,0) AS actual_versions,
+                   a.content_hash,a.updated_at
+            FROM alerts a
+            LEFT JOIN vc ON vc.alert_id=a.id
+            WHERE a.source='SAFETY GATE'
+              AND a.version_count <> COALESCE(vc.actual_versions,0)
+            ORDER BY ABS(a.version_count-COALESCE(vc.actual_versions,0)) DESC, a.reference
+            LIMIT 25
+          `);
+          const zeros=await query(`
+            SELECT COUNT(*) AS alerts_without_version_row
+            FROM alerts a
+            WHERE a.source='SAFETY GATE'
+              AND NOT EXISTS (SELECT 1 FROM alert_versions v WHERE v.alert_id=a.id)
+          `);
+          console.log('SG_PARITY_SUMMARY '+JSON.stringify(summary[0]??null));
+          console.log('SG_PARITY_DISTRIBUTION '+JSON.stringify(distribution));
+          console.log('SG_PARITY_SAMPLES '+JSON.stringify(samples));
+          console.log('SG_PARITY_ZEROS '+JSON.stringify(zeros[0]??null));
+          const baseline=summary[0]??{};
+          if(Number(baseline.mismatched_rows)!==42||Number(baseline.over_by)!==454||Number(baseline.under_by)!==0||Number(zeros[0]?.alerts_without_version_row)!==0) throw new Error('unexpected-parity-baseline');
+          const owner=crypto.randomUUID();
+          const nowIso=new Date().toISOString();
+          const expiresAt=new Date(Date.now()+8*60_000).toISOString();
+          let acquired=false, changed=false;
+          try {
+            const lease=await query("INSERT INTO source_sync_locks(source,owner_id,mode,acquired_at,heartbeat_at,expires_at) VALUES('SAFETY GATE',?,'restore',?,?,?) ON CONFLICT(source) DO UPDATE SET owner_id=excluded.owner_id,mode=excluded.mode,acquired_at=excluded.acquired_at,heartbeat_at=excluded.heartbeat_at,expires_at=excluded.expires_at WHERE source_sync_locks.expires_at<=excluded.heartbeat_at OR source_sync_locks.owner_id=excluded.owner_id RETURNING source,owner_id AS ownerId,mode,expires_at AS expiresAt",[owner,nowIso,nowIso,expiresAt]);
+            acquired=lease.length===1&&lease[0].ownerId===owner;
+            if(!acquired){ console.log('SG_PARITY_REPAIR_HOLD '+JSON.stringify({reason:'active-source-lease'})); process.exit(0); }
+            console.log('SG_PARITY_REPAIR_LEASE '+JSON.stringify({owner,expiresAt}));
+            const before=await query("WITH vc AS (SELECT alert_id,COUNT(*) AS n FROM alert_versions GROUP BY alert_id) SELECT a.id,a.reference,a.version_count AS stored,COALESCE(vc.n,0) AS actual FROM alerts a LEFT JOIN vc ON vc.alert_id=a.id WHERE a.source='SAFETY GATE' AND a.version_count<>COALESCE(vc.n,0) ORDER BY a.id");
+            const over=before.reduce((n,r)=>n+Math.max(0,Number(r.stored)-Number(r.actual)),0), under=before.reduce((n,r)=>n+Math.max(0,Number(r.actual)-Number(r.stored)),0);
+            console.log('SG_PARITY_REPAIR_BEFORE '+JSON.stringify({count:before.length,over,under,rows:before}));
+            if(before.length!==42||over!==454||under!==0||before.some(r=>Number(r.actual)<=0)) throw new Error('parity-changed-before-write');
+            const owned=await query("SELECT COUNT(*) AS n FROM source_sync_locks WHERE source='SAFETY GATE' AND owner_id=? AND mode='restore' AND expires_at>?",[owner,new Date().toISOString()]);
+            if(Number(owned[0]?.n)!==1) throw new Error('repair-lease-lost-before-write');
+            const updated=await query("UPDATE alerts SET version_count=(SELECT COUNT(*) FROM alert_versions v WHERE v.alert_id=alerts.id) WHERE source='SAFETY GATE' AND version_count<>(SELECT COUNT(*) FROM alert_versions v WHERE v.alert_id=alerts.id) AND EXISTS(SELECT 1 FROM alert_versions v WHERE v.alert_id=alerts.id) AND EXISTS(SELECT 1 FROM source_sync_locks l WHERE l.source='SAFETY GATE' AND l.owner_id=? AND l.mode='restore' AND l.expires_at>?) RETURNING id,reference,version_count",[owner,new Date().toISOString()]);
+            changed=true;
+            console.log('SG_PARITY_REPAIR_UPDATED '+JSON.stringify({count:updated.length,rows:updated}));
+            if(updated.length!==42) throw new Error('unexpected-updated-count-'+updated.length);
+            const post=await query("WITH vc AS (SELECT alert_id,COUNT(*) AS n FROM alert_versions GROUP BY alert_id) SELECT COUNT(*) AS mismatched FROM alerts a LEFT JOIN vc ON vc.alert_id=a.id WHERE a.source='SAFETY GATE' AND a.version_count<>COALESCE(vc.n,0)");
+            const audit=await query("SELECT COUNT(*) AS alerts,COUNT(DISTINCT reference) AS uniqueRefs,SUM(version_count) AS versionCountSum,(SELECT COUNT(*) FROM alert_versions v INNER JOIN alerts a2 ON a2.id=v.alert_id WHERE a2.source='SAFETY GATE') AS versions,(SELECT COUNT(*) FROM (SELECT reference FROM alerts WHERE source='SAFETY GATE' GROUP BY reference HAVING COUNT(*)>1)) AS dupRefs,SUM(CASE WHEN id<>('sg:'||reference) THEN 1 ELSE 0 END) AS invalidIds,SUM(CASE WHEN canonical_json IS NULL OR canonical_json='' OR canonical_json='{}' THEN 1 ELSE 0 END) AS emptyCanonical,SUM(CASE WHEN url NOT LIKE 'https://ec.europa.eu/safety-gate-alerts/%' THEN 1 ELSE 0 END) AS invalidUrls FROM alerts WHERE source='SAFETY GATE'");
+            const a=audit[0]??{};
+            if(Number(post[0]?.mismatched)!==0||Number(a.alerts)!==Number(a.uniqueRefs)||Number(a.versions)!==Number(a.versionCountSum)||Number(a.dupRefs)!==0||Number(a.invalidIds)!==0||Number(a.emptyCanonical)!==0||Number(a.invalidUrls)!==0) throw new Error('post-repair-audit-failed');
+            console.log('SG_PARITY_REPAIR_PASS '+JSON.stringify(a));
+          } finally {
+            if(acquired){ const released=await query("DELETE FROM source_sync_locks WHERE source='SAFETY GATE' AND owner_id=? RETURNING source",[owner]); console.log('SG_PARITY_REPAIR_RELEASE '+JSON.stringify({released:released.length===1,changed})); }
+          }
+          const finalLease=await query("SELECT COUNT(*) AS n FROM source_sync_locks WHERE source='SAFETY GATE'");
+          if(Number(finalLease[0]?.n)!==0) throw new Error('source-lease-not-released');
+          NODE
