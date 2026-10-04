@@ -1,0 +1,354 @@
+name: Safety Gate F2B same-day finalizer
+
+on:
+  push:
+    branches:
+      - work/safety-gate-f2b-finalize-today
+    paths:
+      - ".github/workflows/safety-gate-f2b-finalize-today.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: vigia-safety-gate-f2b-resilient-controller
+  cancel-in-progress: false
+
+jobs:
+  writer_gate:
+    uses: ./.github/workflows/runtime-writer-gate.yml
+
+  runtime_target:
+    uses: ./.github/workflows/runtime-writer-target.yml
+
+  control:
+    needs: [writer_gate, runtime_target]
+    if: needs.writer_gate.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Finish F2B continuously with controlled recent refresh
+        env:
+          VIGIA_BASE_URL: ${{ needs.runtime_target.outputs.base_url }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          F2B_EXECUTE: "false"
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const base = process.env.VIGIA_BASE_URL;
+          const token = process.env.VIGIA_SYNC_TOKEN;
+          const cfToken = process.env.CLOUDFLARE_API_TOKEN;
+          const expectedPlan = 'safety-gate-weekly-detail-v1:d64a863503fafe96e91588761e24355c05f054245e2712017c1a65c53fb0894f';
+          const expectedTotal = 1118;
+          const started = Date.now();
+          const deadline = started + 300 * 60_000;
+          const auth = { Authorization: `Bearer ${token}`, 'Content-Type':'application/json' };
+          const cfAuth = { Authorization: `Bearer ${cfToken}` };
+          let successfulBatches = 0;
+          let ambiguousBodies = 0;
+          let singleBatchRecoveries = 0;
+          let consecutiveSingleNoProgress = 0;
+
+          const log = (name, value={}) => console.log(name+' '+JSON.stringify(value));
+          const errText = e => e instanceof Error ? `${e.name}:${e.message}` : String(e);
+
+          async function raw(url, options={}, timeout=45000) {
+            try {
+              const r = await fetch(url, { ...options, redirect:'error', signal:AbortSignal.timeout(timeout) });
+              let text = '';
+              try { text = await r.text(); } catch (e) { return { status:r.status, text:'', json:null, parseError:'body-read:'+errText(e), networkError:null }; }
+              let json = null, parseError = null;
+              if (text) {
+                try { json = JSON.parse(text); } catch (e) { parseError = errText(e); }
+              } else parseError = 'empty-body';
+              return { status:r.status, text, json, parseError, networkError:null };
+            } catch (e) {
+              return { status:null, text:'', json:null, parseError:null, networkError:errText(e) };
+            }
+          }
+          async function getJson(url, headers, timeout=45000) {
+            const r = await raw(url,{method:'GET',headers},timeout);
+            if (r.status !== 200 || !r.json) throw new Error('read-failed '+url+' status='+r.status+' parse='+r.parseError+' net='+r.networkError);
+            return r.json;
+          }
+          function recentAgeMs(o) {
+            const t = Date.parse(o?.recent?.lastSuccessAt ?? '');
+            return Number.isFinite(t) ? Date.now()-t : Number.POSITIVE_INFINITY;
+          }
+          function validCursorKey(value) {
+            if (value == null) return true;
+            try {
+              const c=JSON.parse(value);
+              return c?.version===2 && Number.isSafeInteger(c.offset) && c.offset>=0 &&
+                typeof c.reportUrl==='string' && /^[a-f0-9]{64}$/.test(String(c.reportVersion??''));
+            } catch { return false; }
+          }
+          function validateState(s) {
+            if (!s || s.source!=='SAFETY GATE' || s.mode!=='historical-reconcile') throw new Error('historical-state-missing');
+            if (!['running','partial','completed'].includes(s.status)) throw new Error('historical-status-'+s.status);
+            if (s.planVersion!==expectedPlan || s.totalUnits!==expectedTotal) throw new Error('historical-plan-drift');
+            if (!Number.isSafeInteger(s.cursor)||s.cursor<69||s.cursor>expectedTotal||s.pagesScanned!==s.cursor) throw new Error('historical-cursor-invalid');
+            if (!Number.isSafeInteger(s.recordsObserved)||s.recordsObserved<968) throw new Error('historical-record-count-invalid');
+            if (![s.recordsPersisted,s.newCount,s.updatedCount,s.detailFailures,s.pageErrors].every(Number.isSafeInteger)) throw new Error('historical-counter-invalid');
+            if (s.recordsPersisted!==s.newCount+s.updatedCount) throw new Error('historical-write-counter-incoherent');
+            if (s.detailFailures!==0||s.pageErrors!==0||s.lastError!==null) throw new Error('historical-error-present');
+            if (!validCursorKey(s.cursorKey)) throw new Error('historical-cursor-key-invalid');
+            if (s.status==='completed' && (s.coverage!=='official-index-complete'||s.cursor!==expectedTotal||s.cursorKey!==null||!s.completedAt)) throw new Error('historical-terminal-invalid');
+            return s;
+          }
+          function stateProgress(before, after, batchSize) {
+            const deltaRecords=after.recordsObserved-before.recordsObserved;
+            const cursorDelta=after.cursor-before.cursor;
+            if (deltaRecords<0||deltaRecords>batchSize||cursorDelta<0||cursorDelta>1) return false;
+            if (cursorDelta===0) {
+              if (deltaRecords<=0) return false;
+              const b=before.cursorKey?JSON.parse(before.cursorKey).offset:0;
+              const a=after.cursorKey?JSON.parse(after.cursorKey).offset:0;
+              return a===b+deltaRecords;
+            }
+            return after.cursorKey===null;
+          }
+
+          const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+          async function refreshRecent() {
+            let before = await observe();
+            const healthy = before?.recent?.status === 'completed' &&
+              before.recent.lastError === null &&
+              before.recent.detailFailures === 0 &&
+              before.recent.pageErrors === 0 &&
+              before.recent.leaseOwnerId === null &&
+              before.recent.leaseMode === null &&
+              before.recent.leaseExpiresAt === null &&
+              before.lease === null;
+            if (healthy && recentAgeMs(before) < 20 * 60_000) return before;
+
+            if (before.lease) {
+              log('F2B_RECENT_REFRESH_HOLD',{reason:'source-lease-active-before-refresh',lease:before.lease});
+              throw new Error('source-lease-active-before-recent-refresh');
+            }
+            const priorSuccess = before?.recent?.lastSuccessAt ?? null;
+            const post = await raw(base+'/api/safety-gate/sync?mode=recent',
+              {method:'POST',headers:auth},420000);
+            log('F2B_RECENT_REFRESH_RESPONSE',{
+              status:post.status,parseError:post.parseError,networkError:post.networkError,
+              bodyBytes:Buffer.byteLength(post.text||''),priorSuccess
+            });
+
+            let after = await observe();
+            const waitDeadline = Date.now() + 180_000;
+            while (after.lease && after.lease.mode === 'recent' && Date.now() < waitDeadline) {
+              await sleep(2000);
+              after = await observe();
+            }
+            const age = recentAgeMs(after);
+            const ok = after?.recent?.status === 'completed' &&
+              after.recent.lastError === null &&
+              after.recent.detailFailures === 0 &&
+              after.recent.pageErrors === 0 &&
+              after.recent.leaseOwnerId === null &&
+              after.recent.leaseMode === null &&
+              after.recent.leaseExpiresAt === null &&
+              after.lease === null &&
+              Number.isFinite(age) && age >= 0 && age < 5 * 60_000;
+            if (!ok) {
+              log('F2B_RECENT_REFRESH_FAIL',{
+                status:after?.recent?.status??null,lastSuccessAt:after?.recent?.lastSuccessAt??null,
+                ageMinutes:Number.isFinite(age)?age/60000:null,lastError:after?.recent?.lastError??null,
+                detailFailures:after?.recent?.detailFailures??null,pageErrors:after?.recent?.pageErrors??null,
+                topLease:after?.lease??null
+              });
+              throw new Error('recent-refresh-not-confirmed');
+            }
+            log('F2B_RECENT_REFRESH_PASS',{
+              lastSuccessAt:after.recent.lastSuccessAt,ageMinutes:age/60000,
+              advanced:after.recent.lastSuccessAt!==priorSuccess
+            });
+            return after;
+          }
+
+          async function verifyProduction() {
+            const cfRoot='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/workers/scripts/vigia-runtime';
+            const [dep,settings,schedules]=await Promise.all([
+              getJson(cfRoot+'/deployments',cfAuth,30000),
+              getJson(cfRoot+'/settings',cfAuth,30000),
+              getJson(cfRoot+'/schedules',cfAuth,30000),
+            ]);
+            if (![dep,settings,schedules].every(x=>x?.success===true)) throw new Error('cloudflare-control-read-failed');
+            const ds=dep.result?.deployments??dep.result;
+            const active=ds?.[0],previous=ds?.[1];
+            const bindings=settings.result?.bindings??[];
+            const value=name=>{const b=bindings.find(x=>x.name===name);return b?.text??b?.value??null;};
+            const crons=schedules.result?.schedules??schedules.result;
+            if (active?.id!=='db36706c-96e5-4095-9d92-6922cde10543' ||
+                active?.versions?.length!==1 || active.versions[0]?.version_id!=='54fe12f9-e0ea-4881-8961-f20fc1e5e447' ||
+                active.versions[0]?.percentage!==100 ||
+                previous?.id!=='154e2338-b846-4734-9bd1-24b4cbb420cb' ||
+                previous?.versions?.[0]?.version_id!=='a10fce1a-e4ca-4bc9-93f0-99fd89a72723' ||
+                value('NAGAMEALERT_RECENT_SCHEDULER_MODE')!=='rapna-rasff-oecd-pilot' ||
+                value('NAGAMEALERT_SAFETY_GATE_RECENT_MODE')!==null ||
+                !Array.isArray(crons)||crons.length!==1||crons[0]?.cron!=='*/5 * * * *') throw new Error('production-identity-or-config-drift');
+          }
+
+          async function observe() {
+            const o=await getJson(base+'/api/safety-gate/sync?observe=1',auth);
+            validateState(o.historicalReconcile);
+            return o;
+          }
+
+          async function terminalCheck(o) {
+            const s=validateState(o.historicalReconcile);
+            const auditEnvelope=await getJson(base+'/api/safety-gate/sync?audit=1',auth);
+            const audit=auditEnvelope?.audit??auditEnvelope;
+            const critical=['duplicateReferenceGroups','invalidIdentities','emptyCanonicalRows','invalidOfficialUrls'];
+            for(const k of critical) if(audit?.integrity?.[k]!==0) throw new Error('terminal-audit-'+k);
+            const parityAlerts=audit?.counts?.safetyGateAlerts===audit?.counts?.safetyGateUniqueReferences;
+            const parityVersions=audit?.counts?.safetyGateVersions===audit?.counts?.safetyGateVersionCountSum;
+            const cert=o.revisionCertification;
+            const certPass=Boolean(cert && cert.source==='SAFETY GATE' && cert.mode==='historical-reconcile' &&
+              cert.cycleId===s.planVersion && cert.completedAt===s.completedAt && cert.coverage==='official-index-complete' &&
+              cert.auditStatus==='passed' && cert.evidence?.scope==='full-archive' && cert.evidence?.contentAuthority==='official-json-detail');
+            log('F2B_TERMINAL_CHECK',{cursor:s.cursor,totalUnits:s.totalUnits,recordsObserved:s.recordsObserved,
+              parityAlerts,parityVersions,versions:audit?.counts?.safetyGateVersions??null,
+              versionCountSum:audit?.counts?.safetyGateVersionCountSum??null,certPass,auditCheckedAt:audit?.checkedAt??null});
+            return {audit,parityAlerts,parityVersions,certPass};
+          }
+
+          await verifyProduction();
+          let current=await observe();
+          let state=current.historicalReconcile;
+          const triggerOkay=process.env.F2B_EXECUTE === 'true';
+          log('F2B_START',{status:state.status,cursor:state.cursor,totalUnits:state.totalUnits,cursorKey:state.cursorKey,
+            recordsObserved:state.recordsObserved,topLease:current.lease??null,recentLastSuccessAt:current.recent?.lastSuccessAt??null,
+            recentAgeMinutes:recentAgeMs(current)/60000,allowMutation:triggerOkay,mode:'same-day-finalizer'});
+
+          if (!triggerOkay) {
+            log('F2B_DRY_RUN_COMPLETE',{status:state.status,cursor:state.cursor,totalUnits:state.totalUnits});
+            process.exit(0);
+          }
+          if (current.lease) {
+            log('F2B_HOLD',{reason:'active-top-level-lease',lease:current.lease});
+            process.exit(0);
+          }
+          current=await refreshRecent();
+          state=current.historicalReconcile;
+
+          if (state.status==='completed') {
+            const term=await terminalCheck(current);
+            if (term.parityAlerts&&term.parityVersions&&term.certPass) {
+              log('F2B_PASS',{reason:'already-terminal-certified',cursor:state.cursor,totalUnits:state.totalUnits});
+              process.exit(0);
+            }
+            log('F2B_HOLD',{reason:'terminal-certification-or-parity-pending'});
+            process.exit(0);
+          }
+
+          while (Date.now()<deadline) {
+            await verifyProduction();
+            const beforeObs=await observe();
+            const before=beforeObs.historicalReconcile;
+            if (beforeObs.lease) {
+              log('F2B_HOLD',{reason:'lease-became-active',lease:beforeObs.lease,successfulBatches});
+              break;
+            }
+            const age=recentAgeMs(beforeObs);
+            if (age>=20*60_000) {
+              log('F2B_RECENT_REFRESH_DUE',{ageMinutes:age/60000,successfulBatches,cursor:before.cursor});
+              current=await refreshRecent();
+              state=current.historicalReconcile;
+              continue;
+            }
+            if (before.status==='completed') {
+              current=beforeObs; state=before; break;
+            }
+
+            // The report that repeatedly crashed with batch=10 is cursor 69. Any future
+            // orphaned running state is also recovered with a single identity first.
+            const batchSize=(before.cursor===69 || before.status==='running') ? 1 : 10;
+            if (batchSize===1) singleBatchRecoveries++;
+
+            const post=await raw(base+`/api/safety-gate/sync?mode=historical-reconcile&batchSize=${batchSize}`,
+              {method:'POST',headers:auth},90000);
+            if (post.parseError||post.networkError) {
+              ambiguousBodies++;
+              log('F2B_POST_AMBIGUOUS',{cursor:before.cursor,batchSize,status:post.status,parseError:post.parseError,
+                networkError:post.networkError,bodyBytes:Buffer.byteLength(post.text||'')});
+            } else {
+              log('F2B_POST_RESPONSE',{cursor:before.cursor,batchSize,status:post.status,
+                returnedStatus:post.json?.state?.status??null,skipped:post.json?.skipped??null});
+            }
+
+            const afterObs=await observe();
+            const after=afterObs.historicalReconcile;
+            if (afterObs.lease) {
+              log('F2B_HOLD',{reason:'post-has-active-lease',lease:afterObs.lease,cursor:after.cursor});
+              break;
+            }
+            if (after.status==='failed'||after.lastError!==null||after.detailFailures!==0||after.pageErrors!==0) {
+              throw new Error('post-state-failed');
+            }
+
+            if (stateProgress(before,after,batchSize)) {
+              successfulBatches++;
+              consecutiveSingleNoProgress=0;
+              log('F2B_PROGRESS',{batchSize,fromCursor:before.cursor,toCursor:after.cursor,
+                fromRecords:before.recordsObserved,toRecords:after.recordsObserved,cursorKey:after.cursorKey,
+                status:after.status,postStatus:post.status,bodyAmbiguous:Boolean(post.parseError||post.networkError)});
+              current=afterObs; state=after;
+              if (after.status==='completed') break;
+              continue;
+            }
+
+            const exactlySame = before.cursor===after.cursor && before.cursorKey===after.cursorKey &&
+              before.recordsObserved===after.recordsObserved && before.recordsPersisted===after.recordsPersisted &&
+              before.newCount===after.newCount && before.updatedCount===after.updatedCount;
+            if (exactlySame && after.status==='running' && afterObs.lease===null) {
+              if (batchSize===1) consecutiveSingleNoProgress++;
+              log('F2B_RECOVERABLE_ORPHAN',{cursor:after.cursor,batchSize,consecutiveSingleNoProgress,
+                leaseOwnerId:after.leaseOwnerId,leaseExpiresAt:after.leaseExpiresAt,postStatus:post.status,
+                parseError:post.parseError,networkError:post.networkError});
+              if (batchSize===1 && consecutiveSingleNoProgress>=3) {
+                throw new Error('single-identity-worker-abort-repeated');
+              }
+              continue;
+            }
+
+            if (post.status===202) {
+              log('F2B_HOLD',{reason:post.json?.skipped??'http-202-no-progress',cursor:after.cursor});
+              break;
+            }
+            throw new Error('unreconciled-post-state');
+          }
+
+          current=await observe();
+          state=current.historicalReconcile;
+          if (state.status==='completed') {
+            let term=await terminalCheck(current);
+            if (!term.certPass && term.parityAlerts && term.parityVersions && !current.lease) {
+              // A terminal state may have been persisted even if the response carrying
+              // automatic certification was cut. Refresh recent only as an execution-safety
+              // interlock; it is not certification evidence.
+              current=await refreshRecent();
+              const certPost=await raw(base+'/api/safety-gate/sync?mode=historical-reconcile&batchSize=1',
+                {method:'POST',headers:auth},90000);
+              log('F2B_CERT_RETRY',{status:certPost.status,parseError:certPost.parseError,networkError:certPost.networkError});
+              current=await observe();
+              term=await terminalCheck(current);
+            }
+            if (term.parityAlerts&&term.parityVersions&&term.certPass) {
+              log('F2B_PASS',{reason:'terminal-full-archive-certified',cursor:state.cursor,totalUnits:state.totalUnits,
+                recordsObserved:state.recordsObserved,successfulBatches,ambiguousBodies,singleBatchRecoveries});
+              process.exit(0);
+            }
+            log('F2B_HOLD',{reason:'terminal-parity-or-certification-pending',cursor:state.cursor,totalUnits:state.totalUnits,
+              successfulBatches,ambiguousBodies,singleBatchRecoveries});
+            process.exit(0);
+          }
+
+          log('F2B_WINDOW_END',{status:state.status,cursor:state.cursor,totalUnits:state.totalUnits,
+            recordsObserved:state.recordsObserved,successfulBatches,ambiguousBodies,singleBatchRecoveries,
+            recentAgeMinutes:recentAgeMs(current)/60000});
+          NODE
