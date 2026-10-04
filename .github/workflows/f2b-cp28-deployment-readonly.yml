@@ -1,0 +1,37 @@
+name: F2B CP28 production build and deployment read-only
+on:
+  push:
+    branches: [work/scheduler-reliability-s0-evidence]
+    paths: [".github/workflows/f2b-cp28-deployment-readonly.yml"]
+permissions:
+  contents: read
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Read Cloudflare build deployment and version
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          const get=async(path)=>{
+           const r=await fetch(root+path,{headers:{Authorization:'Bearer '+token},redirect:'error',signal:AbortSignal.timeout(45000)});
+           const j=await r.json();if(r.status!==200||j.success!==true)throw Error('read-failed:'+path+':'+r.status);
+           return j.result;
+          };
+          const scripts=await get('/workers/scripts');
+          const script=scripts.find(x=>x.id==='vigia-runtime');
+          if(!script?.tag)throw Error('worker-tag-missing');
+          const builds=await get('/builds/workers/'+script.tag+'/builds?per_page=5');
+          const list=Array.isArray(builds)?builds:builds.builds??builds.items??[];
+          const entries=list.map(x=>({build_uuid:x.build_uuid??x.uuid??x.id,status:x.status,build_outcome:x.build_outcome,created_on:x.created_on,started_on:x.started_on,stopped_on:x.stopped_on,build_trigger_metadata:x.build_trigger_metadata,buildMetadata:x.build_metadata,commit_hash:x.commit_hash,commit_sha:x.commit_sha}));
+          const dep=await get('/workers/scripts/vigia-runtime/deployments');
+          const deployments=dep.deployments??dep;
+          const active=deployments[0], previous=deployments[1];
+          const v=await get('/workers/scripts/vigia-runtime/versions/'+active.versions[0].version_id);
+          console.log('F2B_DEPLOYMENT_EVIDENCE '+JSON.stringify({observedAt:new Date().toISOString(),scriptTag:script.tag,buildKeys:Object.keys(builds),builds:entries,active,previous,version:{id:v.id,metadata:v.metadata,annotations:v.annotations}}));
+          
+          NODE
