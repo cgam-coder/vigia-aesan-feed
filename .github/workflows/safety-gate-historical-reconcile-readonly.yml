@@ -111,3 +111,5 @@ jobs:
           };
           console.log('SAFETY_HISTORICAL_RECONCILE_SNAPSHOT ' + JSON.stringify(out));
           NODE
+
+# CP28 observer epoch 2: new read-only run after exhausted prior reruns.
