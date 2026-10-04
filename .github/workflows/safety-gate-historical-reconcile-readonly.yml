@@ -1,0 +1,137 @@
+name: Safety Gate F2B uncertain-result read-only reconciliation
+
+on:
+  push:
+    branches: [work/scheduler-reliability-s0-evidence]
+    paths:
+      - ".github/workflows/safety-gate-historical-reconcile-readonly.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      VIGIA_BASE_URL: https://vigia-runtime.c-gamiz93.workers.dev
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Reconcile uncertain Safety Gate historical operation read-only
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const base = process.env.VIGIA_BASE_URL;
+          const token = process.env.VIGIA_SYNC_TOKEN;
+          const cfToken = process.env.CLOUDFLARE_API_TOKEN;
+          if (base !== 'https://vigia-runtime.c-gamiz93.workers.dev' || !token || !cfToken) {
+            throw new Error('target-or-credentials-not-configured');
+          }
+          const auth = { Authorization: `Bearer ${token}` };
+          const cfAuth = { Authorization: `Bearer ${cfToken}` };
+          async function readJson(url, headers, timeout = 45000) {
+            const r = await fetch(url, { method: 'GET', headers, redirect: 'error', signal: AbortSignal.timeout(timeout) });
+            const body = await r.json();
+            if (r.status !== 200) throw new Error(`read-http-${r.status}`);
+            return body;
+          }
+
+          // Revalidate production identity/config with GET only.
+          const cfRoot = 'https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/workers/scripts/vigia-runtime';
+          const [dep, settings, schedules] = await Promise.all([
+            readJson(cfRoot + '/deployments', cfAuth, 30000),
+            readJson(cfRoot + '/settings', cfAuth, 30000),
+            readJson(cfRoot + '/schedules', cfAuth, 30000),
+          ]);
+          for (const x of [dep, settings, schedules]) if (x?.success !== true) throw new Error('cloudflare-read-failed');
+          const deployments = dep.result?.deployments ?? dep.result;
+          const active = deployments?.[0], previous = deployments?.[1];
+          const bindings = settings.result?.bindings ?? [];
+          const value = name => {
+            const b = bindings.find(x => x.name === name);
+            return b?.text ?? b?.value ?? null;
+          };
+          const crons = schedules.result?.schedules ?? schedules.result;
+          if (active?.id !== 'db36706c-96e5-4095-9d92-6922cde10543' ||
+              active?.versions?.length !== 1 ||
+              active.versions[0]?.version_id !== '54fe12f9-e0ea-4881-8961-f20fc1e5e447' ||
+              active.versions[0]?.percentage !== 100 ||
+              previous?.id !== '154e2338-b846-4734-9bd1-24b4cbb420cb' ||
+              previous?.versions?.[0]?.version_id !== 'a10fce1a-e4ca-4bc9-93f0-99fd89a72723' ||
+              value('NAGAMEALERT_RECENT_SCHEDULER_MODE') !== 'rapna-rasff-oecd-pilot' ||
+              value('NAGAMEALERT_SAFETY_GATE_RECENT_MODE') !== null ||
+              !Array.isArray(crons) || crons.length !== 1 || crons[0]?.cron !== '*/5 * * * *') {
+            throw new Error('production-identity-or-config-drift');
+          }
+
+          const observe = await readJson(base + '/api/safety-gate/sync?observe=1', auth);
+          const auditEnvelope = await readJson(base + '/api/safety-gate/sync?audit=1', auth);
+          const audit = auditEnvelope?.audit ?? auditEnvelope;
+          const s = observe?.historicalReconcile;
+          if (!s || s.source !== 'SAFETY GATE' || s.mode !== 'historical-reconcile') throw new Error('historical-state-missing');
+          if (s.planVersion !== 'safety-gate-weekly-detail-v1:d64a863503fafe96e91588761e24355c05f054245e2712017c1a65c53fb0894f') throw new Error('plan-drift');
+          if (s.totalUnits !== 1118 || !Number.isSafeInteger(s.cursor) || s.cursor < 69 || s.cursor > 70 || s.pagesScanned !== s.cursor) throw new Error('cursor-outside-one-batch-envelope');
+          if (!Number.isSafeInteger(s.recordsObserved) || s.recordsObserved < 968 || s.recordsObserved > 978) throw new Error('records-observed-outside-one-batch-envelope');
+          if (s.status !== 'partial' || s.completedAt !== null || s.coverage !== 'partial') throw new Error('unexpected-terminal-or-coverage-state');
+          if (s.detailFailures !== 0 || s.pageErrors !== 0 || s.lastError !== null) throw new Error('historical-error-present');
+          if (s.leaseOwnerId !== null || s.leaseMode !== null || s.leaseExpiresAt !== null || observe.lease !== null) throw new Error('lease-not-released');
+          for (const k of ['recordsPersisted','newCount','updatedCount']) if (!Number.isSafeInteger(s[k]) || s[k] < 0 || s[k] > 10) throw new Error('write-counter-outside-one-batch-envelope');
+          if (s.recordsPersisted !== s.newCount + s.updatedCount) throw new Error('write-counter-incoherent');
+          if (s.cursorKey !== null) {
+            const c = JSON.parse(s.cursorKey);
+            if (c.version !== 2 || !Number.isSafeInteger(c.offset) || c.offset < 1 || c.offset > 10 ||
+                typeof c.reportUrl !== 'string' || !/^[a-f0-9]{64}$/.test(c.reportVersion)) {
+              throw new Error('detail-cursor-invalid');
+            }
+            if (s.cursor !== 69) throw new Error('cursor-key-with-advanced-page');
+          }
+          if (!audit || !Number.isFinite(Date.parse(audit.checkedAt))) throw new Error('audit-missing');
+          for (const k of ['duplicateReferenceGroups','invalidIdentities','emptyCanonicalRows','invalidOfficialUrls']) {
+            if (audit.integrity?.[k] !== 0) throw new Error('audit-integrity-' + k);
+          }
+          if (!Number.isSafeInteger(audit.counts?.safetyGateAlerts) || audit.counts.safetyGateAlerts <= 0 ||
+              audit.counts.safetyGateAlerts !== audit.counts.safetyGateUniqueReferences ||
+              !Number.isSafeInteger(audit.counts?.safetyGateVersions) || audit.counts.safetyGateVersions <= 0 ||
+              audit.counts.safetyGateVersions !== audit.counts.safetyGateVersionCountSum) {
+            throw new Error('audit-parity-failed');
+          }
+
+          const result = {
+            verdict: 'PASS_RECONCILED_READ_ONLY',
+            production: {
+              deployment: active.id,
+              worker: active.versions[0].version_id,
+              rollback: previous.id,
+              scheduler: value('NAGAMEALERT_RECENT_SCHEDULER_MODE'),
+              delta: value('NAGAMEALERT_SAFETY_GATE_RECENT_MODE'),
+              cron: crons[0].cron,
+            },
+            historical: {
+              status: s.status,
+              cursor: s.cursor,
+              totalUnits: s.totalUnits,
+              cursorKey: s.cursorKey,
+              planVersion: s.planVersion,
+              recordsObserved: s.recordsObserved,
+              recordsPersisted: s.recordsPersisted,
+              newCount: s.newCount,
+              updatedCount: s.updatedCount,
+              detailFailures: s.detailFailures,
+              pageErrors: s.pageErrors,
+              lastError: s.lastError,
+              leaseOwnerId: s.leaseOwnerId,
+              leaseMode: s.leaseMode,
+              leaseExpiresAt: s.leaseExpiresAt,
+              updatedAt: s.updatedAt,
+              lastSuccessAt: s.lastSuccessAt,
+            },
+            topLevelLease: observe.lease,
+            audit: {
+              checkedAt: audit.checkedAt,
+              counts: audit.counts,
+              integrity: audit.integrity,
+            },
+          };
+          console.log('SAFETY_HISTORICAL_RECONCILE_READ_ONLY ' + JSON.stringify(result));
+          NODE
