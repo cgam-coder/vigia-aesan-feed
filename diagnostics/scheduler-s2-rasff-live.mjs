@@ -87,3 +87,5 @@ if(token&&txt.includes(token))txt=JSON.stringify({status:"HOLD",reason:"output-s
 await writeFile("scheduler-s3-oecd-live.json",txt);
 console.log(txt);
 if(out.status==="HOLD")process.exitCode=1;
+
+// V14 CP23 immediate S3 final certification reread 2026-10-04
