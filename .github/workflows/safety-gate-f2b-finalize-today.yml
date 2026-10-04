@@ -34,7 +34,7 @@ jobs:
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           GH_TOKEN: ${{ github.token }}
-          F2B_EXECUTE: "true"
+          F2B_EXECUTE: "false"
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
@@ -43,6 +43,8 @@ jobs:
           const cfToken = process.env.CLOUDFLARE_API_TOKEN;
           const expectedPlan = 'safety-gate-weekly-detail-v1:d64a863503fafe96e91588761e24355c05f054245e2712017c1a65c53fb0894f';
           const expectedTotal = 1118;
+          if (base !== 'https://vigia-runtime.c-gamiz93.workers.dev' || !token || !cfToken) throw new Error('target-or-credential-invalid');
+          let knownFailureRecovered = false;
           const started = Date.now();
           const deadline = started + 300 * 60_000;
           const auth = { Authorization: `Bearer ${token}`, 'Content-Type':'application/json' };
@@ -88,13 +90,20 @@ jobs:
           }
           function validateState(s) {
             if (!s || s.source!=='SAFETY GATE' || s.mode!=='historical-reconcile') throw new Error('historical-state-missing');
-            if (!['running','partial','completed'].includes(s.status)) throw new Error('historical-status-'+s.status);
+            const knownFailure = !knownFailureRecovered && s.status==='failed' &&
+              s.cursor===69 && s.pagesScanned===69 && s.cursorKey===null &&
+              s.recordsObserved===968 && s.recordsPersisted===0 && s.newCount===0 && s.updatedCount===0 &&
+              s.detailFailures===0 && s.pageErrors===1 &&
+              s.lastError==='Safety Gate weekly report Report-2006-17 has ambiguous duplicate identities' &&
+              s.leaseOwnerId===null && s.leaseMode===null && s.leaseExpiresAt===null;
+            if (!['partial','completed'].includes(s.status) && !knownFailure) throw new Error('historical-status-'+s.status);
             if (s.planVersion!==expectedPlan || s.totalUnits!==expectedTotal) throw new Error('historical-plan-drift');
             if (!Number.isSafeInteger(s.cursor)||s.cursor<69||s.cursor>expectedTotal||s.pagesScanned!==s.cursor) throw new Error('historical-cursor-invalid');
             if (!Number.isSafeInteger(s.recordsObserved)||s.recordsObserved<968) throw new Error('historical-record-count-invalid');
             if (![s.recordsPersisted,s.newCount,s.updatedCount,s.detailFailures,s.pageErrors].every(Number.isSafeInteger)) throw new Error('historical-counter-invalid');
             if (s.recordsPersisted!==s.newCount+s.updatedCount) throw new Error('historical-write-counter-incoherent');
-            if (s.detailFailures!==0||s.pageErrors!==0||s.lastError!==null) throw new Error('historical-error-present');
+            if (!knownFailure && (s.detailFailures!==0||s.pageErrors!==0||s.lastError!==null)) throw new Error('historical-error-present');
+            if (s.leaseOwnerId!==null || s.leaseMode!==null || s.leaseExpiresAt!==null) throw new Error('historical-internal-lease-present');
             if (!validCursorKey(s.cursorKey)) throw new Error('historical-cursor-key-invalid');
             if (s.status==='completed' && (s.coverage!=='official-index-complete'||s.cursor!==expectedTotal||s.cursorKey!==null||!s.completedAt)) throw new Error('historical-terminal-invalid');
             return s;
@@ -183,11 +192,11 @@ jobs:
             const bindings=settings.result?.bindings??[];
             const value=name=>{const b=bindings.find(x=>x.name===name);return b?.text??b?.value??null;};
             const crons=schedules.result?.schedules??schedules.result;
-            if (active?.id!=='db36706c-96e5-4095-9d92-6922cde10543' ||
-                active?.versions?.length!==1 || active.versions[0]?.version_id!=='54fe12f9-e0ea-4881-8961-f20fc1e5e447' ||
+            if (active?.id!=='a71a6a27-06a4-46c0-81c8-1bff8ffa5d0d' ||
+                active?.versions?.length!==1 || active.versions[0]?.version_id!=='df80672f-6e72-4f58-a22f-fabb367f2545' ||
                 active.versions[0]?.percentage!==100 ||
-                previous?.id!=='154e2338-b846-4734-9bd1-24b4cbb420cb' ||
-                previous?.versions?.[0]?.version_id!=='a10fce1a-e4ca-4bc9-93f0-99fd89a72723' ||
+                previous?.id!=='db36706c-96e5-4095-9d92-6922cde10543' ||
+                previous?.versions?.[0]?.version_id!=='54fe12f9-e0ea-4881-8961-f20fc1e5e447' ||
                 value('NAGAMEALERT_RECENT_SCHEDULER_MODE')!=='rapna-rasff-oecd-pilot' ||
                 value('NAGAMEALERT_SAFETY_GATE_RECENT_MODE')!==null ||
                 !Array.isArray(crons)||crons.length!==1||crons[0]?.cron!=='*/5 * * * *') throw new Error('production-identity-or-config-drift');
@@ -207,6 +216,8 @@ jobs:
             for(const k of critical) if(audit?.integrity?.[k]!==0) throw new Error('terminal-audit-'+k);
             const parityAlerts=audit?.counts?.safetyGateAlerts===audit?.counts?.safetyGateUniqueReferences;
             const parityVersions=audit?.counts?.safetyGateVersions===audit?.counts?.safetyGateVersionCountSum;
+            if (o.lease!==null || s.leaseOwnerId!==null || s.leaseMode!==null || s.leaseExpiresAt!==null) throw new Error('terminal-lease-present');
+            if (Date.parse(audit.checkedAt)<Date.parse(s.completedAt)) throw new Error('terminal-audit-not-posterior');
             const cert=o.revisionCertification;
             const certPass=Boolean(cert && cert.source==='SAFETY GATE' && cert.mode==='historical-reconcile' &&
               cert.cycleId===s.planVersion && cert.completedAt===s.completedAt && cert.coverage==='official-index-complete' &&
@@ -218,7 +229,21 @@ jobs:
           }
 
           await verifyProduction();
+          const versionEnvelope=await getJson('https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/workers/scripts/vigia-runtime/versions',cfAuth,30000);
+          const versionList=versionEnvelope.result?.items ?? versionEnvelope.result;
+          const version=Array.isArray(versionList)?versionList.find(v=>v.id==='df80672f-6e72-4f58-a22f-fabb367f2545'):null;
+          if (!version || versionEnvelope.success!==true) throw new Error('production-version-missing');
+          log('F2B_PRODUCTION_VERSION',{id:version.id,createdOn:version.created_on,metadata:version.metadata,annotations:version.annotations});
           let current=await observe();
+          const initialAuditEnvelope=await getJson(base+'/api/safety-gate/sync?audit=1',auth);
+          const initialAudit=initialAuditEnvelope.audit ?? initialAuditEnvelope;
+          for(const k of ['duplicateReferenceGroups','invalidIdentities','emptyCanonicalRows','invalidOfficialUrls']) {
+            if(initialAudit.integrity?.[k]!==0) throw new Error('initial-audit-'+k);
+          }
+          const counts=initialAudit.counts;
+          if (!Number.isSafeInteger(counts?.safetyGateAlerts) || counts.safetyGateAlerts!==counts.safetyGateUniqueReferences ||
+              !Number.isSafeInteger(counts.safetyGateVersions) || counts.safetyGateVersions!==counts.safetyGateVersionCountSum) throw new Error('initial-parity-failed');
+          log('F2B_INITIAL_AUDIT',initialAudit);
           let state=current.historicalReconcile;
           const triggerOkay=process.env.F2B_EXECUTE === 'true';
           log('F2B_START',{status:state.status,cursor:state.cursor,totalUnits:state.totalUnits,cursorKey:state.cursorKey,
@@ -267,7 +292,7 @@ jobs:
 
             // The report that repeatedly crashed with batch=10 is cursor 69. Any future
             // orphaned running state is also recovered with a single identity first.
-            const batchSize=(before.cursor===69 || before.status==='running') ? 1 : 10;
+            const batchSize=before.cursor===69 ? 1 : 10;
             if (batchSize===1) singleBatchRecoveries++;
 
             const post=await raw(base+`/api/safety-gate/sync?mode=historical-reconcile&batchSize=${batchSize}`,
@@ -293,6 +318,7 @@ jobs:
 
             if (stateProgress(before,after,batchSize)) {
               successfulBatches++;
+              knownFailureRecovered=true;
               consecutiveSingleNoProgress=0;
               log('F2B_PROGRESS',{batchSize,fromCursor:before.cursor,toCursor:after.cursor,
                 fromRecords:before.recordsObserved,toRecords:after.recordsObserved,cursorKey:after.cursorKey,
@@ -302,27 +328,14 @@ jobs:
               continue;
             }
 
-            const exactlySame = before.cursor===after.cursor && before.cursorKey===after.cursorKey &&
-              before.recordsObserved===after.recordsObserved && before.recordsPersisted===after.recordsPersisted &&
-              before.newCount===after.newCount && before.updatedCount===after.updatedCount;
-            if (exactlySame && after.status==='running' && afterObs.lease===null) {
-              if (batchSize===1) consecutiveSingleNoProgress++;
-              log('F2B_RECOVERABLE_ORPHAN',{cursor:after.cursor,batchSize,consecutiveSingleNoProgress,
-                leaseOwnerId:after.leaseOwnerId,leaseExpiresAt:after.leaseExpiresAt,postStatus:post.status,
-                parseError:post.parseError,networkError:post.networkError});
-              if (batchSize===1 && consecutiveSingleNoProgress>=3) {
-                throw new Error('single-identity-worker-abort-repeated');
-              }
-              continue;
-            }
-
             if (post.status===202) {
               log('F2B_HOLD',{reason:post.json?.skipped??'http-202-no-progress',cursor:after.cursor});
               break;
             }
-            throw new Error('unreconciled-post-state');
+            throw new Error('post-no-demonstrated-progress-no-retry');
           }
 
+          await verifyProduction();
           current=await observe();
           state=current.historicalReconcile;
           if (state.status==='completed') {
@@ -332,6 +345,9 @@ jobs:
               // automatic certification was cut. Refresh recent only as an execution-safety
               // interlock; it is not certification evidence.
               current=await refreshRecent();
+              await verifyProduction();
+              current=await observe();
+              if (current.lease) throw new Error('lease-before-certification');
               const certPost=await raw(base+'/api/safety-gate/sync?mode=historical-reconcile&batchSize=1',
                 {method:'POST',headers:auth},90000);
               log('F2B_CERT_RETRY',{status:certPost.status,parseError:certPost.parseError,networkError:certPost.networkError});
