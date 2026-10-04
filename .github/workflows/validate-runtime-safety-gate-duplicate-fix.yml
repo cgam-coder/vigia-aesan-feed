@@ -1,0 +1,28 @@
+name: Validate runtime Safety Gate duplicate-reference fix
+on:
+  push:
+    branches: [work/scheduler-reliability-s0-evidence]
+    paths:
+      - ".github/workflows/validate-runtime-safety-gate-duplicate-fix.yml"
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: cgam-coder/vigia-runtime
+          ref: fix/safety-gate-historical-duplicate-reference
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22.23.0"
+          cache: npm
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Run Safety Gate historical tests
+        run: node --import tsx --test tests/safety-gate-historical.test.ts tests/safety-gate-historical-route.test.ts tests/d1-version-integrity.test.ts
+      - name: Build Cloudflare artifact
+        run: npm run build:cloudflare
