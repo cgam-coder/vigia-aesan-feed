@@ -1,0 +1,336 @@
+name: Safety Gate F2B resilient historical controller
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  push:
+    branches:
+      - work/safety-gate-f2b-resilient-controller
+    paths:
+      - ".github/workflows/safety-gate-f2b-resilient-controller.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: vigia-safety-gate-f2b-resilient-controller
+  cancel-in-progress: false
+
+jobs:
+  writer_gate:
+    uses: ./.github/workflows/runtime-writer-gate.yml
+
+  runtime_target:
+    uses: ./.github/workflows/runtime-writer-target.yml
+
+  control:
+    needs: [writer_gate, runtime_target]
+    if: needs.writer_gate.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 29
+    steps:
+      - name: Continue F2B from persisted state, tolerating truncated response bodies
+        env:
+          VIGIA_BASE_URL: ${{ needs.runtime_target.outputs.base_url }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const base = process.env.VIGIA_BASE_URL;
+          const token = process.env.VIGIA_SYNC_TOKEN;
+          const cfToken = process.env.CLOUDFLARE_API_TOKEN;
+          const ghToken = process.env.GH_TOKEN;
+          const repo = process.env.GH_REPOSITORY;
+          const eventName = process.env.GITHUB_EVENT_NAME;
+          const expectedPlan = 'safety-gate-weekly-detail-v1:d64a863503fafe96e91588761e24355c05f054245e2712017c1a65c53fb0894f';
+          const expectedTotal = 1118;
+          const started = Date.now();
+          const deadline = started + 25 * 60_000;
+          const auth = { Authorization: `Bearer ${token}`, 'Content-Type':'application/json' };
+          const cfAuth = { Authorization: `Bearer ${cfToken}` };
+          let successfulBatches = 0;
+          let ambiguousBodies = 0;
+          let singleBatchRecoveries = 0;
+          let consecutiveSingleNoProgress = 0;
+
+          const log = (name, value={}) => console.log(name+' '+JSON.stringify(value));
+          const errText = e => e instanceof Error ? `${e.name}:${e.message}` : String(e);
+
+          async function raw(url, options={}, timeout=45000) {
+            try {
+              const r = await fetch(url, { ...options, redirect:'error', signal:AbortSignal.timeout(timeout) });
+              let text = '';
+              try { text = await r.text(); } catch (e) { return { status:r.status, text:'', json:null, parseError:'body-read:'+errText(e), networkError:null }; }
+              let json = null, parseError = null;
+              if (text) {
+                try { json = JSON.parse(text); } catch (e) { parseError = errText(e); }
+              } else parseError = 'empty-body';
+              return { status:r.status, text, json, parseError, networkError:null };
+            } catch (e) {
+              return { status:null, text:'', json:null, parseError:null, networkError:errText(e) };
+            }
+          }
+          async function getJson(url, headers, timeout=45000) {
+            const r = await raw(url,{method:'GET',headers},timeout);
+            if (r.status !== 200 || !r.json) throw new Error('read-failed '+url+' status='+r.status+' parse='+r.parseError+' net='+r.networkError);
+            return r.json;
+          }
+          function recentAgeMs(o) {
+            const t = Date.parse(o?.recent?.lastSuccessAt ?? '');
+            return Number.isFinite(t) ? Date.now()-t : Number.POSITIVE_INFINITY;
+          }
+          function validCursorKey(value) {
+            if (value == null) return true;
+            try {
+              const c=JSON.parse(value);
+              return c?.version===2 && Number.isSafeInteger(c.offset) && c.offset>=0 &&
+                typeof c.reportUrl==='string' && /^[a-f0-9]{64}$/.test(String(c.reportVersion??''));
+            } catch { return false; }
+          }
+          function validateState(s) {
+            if (!s || s.source!=='SAFETY GATE' || s.mode!=='historical-reconcile') throw new Error('historical-state-missing');
+            if (!['running','partial','completed'].includes(s.status)) throw new Error('historical-status-'+s.status);
+            if (s.planVersion!==expectedPlan || s.totalUnits!==expectedTotal) throw new Error('historical-plan-drift');
+            if (!Number.isSafeInteger(s.cursor)||s.cursor<69||s.cursor>expectedTotal||s.pagesScanned!==s.cursor) throw new Error('historical-cursor-invalid');
+            if (!Number.isSafeInteger(s.recordsObserved)||s.recordsObserved<968) throw new Error('historical-record-count-invalid');
+            if (![s.recordsPersisted,s.newCount,s.updatedCount,s.detailFailures,s.pageErrors].every(Number.isSafeInteger)) throw new Error('historical-counter-invalid');
+            if (s.recordsPersisted!==s.newCount+s.updatedCount) throw new Error('historical-write-counter-incoherent');
+            if (s.detailFailures!==0||s.pageErrors!==0||s.lastError!==null) throw new Error('historical-error-present');
+            if (!validCursorKey(s.cursorKey)) throw new Error('historical-cursor-key-invalid');
+            if (s.status==='completed' && (s.coverage!=='official-index-complete'||s.cursor!==expectedTotal||s.cursorKey!==null||!s.completedAt)) throw new Error('historical-terminal-invalid');
+            return s;
+          }
+          function stateProgress(before, after, batchSize) {
+            const deltaRecords=after.recordsObserved-before.recordsObserved;
+            const cursorDelta=after.cursor-before.cursor;
+            if (deltaRecords<0||deltaRecords>batchSize||cursorDelta<0||cursorDelta>1) return false;
+            if (cursorDelta===0) {
+              if (deltaRecords<=0) return false;
+              const b=before.cursorKey?JSON.parse(before.cursorKey).offset:0;
+              const a=after.cursorKey?JSON.parse(after.cursorKey).offset:0;
+              return a===b+deltaRecords;
+            }
+            return after.cursorKey===null;
+          }
+
+          async function verifyNaturalRecent(recent) {
+            if (eventName === 'push') {
+              log('F2B_DRY_RUN_PUSH',{ref:process.env.GITHUB_REF??null});
+              return false;
+            }
+            if (eventName !== 'schedule') throw new Error('unexpected-event-'+eventName);
+            const lastSuccess=Date.parse(recent?.lastSuccessAt??'');
+            if (!Number.isFinite(lastSuccess)) {
+              log('F2B_TRIGGER_SKIP',{reason:'recent-success-missing'});
+              return false;
+            }
+            const [owner,name]=repo.split('/');
+            const runsUrl=`https://api.github.com/repos/${owner}/${name}/actions/runs?event=schedule&per_page=50`;
+            const runs=await getJson(runsUrl,{Authorization:`Bearer ${ghToken}`,Accept:'application/vnd.github+json'});
+            const candidates=(runs.workflow_runs??[])
+              .filter(run=>run.path==='.github/workflows/safety-gate-sync.yml' && run.status==='completed')
+              .sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at))
+              .slice(0,12);
+            for (const run of candidates) {
+              const jobs=await getJson(`https://api.github.com/repos/${owner}/${name}/actions/runs/${run.id}/jobs?per_page=100`,
+                {Authorization:`Bearer ${ghToken}`,Accept:'application/vnd.github+json'});
+              const sg=(jobs.jobs??[]).find(j=>j.name==='safety_gate');
+              if (!sg || sg.status!=='completed' || sg.conclusion!=='success') continue;
+              const started=Date.parse(sg.started_at??'');
+              const completed=Date.parse(sg.completed_at??'');
+              if (Number.isFinite(started)&&Number.isFinite(completed)&&
+                  lastSuccess>=started-5000&&lastSuccess<=completed+5000) {
+                log('F2B_TRIGGER_PASS',{runId:run.id,jobId:sg.id,lastSuccessAt:recent.lastSuccessAt,
+                  startedAt:sg.started_at,completedAt:sg.completed_at,headSha:run.head_sha});
+                return true;
+              }
+            }
+            log('F2B_TRIGGER_SKIP',{reason:'no-natural-safety-gate-job-matches-recent',lastSuccessAt:recent?.lastSuccessAt??null});
+            return false;
+          }
+
+          async function verifyProduction() {
+            const cfRoot='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/workers/scripts/vigia-runtime';
+            const [dep,settings,schedules]=await Promise.all([
+              getJson(cfRoot+'/deployments',cfAuth,30000),
+              getJson(cfRoot+'/settings',cfAuth,30000),
+              getJson(cfRoot+'/schedules',cfAuth,30000),
+            ]);
+            if (![dep,settings,schedules].every(x=>x?.success===true)) throw new Error('cloudflare-control-read-failed');
+            const ds=dep.result?.deployments??dep.result;
+            const active=ds?.[0],previous=ds?.[1];
+            const bindings=settings.result?.bindings??[];
+            const value=name=>{const b=bindings.find(x=>x.name===name);return b?.text??b?.value??null;};
+            const crons=schedules.result?.schedules??schedules.result;
+            if (active?.id!=='db36706c-96e5-4095-9d92-6922cde10543' ||
+                active?.versions?.length!==1 || active.versions[0]?.version_id!=='54fe12f9-e0ea-4881-8961-f20fc1e5e447' ||
+                active.versions[0]?.percentage!==100 ||
+                previous?.id!=='154e2338-b846-4734-9bd1-24b4cbb420cb' ||
+                previous?.versions?.[0]?.version_id!=='a10fce1a-e4ca-4bc9-93f0-99fd89a72723' ||
+                value('NAGAMEALERT_RECENT_SCHEDULER_MODE')!=='rapna-rasff-oecd-pilot' ||
+                value('NAGAMEALERT_SAFETY_GATE_RECENT_MODE')!==null ||
+                !Array.isArray(crons)||crons.length!==1||crons[0]?.cron!=='*/5 * * * *') throw new Error('production-identity-or-config-drift');
+          }
+
+          async function observe() {
+            const o=await getJson(base+'/api/safety-gate/sync?observe=1',auth);
+            validateState(o.historicalReconcile);
+            return o;
+          }
+
+          async function terminalCheck(o) {
+            const s=validateState(o.historicalReconcile);
+            const auditEnvelope=await getJson(base+'/api/safety-gate/sync?audit=1',auth);
+            const audit=auditEnvelope?.audit??auditEnvelope;
+            const critical=['duplicateReferenceGroups','invalidIdentities','emptyCanonicalRows','invalidOfficialUrls'];
+            for(const k of critical) if(audit?.integrity?.[k]!==0) throw new Error('terminal-audit-'+k);
+            const parityAlerts=audit?.counts?.safetyGateAlerts===audit?.counts?.safetyGateUniqueReferences;
+            const parityVersions=audit?.counts?.safetyGateVersions===audit?.counts?.safetyGateVersionCountSum;
+            const cert=o.revisionCertification;
+            const certPass=Boolean(cert && cert.source==='SAFETY GATE' && cert.mode==='historical-reconcile' &&
+              cert.cycleId===s.planVersion && cert.completedAt===s.completedAt && cert.coverage==='official-index-complete' &&
+              cert.auditStatus==='passed' && cert.evidence?.scope==='full-archive' && cert.evidence?.contentAuthority==='official-json-detail');
+            log('F2B_TERMINAL_CHECK',{cursor:s.cursor,totalUnits:s.totalUnits,recordsObserved:s.recordsObserved,
+              parityAlerts,parityVersions,versions:audit?.counts?.safetyGateVersions??null,
+              versionCountSum:audit?.counts?.safetyGateVersionCountSum??null,certPass,auditCheckedAt:audit?.checkedAt??null});
+            return {audit,parityAlerts,parityVersions,certPass};
+          }
+
+          await verifyProduction();
+          let current=await observe();
+          let state=current.historicalReconcile;
+          const triggerOkay=await verifyNaturalRecent(current.recent);
+          log('F2B_START',{status:state.status,cursor:state.cursor,totalUnits:state.totalUnits,cursorKey:state.cursorKey,
+            recordsObserved:state.recordsObserved,topLease:current.lease??null,recentLastSuccessAt:current.recent?.lastSuccessAt??null,
+            recentAgeMinutes:recentAgeMs(current)/60000,allowMutation:triggerOkay});
+
+          if (!triggerOkay) {
+            log('F2B_DRY_RUN_COMPLETE',{status:state.status,cursor:state.cursor,totalUnits:state.totalUnits});
+            process.exit(0);
+          }
+          if (current.lease) {
+            log('F2B_HOLD',{reason:'active-top-level-lease',lease:current.lease});
+            process.exit(0);
+          }
+          if (recentAgeMs(current)>=29*60_000) {
+            log('F2B_HOLD',{reason:'recent-priority',ageMinutes:recentAgeMs(current)/60000});
+            process.exit(0);
+          }
+
+          if (state.status==='completed') {
+            const term=await terminalCheck(current);
+            if (term.parityAlerts&&term.parityVersions&&term.certPass) {
+              log('F2B_PASS',{reason:'already-terminal-certified',cursor:state.cursor,totalUnits:state.totalUnits});
+              process.exit(0);
+            }
+            log('F2B_HOLD',{reason:'terminal-certification-or-parity-pending'});
+            process.exit(0);
+          }
+
+          while (Date.now()<deadline) {
+            await verifyProduction();
+            const beforeObs=await observe();
+            const before=beforeObs.historicalReconcile;
+            if (beforeObs.lease) {
+              log('F2B_HOLD',{reason:'lease-became-active',lease:beforeObs.lease,successfulBatches});
+              break;
+            }
+            const age=recentAgeMs(beforeObs);
+            if (age>=29*60_000) {
+              log('F2B_HOLD',{reason:'recent-priority',ageMinutes:age/60000,successfulBatches});
+              break;
+            }
+            if (before.status==='completed') {
+              current=beforeObs; state=before; break;
+            }
+
+            // The report that repeatedly crashed with batch=10 is cursor 69. Any future
+            // orphaned running state is also recovered with a single identity first.
+            const batchSize=(before.cursor===69 || before.status==='running') ? 1 : 10;
+            if (batchSize===1) singleBatchRecoveries++;
+
+            const post=await raw(base+`/api/safety-gate/sync?mode=historical-reconcile&batchSize=${batchSize}`,
+              {method:'POST',headers:auth},90000);
+            if (post.parseError||post.networkError) {
+              ambiguousBodies++;
+              log('F2B_POST_AMBIGUOUS',{cursor:before.cursor,batchSize,status:post.status,parseError:post.parseError,
+                networkError:post.networkError,bodyBytes:Buffer.byteLength(post.text||'')});
+            } else {
+              log('F2B_POST_RESPONSE',{cursor:before.cursor,batchSize,status:post.status,
+                returnedStatus:post.json?.state?.status??null,skipped:post.json?.skipped??null});
+            }
+
+            const afterObs=await observe();
+            const after=afterObs.historicalReconcile;
+            if (afterObs.lease) {
+              log('F2B_HOLD',{reason:'post-has-active-lease',lease:afterObs.lease,cursor:after.cursor});
+              break;
+            }
+            if (after.status==='failed'||after.lastError!==null||after.detailFailures!==0||after.pageErrors!==0) {
+              throw new Error('post-state-failed');
+            }
+
+            if (stateProgress(before,after,batchSize)) {
+              successfulBatches++;
+              consecutiveSingleNoProgress=0;
+              log('F2B_PROGRESS',{batchSize,fromCursor:before.cursor,toCursor:after.cursor,
+                fromRecords:before.recordsObserved,toRecords:after.recordsObserved,cursorKey:after.cursorKey,
+                status:after.status,postStatus:post.status,bodyAmbiguous:Boolean(post.parseError||post.networkError)});
+              current=afterObs; state=after;
+              if (after.status==='completed') break;
+              continue;
+            }
+
+            const exactlySame = before.cursor===after.cursor && before.cursorKey===after.cursorKey &&
+              before.recordsObserved===after.recordsObserved && before.recordsPersisted===after.recordsPersisted &&
+              before.newCount===after.newCount && before.updatedCount===after.updatedCount;
+            if (exactlySame && after.status==='running' && afterObs.lease===null) {
+              if (batchSize===1) consecutiveSingleNoProgress++;
+              log('F2B_RECOVERABLE_ORPHAN',{cursor:after.cursor,batchSize,consecutiveSingleNoProgress,
+                leaseOwnerId:after.leaseOwnerId,leaseExpiresAt:after.leaseExpiresAt,postStatus:post.status,
+                parseError:post.parseError,networkError:post.networkError});
+              if (batchSize===1 && consecutiveSingleNoProgress>=3) {
+                throw new Error('single-identity-worker-abort-repeated');
+              }
+              continue;
+            }
+
+            if (post.status===202) {
+              log('F2B_HOLD',{reason:post.json?.skipped??'http-202-no-progress',cursor:after.cursor});
+              break;
+            }
+            throw new Error('unreconciled-post-state');
+          }
+
+          current=await observe();
+          state=current.historicalReconcile;
+          if (state.status==='completed') {
+            let term=await terminalCheck(current);
+            if (!term.certPass && term.parityAlerts && term.parityVersions && !current.lease) {
+              // A terminal state may have been persisted even if the response carrying
+              // automatic certification was cut. Re-entering the route is zero-alert-write:
+              // runHistorical returns the completed state and the route retries certification.
+              const certPost=await raw(base+'/api/safety-gate/sync?mode=historical-reconcile&batchSize=1',
+                {method:'POST',headers:auth},90000);
+              log('F2B_CERT_RETRY',{status:certPost.status,parseError:certPost.parseError,networkError:certPost.networkError});
+              current=await observe();
+              term=await terminalCheck(current);
+            }
+            if (term.parityAlerts&&term.parityVersions&&term.certPass) {
+              log('F2B_PASS',{reason:'terminal-full-archive-certified',cursor:state.cursor,totalUnits:state.totalUnits,
+                recordsObserved:state.recordsObserved,successfulBatches,ambiguousBodies,singleBatchRecoveries});
+              process.exit(0);
+            }
+            log('F2B_HOLD',{reason:'terminal-parity-or-certification-pending',cursor:state.cursor,totalUnits:state.totalUnits,
+              successfulBatches,ambiguousBodies,singleBatchRecoveries});
+            process.exit(0);
+          }
+
+          log('F2B_WINDOW_END',{status:state.status,cursor:state.cursor,totalUnits:state.totalUnits,
+            recordsObserved:state.recordsObserved,successfulBatches,ambiguousBodies,singleBatchRecoveries,
+            recentAgeMinutes:recentAgeMs(current)/60000});
+          NODE
