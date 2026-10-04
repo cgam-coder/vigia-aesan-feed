@@ -1,0 +1,151 @@
+name: Safety Gate F2B stale-state one-batch recovery
+
+on:
+  push:
+    branches: [work/scheduler-reliability-s0-evidence]
+    paths:
+      - ".github/workflows/safety-gate-historical-stale-state-recovery.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vigia-safety-gate-historical-stale-state-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      VIGIA_BASE_URL: https://vigia-runtime.c-gamiz93.workers.dev
+      VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Recover exactly one stale historical batch
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const base = process.env.VIGIA_BASE_URL;
+          const token = process.env.VIGIA_SYNC_TOKEN;
+          const cfToken = process.env.CLOUDFLARE_API_TOKEN;
+          if (base !== 'https://vigia-runtime.c-gamiz93.workers.dev' || !token || !cfToken) throw new Error('target-or-credentials-not-configured');
+          const auth = { Authorization: `Bearer ${token}`, 'Content-Type':'application/json' };
+          const cfAuth = { Authorization: `Bearer ${cfToken}` };
+          const plan = 'safety-gate-weekly-detail-v1:d64a863503fafe96e91588761e24355c05f054245e2712017c1a65c53fb0894f';
+          const staleOwner = '8a9ce59e-48de-4b1b-956b-0f16dad7b5eb';
+          const staleExpiry = '2026-10-03T23:45:06.938Z';
+          let mutationPending = false;
+          async function req(url, options, timeout=45000) {
+            const r = await fetch(url, { ...options, redirect:'error', signal:AbortSignal.timeout(timeout) });
+            const body = await r.json();
+            return { http:r.status, body };
+          }
+          async function get(url, headers, timeout=45000) {
+            const r = await req(url, { method:'GET', headers }, timeout);
+            if (r.http !== 200) throw new Error('read-http-' + r.http);
+            return r.body;
+          }
+
+          const cfRoot = 'https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/workers/scripts/vigia-runtime';
+          const [dep, settings, schedules] = await Promise.all([
+            get(cfRoot + '/deployments', cfAuth, 30000),
+            get(cfRoot + '/settings', cfAuth, 30000),
+            get(cfRoot + '/schedules', cfAuth, 30000),
+          ]);
+          if (![dep,settings,schedules].every(x=>x?.success===true)) throw new Error('cloudflare-read-failed');
+          const deployments=dep.result?.deployments ?? dep.result;
+          const active=deployments?.[0], previous=deployments?.[1];
+          const bindings=settings.result?.bindings ?? [];
+          const value=name => { const b=bindings.find(x=>x.name===name); return b?.text ?? b?.value ?? null; };
+          const crons=schedules.result?.schedules ?? schedules.result;
+          if (active?.id !== 'db36706c-96e5-4095-9d92-6922cde10543' ||
+              active?.versions?.length !== 1 || active.versions[0]?.version_id !== '54fe12f9-e0ea-4881-8961-f20fc1e5e447' ||
+              active.versions[0]?.percentage !== 100 ||
+              previous?.id !== '154e2338-b846-4734-9bd1-24b4cbb420cb' ||
+              previous?.versions?.[0]?.version_id !== 'a10fce1a-e4ca-4bc9-93f0-99fd89a72723' ||
+              value('NAGAMEALERT_RECENT_SCHEDULER_MODE') !== 'rapna-rasff-oecd-pilot' ||
+              value('NAGAMEALERT_SAFETY_GATE_RECENT_MODE') !== null ||
+              !Array.isArray(crons) || crons.length !== 1 || crons[0]?.cron !== '*/5 * * * *') {
+            throw new Error('production-identity-or-config-drift');
+          }
+
+          const before = await get(base + '/api/safety-gate/sync?observe=1', auth);
+          const s = before?.historicalReconcile;
+          if (!s || s.source !== 'SAFETY GATE' || s.mode !== 'historical-reconcile' ||
+              s.status !== 'running' || s.cursor !== 69 || s.pagesScanned !== 69 || s.totalUnits !== 1118 ||
+              s.cursorKey !== null || s.planVersion !== plan || s.recordsObserved !== 968 ||
+              s.recordsPersisted !== 0 || s.newCount !== 0 || s.updatedCount !== 0 ||
+              s.detailFailures !== 0 || s.pageErrors !== 0 || s.lastError !== null ||
+              s.leaseOwnerId !== staleOwner || s.leaseMode !== 'historical-reconcile' ||
+              s.leaseExpiresAt !== staleExpiry || before.lease !== null) {
+            console.log('SAFETY_STALE_RECOVERY_HOLD state-changed ' + JSON.stringify({
+              status:s?.status??null,cursor:s?.cursor??null,pagesScanned:s?.pagesScanned??null,totalUnits:s?.totalUnits??null,
+              cursorKey:s?.cursorKey??null,planVersion:s?.planVersion??null,recordsObserved:s?.recordsObserved??null,
+              recordsPersisted:s?.recordsPersisted??null,newCount:s?.newCount??null,updatedCount:s?.updatedCount??null,
+              detailFailures:s?.detailFailures??null,pageErrors:s?.pageErrors??null,lastError:s?.lastError??null,
+              leaseOwnerId:s?.leaseOwnerId??null,leaseMode:s?.leaseMode??null,leaseExpiresAt:s?.leaseExpiresAt??null,
+              topLevelLease:before?.lease??null
+            }));
+            process.exit(0);
+          }
+          if (!(Date.parse(staleExpiry) < Date.now())) throw new Error('stale-state-lease-not-expired');
+
+          const recent = before?.recent;
+          const recentAt = Date.parse(recent?.lastSuccessAt ?? '');
+          const ageMs = Date.now() - recentAt;
+          if (!recent || recent.status !== 'completed' || recent.lastError !== null ||
+              recent.detailFailures !== 0 || recent.pageErrors !== 0 ||
+              recent.leaseOwnerId !== null || recent.leaseMode !== null || recent.leaseExpiresAt !== null ||
+              !Number.isFinite(ageMs) || ageMs < 0 || ageMs >= 30*60_000) {
+            console.log('SAFETY_STALE_RECOVERY_HOLD recent-priority ' + JSON.stringify({
+              lastSuccessAt:recent?.lastSuccessAt??null,ageMinutes:Number.isFinite(ageMs)?ageMs/60000:null,
+              status:recent?.status??null,lastError:recent?.lastError??null
+            }));
+            process.exit(0);
+          }
+
+          const auditEnvelope = await get(base + '/api/safety-gate/sync?audit=1', auth);
+          const audit = auditEnvelope?.audit ?? auditEnvelope;
+          for (const k of ['duplicateReferenceGroups','invalidIdentities','emptyCanonicalRows','invalidOfficialUrls']) {
+            if (audit?.integrity?.[k] !== 0) throw new Error('audit-integrity-' + k);
+          }
+
+          mutationPending = true;
+          let r;
+          try {
+            r = await req(base + '/api/safety-gate/sync?mode=historical-reconcile&batchSize=10',
+              { method:'POST', headers:auth }, 420000);
+            mutationPending = false;
+          } catch (error) {
+            throw new Error('remote-mutation-result-uncertain:' + String(error?.message ?? error));
+          }
+          if (r.http === 202 && ['recent-priority','already-running','backfill-active'].includes(r.body?.skipped)) {
+            console.log('SAFETY_STALE_RECOVERY_HOLD ' + r.body.skipped);
+            process.exit(0);
+          }
+          if (r.http !== 200) throw new Error('historical-http-' + r.http);
+          const after = await get(base + '/api/safety-gate/sync?observe=1', auth);
+          const a = after?.historicalReconcile;
+          if (!a || a.source !== 'SAFETY GATE' || a.mode !== 'historical-reconcile' ||
+              !['partial','completed'].includes(a.status) || a.planVersion !== plan || a.totalUnits !== 1118 ||
+              !Number.isSafeInteger(a.cursor) || a.cursor < 69 || a.cursor > 70 || a.pagesScanned !== a.cursor ||
+              !Number.isSafeInteger(a.recordsObserved) || a.recordsObserved < 968 || a.recordsObserved > 978 ||
+              a.detailFailures !== 0 || a.pageErrors !== 0 || a.lastError !== null ||
+              a.leaseOwnerId !== null || a.leaseMode !== null || a.leaseExpiresAt !== null || after.lease !== null ||
+              a.recordsPersisted !== a.newCount + a.updatedCount ||
+              a.recordsPersisted < 0 || a.recordsPersisted > 10) {
+            throw new Error('post-recovery-state-invalid');
+          }
+          const key = x => JSON.stringify([x?.status,x?.cursor,x?.pagesScanned,x?.totalUnits,x?.cursorKey,x?.planVersion,
+            x?.recordsObserved,x?.recordsPersisted,x?.newCount,x?.updatedCount,x?.detailFailures,x?.pageErrors,x?.lastError,
+            x?.leaseOwnerId,x?.leaseMode,x?.leaseExpiresAt]);
+          if (key(a) !== key(r.body?.state)) throw new Error('response-observe-drift');
+          console.log('SAFETY_STALE_RECOVERY_PASS ' + JSON.stringify({
+            http:r.http,status:a.status,cursor:a.cursor,pagesScanned:a.pagesScanned,totalUnits:a.totalUnits,
+            cursorKey:a.cursorKey,planVersion:a.planVersion,recordsObserved:a.recordsObserved,
+            recordsPersisted:a.recordsPersisted,newCount:a.newCount,updatedCount:a.updatedCount,
+            detailFailures:a.detailFailures,pageErrors:a.pageErrors,lastError:a.lastError,
+            lease:a.leaseOwnerId,topLevelLease:after.lease,lastSuccessAt:a.lastSuccessAt,updatedAt:a.updatedAt
+          }));
+          NODE
