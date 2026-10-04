@@ -10,50 +10,80 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: cgam-coder/vigia-runtime
-          ref: 398202c87435d13b6e0523181c30e5d288da864d
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - name: Install pinned read-only parser dependencies
-        run: npm ci --ignore-scripts
-      - name: Diagnose exact failed ten identities without production writes
+      - name: Inspect exact failed upstream identities without production writes
         run: |
           set -euo pipefail
-          node --import tsx --input-type=module <<'NODE'
-          import {fetchSafetyGateCertifiedWeeklyReportIndex, fetchSafetyGateWeeklyReport, fetchSafetyGateHistoricalDetail, normalizeSafetyGateRecord} from './lib/safety-gate.ts';
-          const expected=[10003468,10003526,10003525,10003487,10003485,10003380,10003460,10003469,10003404,10003480];
-          const client={retries:0,timeoutMs:25000,fetchImpl:async(url,init)=>{
-            if(!String(url).startsWith('https://ec.europa.eu/safety-gate-alerts/')||(init?.method??'GET')!=='GET')throw new Error('read-only-authority-violation');
-            const t=Date.now();const r=await fetch(url,init);
-            let body=null;
-            if(String(url).includes('/public/api/notification/')){try{body=await r.clone().json();}catch{}}
-            console.log('SG837_HTTP '+JSON.stringify({url,status:r.status,ms:Date.now()-t,bytes:r.headers.get('content-length'),body:body&&{id:body.id,reference:body.reference,publicationDate:body.publicationDate,modificationDate:body.modificationDate,keys:Object.keys(body),productKeys:body.product&&Object.keys(body.product)}}));
-            return r;
-          }};
-          const reports=await fetchSafetyGateCertifiedWeeklyReportIndex(client);
+          node --input-type=module <<'NODE'
+          const base='https://ec.europa.eu/safety-gate-alerts';
+          const indexUrl=base+'/api/download/weeklyReport/list/xml/en';
+          const fetchText=async(url,timeout=30000)=>{
+            const t=Date.now();
+            const r=await fetch(url,{headers:{Accept:'application/xml,text/xml'},signal:AbortSignal.timeout(timeout)});
+            const text=await r.text();
+            return {status:r.status,ok:r.ok,text,ms:Date.now()-t,contentType:r.headers.get('content-type')};
+          };
+          const strip=s=>String(s??'').replace(/<!\[CDATA\[|\]\]>/g,'').replace(/&amp;/g,'&').trim();
+          const tag=(block,name)=>{
+            const m=block.match(new RegExp('<'+name+'(?:\\s[^>]*)?>([\\s\\S]*?)<\\/'+name+'>','i'));
+            return m?strip(m[1]):'';
+          };
+          const parseDate=value=>{
+            const v=value.trim();
+            const m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+            if(m)return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}T00:00:00.000Z`;
+            const t=Date.parse(v); return Number.isFinite(t)?new Date(t).toISOString():'';
+          };
+          const idx=await fetchText(indexUrl,45000);
+          if(!idx.ok)throw new Error('index-http-'+idx.status);
+          const blocks=[...idx.text.matchAll(/<weeklyReport(?:\s[^>]*)?>[\s\S]*?<\/weeklyReport>/gi)].map(m=>m[0]);
+          const reports=blocks.flatMap(block=>{
+            const url=tag(block,'URL')||tag(block,'url');
+            const reference=tag(block,'reference')||tag(block,'reportNumber');
+            const publicationDate=tag(block,'publicationDate')||tag(block,'publishedDate');
+            const year=Number(tag(block,'year'));
+            const week=Number(tag(block,'week'));
+            if(!url.includes('/api/download/weeklyReport/detail/xml/')||!reference)return[];
+            return [{url,reference,publicationDate,year,week,date:parseDate(publicationDate)}];
+          }).sort((a,b)=>a.date.localeCompare(b.date)||a.reference.localeCompare(b.reference,'en',{numeric:true}));
+          console.log('SG837_INDEX '+JSON.stringify({declared:blocks.length,parsed:reports.length,indexMs:idx.ms}));
+          if(reports.length!==1118)throw new Error('unexpected-report-count-'+reports.length);
           const report=reports[837];
-          if(reports.length!==1118||report.reference!=='Report-2021-15')throw new Error('unexpected-official-index');
+          if(report.reference!=='Report-2021-15')throw new Error('unexpected-report');
           console.log('SG837_REPORT '+JSON.stringify(report));
-          const parsed=await fetchSafetyGateWeeklyReport(report,client);
-          const records=parsed.records.map((v,index)=>({...v,index})).sort((a,b)=>a.item.reference.localeCompare(b.item.reference,'en',{numeric:true})||a.item.id-b.item.id);
-          const selected=records.slice(0,10);
-          if(parsed.invalidCount!==0||JSON.stringify(selected.map(x=>x.item.id))!==JSON.stringify(expected))throw new Error('failed-identity-selection-drift');
-          console.log('SG837_SELECTION '+JSON.stringify({reportRecords:records.length,invalidCount:parsed.invalidCount,items:selected.map(x=>({id:x.item.id,reference:x.item.reference}))}));
+          const wr=await fetchText(report.url,45000);
+          if(!wr.ok)throw new Error('weekly-http-'+wr.status);
+          const nblocks=[...wr.text.matchAll(/<notifications(?:\s[^>]*)?>[\s\S]*?<\/notifications>/gi)].map(m=>m[0]);
+          const rows=nblocks.flatMap(block=>{
+            const reference=tag(block,'caseNumber')||tag(block,'alertNumber')||tag(block,'notificationNumber');
+            const official=tag(block,'reference')||tag(block,'URL')||tag(block,'url');
+            let id=null;
+            const um=official.match(/(?:alertDetail|detail)\/(-?\d+)/i);
+            if(um)id=Number(um[1]);
+            else {
+              const explicit=tag(block,'notificationId')||tag(block,'notificationID')||tag(block,'alertId')||tag(block,'alertID')||tag(block,'id');
+              if(/^\d+$/.test(explicit))id=Number(explicit);
+            }
+            return reference&&Number.isSafeInteger(id)?[{reference,id,official}]:[];
+          }).sort((a,b)=>a.reference.localeCompare(b.reference,'en',{numeric:true})||a.id-b.id);
+          console.log('SG837_ROWS '+JSON.stringify({weeklyMs:wr.ms,blocks:nblocks.length,valid:rows.length,first20:rows.slice(0,20).map(x=>({id:x.id,reference:x.reference}))}));
+          const targets=rows.slice(0,10);
+          const expected=[10003468,10003526,10003525,10003487,10003485,10003380,10003460,10003469,10003404,10003480];
+          if(JSON.stringify(targets.map(x=>x.id))!==JSON.stringify(expected))throw new Error('identity-selection-drift');
+          const ref=v=>String(v??'').trim().replace(/(?:\s*<br\s*\/?>)+\s*$/giu,'').trim();
           let failures=0;const results=[];
-          for(const {item} of selected){
+          for(const row of targets){
+            const url=base+'/public/api/notification/'+row.id+'?language=es';
+            let result={id:row.id,expectedReference:row.reference,url};
             try{
-              const detail=await fetchSafetyGateHistoricalDetail(item,client);
-              const version=detail.product.versions?.find(x=>x.language?.key==='ES')??detail.product.versions?.[0];
-              const reference=detail.reference.trim().replace(/(?:\s*<br\s*\/?>)+\s*$/giu,'').trim();
-              const authoritativeItem={id:detail.id,reference,publicationDate:detail.publicationDate,modificationDate:detail.modificationDate,corrigendum:detail.corrigendum,product:{name:version?.name?.trim()??'',brands:detail.product.brands??[],photos:detail.product.photos??[]},risk:{riskType:detail.risk?.riskType??[]}};
-              const alert=await normalizeSafetyGateRecord(authoritativeItem,detail,new Date().toISOString());
-              const row={id:item.id,expectedReference:item.reference,actualReference:detail.reference,publicationDate:detail.publicationDate,normalizedReference:alert.reference,contentHash:alert.contentHash??null,ok:true};results.push(row);console.log('SG837_DETAIL '+JSON.stringify(row));
-            }catch(e){failures++;const row={id:item.id,expectedReference:item.reference,ok:false,errorName:e?.name??null,error:String(e?.message??e),kind:e?.kind??null,status:e?.status??null};results.push(row);console.log('SG837_DETAIL '+JSON.stringify(row));}
+              const t=Date.now();const response=await fetch(url,{headers:{Accept:'application/json'},signal:AbortSignal.timeout(25000),redirect:'error'});
+              const raw=await response.text();let body=null;try{body=JSON.parse(raw);}catch{}
+              const identityMatch=body?.id===row.id&&ref(body?.reference)===ref(row.reference);
+              const schemaValid=!!body?.product&&!!body?.publicationDate&&Number.isFinite(Date.parse(body.publicationDate));
+              const ok=response.status===200&&identityMatch&&schemaValid;
+              result={...result,status:response.status,ms:Date.now()-t,bytes:Buffer.byteLength(raw),validJson:!!body,identityMatch,schemaValid,actualId:body?.id??null,actualReference:body?.reference??null,publicationDate:body?.publicationDate??null,modificationDate:body?.modificationDate??null,productKeys:body?.product?Object.keys(body.product):null,productVersionsType:typeof body?.product?.versions,riskTypeIsArray:Array.isArray(body?.risk?.riskType),ok};
+            }catch(e){result={...result,ok:false,error:String(e?.message??e)};}
+            if(!result.ok)failures++;results.push(result);console.log('SG837_DETAIL '+JSON.stringify(result));
           }
-          console.log('SG837_RESULT '+JSON.stringify({readOnly:true,report:report.reference,checked:selected.length,failures,results}));
+          console.log('SG837_RESULT '+JSON.stringify({readOnly:true,report:report.reference,checked:targets.length,failures,results}));
           if(failures)process.exitCode=1;
           NODE
