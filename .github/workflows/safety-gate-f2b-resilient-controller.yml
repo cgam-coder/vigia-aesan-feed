@@ -29,8 +29,6 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       GH_TOKEN: ${{ github.token }}
       GH_REPOSITORY: ${{ github.repository }}
-      GH_EVENT_NAME: ${{ github.event_name }}
-      GH_EVENT_PATH: ${{ github.event_path }}
     steps:
       - name: Continue F2B from persisted state, tolerating truncated response bodies
         run: |
@@ -43,8 +41,8 @@ jobs:
           const cfToken = process.env.CLOUDFLARE_API_TOKEN;
           const ghToken = process.env.GH_TOKEN;
           const repo = process.env.GH_REPOSITORY;
-          const eventName = process.env.GH_EVENT_NAME;
-          const event = JSON.parse(fs.readFileSync(process.env.GH_EVENT_PATH, 'utf8'));
+          const eventName = process.env.GITHUB_EVENT_NAME;
+          const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
           const expectedPlan = 'safety-gate-weekly-detail-v1:d64a863503fafe96e91588761e24355c05f054245e2712017c1a65c53fb0894f';
           const expectedTotal = 1118;
           const started = Date.now();
