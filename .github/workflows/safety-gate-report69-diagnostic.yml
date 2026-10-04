@@ -1,0 +1,88 @@
+name: Safety Gate report 69 read-only diagnostic
+
+on:
+  push:
+    branches: [work/scheduler-reliability-s0-evidence]
+    paths:
+      - ".github/workflows/safety-gate-report69-diagnostic.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Inspect official report 69 and first detail records
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const base='https://ec.europa.eu/safety-gate-alerts';
+          const indexUrl=base+'/api/download/weeklyReport/list/xml/en';
+          const fetchText=async(url,timeout=30000)=>{
+            const t=Date.now();
+            const r=await fetch(url,{headers:{Accept:'application/xml,text/xml'},signal:AbortSignal.timeout(timeout)});
+            const text=await r.text();
+            return {status:r.status,ok:r.ok,text,ms:Date.now()-t,contentType:r.headers.get('content-type')};
+          };
+          const strip=s=>String(s??'').replace(/<!\[CDATA\[|\]\]>/g,'').replace(/&amp;/g,'&').trim();
+          const tag=(block,name)=>{
+            const m=block.match(new RegExp('<'+name+'(?:\\s[^>]*)?>([\\s\\S]*?)<\\/'+name+'>','i'));
+            return m?strip(m[1]):'';
+          };
+          const parseDate=value=>{
+            const v=value.trim();
+            const m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+            if(m)return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}T00:00:00.000Z`;
+            const t=Date.parse(v); return Number.isFinite(t)?new Date(t).toISOString():'';
+          };
+          const idx=await fetchText(indexUrl,45000);
+          if(!idx.ok)throw new Error('index-http-'+idx.status);
+          const blocks=[...idx.text.matchAll(/<weeklyReport(?:\s[^>]*)?>[\s\S]*?<\/weeklyReport>/gi)].map(m=>m[0]);
+          const reports=blocks.flatMap(block=>{
+            const url=tag(block,'URL')||tag(block,'url');
+            const reference=tag(block,'reference')||tag(block,'reportNumber');
+            const publicationDate=tag(block,'publicationDate')||tag(block,'publishedDate');
+            const year=Number(tag(block,'year'));
+            const week=Number(tag(block,'week'));
+            if(!url.includes('/api/download/weeklyReport/detail/xml/')||!reference)return[];
+            return [{url,reference,publicationDate,year,week,date:parseDate(publicationDate)}];
+          }).sort((a,b)=>a.date.localeCompare(b.date)||a.reference.localeCompare(b.reference,'en',{numeric:true}));
+          console.log('SG_DIAG_INDEX '+JSON.stringify({declared:blocks.length,parsed:reports.length,indexMs:idx.ms}));
+          if(reports.length!==1118)throw new Error('unexpected-report-count-'+reports.length);
+          const report=reports[69];
+          console.log('SG_DIAG_REPORT '+JSON.stringify(report));
+          const wr=await fetchText(report.url,45000);
+          if(!wr.ok)throw new Error('weekly-http-'+wr.status);
+          const nblocks=[...wr.text.matchAll(/<notifications(?:\s[^>]*)?>[\s\S]*?<\/notifications>/gi)].map(m=>m[0]);
+          const rows=nblocks.flatMap(block=>{
+            const reference=tag(block,'caseNumber')||tag(block,'alertNumber')||tag(block,'notificationNumber');
+            const official=tag(block,'reference')||tag(block,'URL')||tag(block,'url');
+            let id=null;
+            const um=official.match(/(?:alertDetail|detail)\/(-?\d+)/i);
+            if(um)id=Number(um[1]);
+            else {
+              const explicit=tag(block,'notificationId')||tag(block,'notificationID')||tag(block,'alertId')||tag(block,'alertID')||tag(block,'id');
+              if(/^\d+$/.test(explicit))id=Number(explicit);
+            }
+            return reference&&Number.isSafeInteger(id)?[{reference,id,official}]:[];
+          }).sort((a,b)=>a.reference.localeCompare(b.reference,'en',{numeric:true})||a.id-b.id);
+          console.log('SG_DIAG_ROWS '+JSON.stringify({weeklyMs:wr.ms,blocks:nblocks.length,valid:rows.length,first20:rows.slice(0,20).map(x=>({id:x.id,reference:x.reference}))}));
+          const targets=rows.slice(0,10);
+          for(const row of targets){
+            const url=base+'/public/api/notification/'+row.id+'?language=es';
+            const t=Date.now();
+            let status=null,bytes=0,validJson=false,identityMatch=false,error=null,contentType=null;
+            try{
+              const r=await fetch(url,{headers:{Accept:'application/json'},signal:AbortSignal.timeout(25000)});
+              status=r.status;contentType=r.headers.get('content-type');
+              const text=await r.text();bytes=Buffer.byteLength(text);
+              try{
+                const body=JSON.parse(text);validJson=true;
+                identityMatch=body?.id===row.id&&String(body?.reference??'').trim()===row.reference.trim();
+              }catch(e){error='json:'+String(e?.message??e);}
+            }catch(e){error=String(e?.name??'Error')+':'+String(e?.message??e);}
+            console.log('SG_DIAG_DETAIL '+JSON.stringify({id:row.id,reference:row.reference,status,ms:Date.now()-t,bytes,validJson,identityMatch,contentType,error}));
+          }
+          NODE
