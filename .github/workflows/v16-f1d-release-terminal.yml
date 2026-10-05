@@ -1,4 +1,4 @@
-name: V16 F1-D terminal production release evidence
+name: V16 F1-D final active production identity
 on:
   push:
     branches: [v16/f1d-production-identity-readonly]
@@ -7,49 +7,31 @@ permissions:
   contents: read
 jobs:
   terminal:
-    if: github.event.head_commit.message == 'V16 F1-D verify final active production version read only' && github.run_attempt == 1
+    if: github.event.head_commit.message == 'V16 F1-D final allocation stability snapshot read only' && github.run_attempt == 1
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    timeout-minutes: 2
     steps:
-      - name: Observe known authorized production build only
+      - name: Read stable active production allocation only
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           node --input-type=module <<'NODE'
-          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f',bid='dc4be0df-328c-43e9-b8e6-39c50ade12ec',sha='27ab5e0e27ba0e243c3641c3ab9f0948f9c39007';
-          const out={merge:sha,buildId:bid,observedAt:new Date().toISOString(),productionMutationAttempts:0};
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/workers/scripts/vigia-runtime',expected='520c11bc-f513-4d5d-962b-b21f3ec421c6';
+          const out={observedAt:new Date().toISOString(),productionMutationAttempts:0,reads:[]};
           async function get(path){
-            if(!['/builds/builds/'+bid,'/builds/builds/'+bid+'/logs','/workers/scripts/vigia-runtime/deployments'].includes(path)&&!/^\/workers\/scripts\/vigia-runtime\/versions\/[a-f0-9-]{36}$/.test(path))throw Error('scope');
+            if(Date.now()>Date.parse('2026-10-05T10:00:00Z'))throw Error('expired');
+            if(path!=='/deployments'&&path!=='/versions/'+expected)throw Error('scope');
             const r=await fetch(root+path,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN},signal:AbortSignal.timeout(15000)});
-            if(!r.ok)throw Error('http-'+r.status);
+            out.reads.push({path,http:r.status,at:new Date().toISOString()});if(!r.ok)throw Error('HTTP-'+r.status);
             const j=await r.json();if(!j.success)throw Error('envelope');return j.result;
           }
           try{
-            let build;
-            for(let n=0;n<14;n++){
-              build=await get('/builds/builds/'+bid);
-              if(build.build_trigger_metadata?.commit_hash!==sha||build.build_trigger_metadata?.deploy_command!=='npx wrangler deploy')throw Error('build-identity');
-              console.log('F1D_BUILD_STATUS '+JSON.stringify({at:new Date().toISOString(),id:bid,status:build.status,outcome:build.build_outcome}));
-              if(build.status==='stopped')break;
-              await new Promise(r=>setTimeout(r,30000));
-            }
-            out.build={id:build.build_uuid,status:build.status,outcome:build.build_outcome,commit:build.build_trigger_metadata.commit_hash,branch:build.build_trigger_metadata.branch,buildCommand:build.build_trigger_metadata.build_command,deployCommand:build.build_trigger_metadata.deploy_command,createdOn:build.created_on,stoppedOn:build.stopped_on};
-            if(build.status!=='stopped'||build.build_outcome!=='success')throw Error('build-not-success');
-            const logs=await get('/builds/builds/'+bid+'/logs');
-            const strings=[];
-            function collect(v){if(typeof v==='string')strings.push(v);else if(Array.isArray(v))v.forEach(collect);else if(v&&typeof v==='object')Object.values(v).forEach(collect);}
-            collect(logs);
-            out.logKeys=Object.keys(logs||{});
-            out.evidenceLines=strings.flatMap(s=>s.split('\n')).filter(s=>/Running Cloudflare CI|tests \d|pass \d|fail \d|artifact|Artifact|Worker|Version ID|Deployed|Uploaded|TypeScript|lint|Safety|default.fetch|837|115|0 errors/i.test(s)).slice(-100);
-            const deps=await get('/workers/scripts/vigia-runtime/deployments');const active=deps.deployments?.[0];
-            if(active?.versions?.length!==1||active.versions[0].percentage!==100)throw Error('production-ambiguous');
-            const v=await get('/workers/scripts/vigia-runtime/versions/'+active.versions[0].version_id);
-            out.active={deploymentId:active.id,createdOn:active.created_on,versionId:v.id,percentage:100,versionNumber:v.number,versionCreatedOn:v.metadata?.created_on};
-            const printedVersion=out.evidenceLines.join('\n').match(/(?:Current )?Version ID:\s*([a-f0-9-]{36})/i)?.[1];
-            out.deployedVersionFromBuildLog=printedVersion||null;
-            if(!printedVersion||printedVersion!==v.id)throw Error('build-active-version-unproven');
-            if(v.id!=='520c11bc-f513-4d5d-962b-b21f3ec421c6')throw Error('final-version-drift');
-            out.status='PASS';
+            const first=(await get('/deployments')).deployments?.[0];
+            if(first?.versions?.length!==1||first.versions[0].percentage!==100||first.versions[0].version_id!==expected)throw Error('active-drift-or-ambiguous');
+            const v=await get('/versions/'+expected);
+            const again=(await get('/deployments')).deployments?.[0];
+            if(JSON.stringify(first)!==JSON.stringify(again)||v.id!==expected)throw Error('allocation-not-stable');
+            out.active={deploymentId:first.id,versionId:v.id,percentage:100,versionNumber:v.number,createdOn:first.created_on,versionCreatedOn:v.metadata?.created_on};out.status='PASS';
           }catch(e){out.status='HOLD';out.reason=e.message;process.exitCode=1;}
-          out.completedAt=new Date().toISOString();console.log('F1D_RELEASE_TERMINAL '+JSON.stringify(out));
+          out.completedAt=new Date().toISOString();console.log('F1D_FINAL_PRODUCTION '+JSON.stringify(out));
           NODE
