@@ -4,17 +4,223 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-09-25T16:02:23.792Z",
+  "generatedAt": "2026-10-05T12:12:20.483Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
-    "totalAlerts": 128,
+    "totalAlerts": 129,
     "earliestPublishedAt": "2025-01-01T23:00:00.000Z",
-    "latestPublishedAt": "2026-09-24T22:00:00.000Z",
+    "latestPublishedAt": "2026-10-04T22:00:00.000Z",
     "lastFullSyncAt": "2026-09-25T16:02:23.792Z",
     "pagesScanned": 9,
     "legacyIndexesScanned": 0
   },
   "alerts": [
+    {
+      "id": "aesan:ES2026/597",
+      "reference": "ES2026/597",
+      "sourceRecordId": "50ba1a7d-eebf-4318-b2a3-a07fe9e69c2b",
+      "sourceRecordIdType": "idAlert",
+      "sourceRecordSchemaVersion": 2,
+      "sourceRecordHash": "3d4d84bf8c2dcf69c13d5130d23ffae0bb0205d265eb328d36a8254647265591",
+      "previousReferences": [],
+      "referenceHistory": [],
+      "source": "AESAN",
+      "type": "Alimentaria",
+      "priority": "Media",
+      "title": "Advertencia por presencia de gluten: presencia de gluten en tostadas de trigo sarraceno procedentes de España (Ref ES2026/597)",
+      "product": "Tostadas crujientes sarraceno",
+      "brand": "SANTIVERI BIO",
+      "productClass": "Cereales, panadería y pasta",
+      "productKey": "tostadas crujientes sarraceno",
+      "brandKey": "santiveri bio",
+      "provider": "",
+      "providerKey": "",
+      "providerRole": "",
+      "providerEvidence": "",
+      "notifyingText": "La Agencia Española de Seguridad Alimentaria y Nutrición (AESAN) ha tenido conocimiento a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de una notificación de alerta trasladada por las autoridades sanitarias de Castilla y León, relativa a la presencia de gluten en el producto tostadas con trigo sarraceno de la marca Santiveri, etiquetado “sin gluten”.",
+      "hazard": "Gluten no declarado · Trigo no declarado",
+      "origin": "España",
+      "scope": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Andalucía, Aragón, Cantabria, Castilla-La Mancha, Castilla y León, Cataluña, Comunidad Valenciana Galicia, Islas Baleares, La Rioja, Madrid, Murcia, Navarra y País Vasco , si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
+      "action": "Como medida de precaución, se recomienda a aquellas PERSONAS CON PROBLEMAS DERIVADOS DE LA INGESTA DE GLUTEN que pudieran tener el producto anteriormente mencionado en sus hogares se abstengan de consumirlo.",
+      "lots": [],
+      "imageUrl": "https://www.aesan.gob.es/dam/jcr:0d92e310-41d1-4bb1-b612-b61cae97267c/Imagen1.2026-10-05-13-30-02.png",
+      "officialTitle": "Advertencia por presencia de gluten: presencia de gluten en tostadas de trigo sarraceno procedentes de España (Ref ES2026/597)",
+      "publishedFields": [
+        {
+          "label": "Nombre del producto",
+          "value": "Tostadas crujientes sarraceno",
+          "sourceField": "article.productData[0].field[0]",
+          "order": 0,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Nombre de marca",
+          "value": "SANTIVERI BIO",
+          "sourceField": "article.productData[0].field[1]",
+          "order": 1,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Aspecto del producto",
+          "value": "estuche de 100 g",
+          "sourceField": "article.productData[0].field[2]",
+          "order": 2,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Fecha de consumo preferente",
+          "value": "01/12/2027",
+          "sourceField": "article.productData[0].field[3]",
+          "order": 3,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Peso de unidad",
+          "value": "100 g",
+          "sourceField": "article.productData[0].field[4]",
+          "order": 4,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Temperatura",
+          "value": "ambiente",
+          "sourceField": "article.productData[0].field[5]",
+          "order": 5,
+          "section": "product_data",
+          "context": "list:0"
+        }
+      ],
+      "materialParagraphs": [
+        {
+          "value": "La Agencia Española de Seguridad Alimentaria y Nutrición (AESAN) ha tenido conocimiento a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de una notificación de alerta trasladada por las autoridades sanitarias de Castilla y León, relativa a la presencia de gluten en el producto tostadas con trigo sarraceno de la marca Santiveri, etiquetado “sin gluten”.",
+          "sourceField": "article.body.p[0]",
+          "order": 0,
+          "section": "publication"
+        },
+        {
+          "value": "La información que aquí se incluye es resultante del autocontrol de la propia empresa, que ha comunicado la incidencia a las autoridades competentes, en cumplimiento de la legislación y a fin de no poner a disposición de la población alimentos no seguros.",
+          "sourceField": "article.body.p[1]",
+          "order": 1,
+          "section": "publication"
+        },
+        {
+          "value": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Andalucía, Aragón, Cantabria, Castilla-La Mancha, Castilla y León, Cataluña, Comunidad Valenciana Galicia, Islas Baleares, La Rioja, Madrid, Murcia, Navarra y País Vasco , si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
+          "sourceField": "article.body.p[2]",
+          "order": 2,
+          "section": "publication"
+        },
+        {
+          "value": "Esta información ha sido trasladada a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+          "sourceField": "article.body.p[3]",
+          "order": 3,
+          "section": "publication"
+        },
+        {
+          "value": "Como medida de precaución, se recomienda a las personas con problemas derivados de la ingesta de gluten que pudieran tener el producto anteriormente mencionado en sus hogares que se abstengan de consumirlo.",
+          "sourceField": "article.body.p[4]",
+          "order": 4,
+          "section": "publication"
+        },
+        {
+          "value": "EL CONSUMO DE ESTE PRODUCTO NO COMPORTA NINGÚN RIESGO PARA EL RESTO DE LA POBLACIÓN.",
+          "sourceField": "article.body.p[5]",
+          "order": 5,
+          "section": "publication"
+        },
+        {
+          "value": "Puede ampliar información de la AESAN sobre alergias, intolerancias y problemas derivados de la ingesta de gluten en los siguientes enlaces:",
+          "sourceField": "article.body.p[6]",
+          "order": 6,
+          "section": "publication"
+        }
+      ],
+      "resources": [
+        {
+          "kind": "image",
+          "url": "https://www.aesan.gob.es/dam/jcr:0d92e310-41d1-4bb1-b612-b61cae97267c/Imagen1.2026-10-05-13-30-02.png",
+          "label": null,
+          "sourceField": "article.image[0]",
+          "order": 0
+        },
+        {
+          "kind": "image",
+          "url": "https://www.aesan.gob.es/dam/jcr:be5d5e59-8b5f-4304-a5e0-a1984b5e88a4/Imagen2.2026-10-05-13-29-49.png",
+          "label": null,
+          "sourceField": "article.image[1]",
+          "order": 1
+        },
+        {
+          "kind": "link",
+          "url": "https://www.aesan.gob.es/seguridad-alimentaria/informacion-alimentaria/etiquetado-sustancias",
+          "label": "Etiquetado de sustancias que causan alergias e intolerancias",
+          "sourceField": "article.link[2]",
+          "order": 2
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:c2bccf06-9aea-45e8-9725-546a60eee891/Cuadriptico_Alergias_Alimentarias_interactivo.pdf",
+          "label": "Información a los consumidores sobre alergias alimentarias",
+          "sourceField": "article.link[3]",
+          "order": 3
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:63990b52-7b41-4d8c-ba93-745d68b63471/intolerancia_lactosa.pdf",
+          "label": "Intolerancia a la lactosa",
+          "sourceField": "article.link[4]",
+          "order": 4
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:a9d14dd3-f957-4638-8448-c2b3e007ec0c/enfermedad_celiaca.pdf",
+          "label": "Enfermedad celiaca",
+          "sourceField": "article.link[5]",
+          "order": 5
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:738ee87d-9f8f-4f46-bf93-f6ba9766ee71/GUIA_ETIQUETADO_DE_ALIMENTOS_QUE_CONTIENEN_CEREALES_CON_GLUTEN.pdf",
+          "label": "Guía de etiquetado de alimentos que contienen cereales con gluten",
+          "sourceField": "article.link[6]",
+          "order": 6
+        }
+      ],
+      "officialDates": [
+        {
+          "label": null,
+          "value": "05/10/2026",
+          "sourceField": "pageInfo.date",
+          "order": 0
+        }
+      ],
+      "url": "https://www.aesan.gob.es/alertas/2026_69",
+      "publishedAt": "2026-10-04T22:00:00.000Z",
+      "detectedAt": "2026-10-05T12:12:20.483Z",
+      "updatedAt": "2026-10-04T22:00:00.000Z",
+      "contentHash": "3d4d84bf8c2dcf69c13d5130d23ffae0bb0205d265eb328d36a8254647265591",
+      "versionCount": 1,
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "unknown",
+        "code": null,
+        "sourceTypeId": null,
+        "officialLabel": null,
+        "publications": [
+          {
+            "sourceRecordId": "50ba1a7d-eebf-4318-b2a3-a07fe9e69c2b",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_69",
+            "matches": []
+          }
+        ]
+      }
+    },
     {
       "id": "aesan:ES2026/575",
       "reference": "ES2026/575",
