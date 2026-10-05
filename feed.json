@@ -4,7 +4,7 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-10-05T12:12:20.483Z",
+  "generatedAt": "2026-10-05T20:55:23.943Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
     "totalAlerts": 129,
@@ -207,16 +207,22 @@
       "isUpdate": false,
       "aesanAlertClassification": {
         "schemaVersion": 1,
-        "status": "unknown",
-        "code": null,
-        "sourceTypeId": null,
-        "officialLabel": null,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
         "publications": [
           {
             "sourceRecordId": "50ba1a7d-eebf-4318-b2a3-a07fe9e69c2b",
             "sourceRecordIdType": "idAlert",
             "url": "https://www.aesan.gob.es/alertas/2026_69",
-            "matches": []
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
           }
         ]
       }
