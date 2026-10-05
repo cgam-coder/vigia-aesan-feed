@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   terminal:
-    if: github.event.head_commit.message == 'V16 F1-D final allocation stability snapshot read only' && github.run_attempt == 1
+    if: github.event.head_commit.message == 'V16 F1-D confirm production allocation after issue closure read only' && github.run_attempt == 1
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
