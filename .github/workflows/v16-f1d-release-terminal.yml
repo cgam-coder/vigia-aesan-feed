@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   terminal:
-    if: github.event.head_commit.message == 'V16 F1-D await known production build and capture version evidence' && github.run_attempt == 1
+    if: github.event.head_commit.message == 'V16 F1-D verify final active production version read only' && github.run_attempt == 1
     runs-on: ubuntu-latest
     timeout-minutes: 9
     steps:
@@ -48,6 +48,7 @@ jobs:
             const printedVersion=out.evidenceLines.join('\n').match(/(?:Current )?Version ID:\s*([a-f0-9-]{36})/i)?.[1];
             out.deployedVersionFromBuildLog=printedVersion||null;
             if(!printedVersion||printedVersion!==v.id)throw Error('build-active-version-unproven');
+            if(v.id!=='520c11bc-f513-4d5d-962b-b21f3ec421c6')throw Error('final-version-drift');
             out.status='PASS';
           }catch(e){out.status='HOLD';out.reason=e.message;process.exitCode=1;}
           out.completedAt=new Date().toISOString();console.log('F1D_RELEASE_TERMINAL '+JSON.stringify(out));
