@@ -1,0 +1,43 @@
+name: V16 F2-G post-merge production observation
+on:
+  push:
+    branches: [v16/f2g-production-identity-readonly]
+    paths: [".github/workflows/v16-f2g-build-diagnostic.yml"]
+permissions:
+  contents: read
+jobs:
+  observe:
+    if: github.event.head_commit.message == 'V16 F2-G diagnose production build discovery read only' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Read authorized release build and active production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          const out={phase:'V16-F2-G-post-merge',merge:'60b02dfc25ff8a05e86dbd3bcadef80b8b982de9',observedAt:new Date().toISOString(),productionMutationAttempts:0,reads:[]};
+          const minimal=(x)=>Object.fromEntries(Object.entries(x||{}).filter(([k,v])=>/uuid|id|status|outcome|commit|branch|created|ended|started|command|duration|version|deployment|trigger|build|repository|repo|name|source/i.test(k)&&(!/token|secret|environment|email|author/i.test(k))).map(([k,v])=>[k,typeof v==='object'?JSON.stringify(v).slice(0,4000):v]));
+          async function get(path){
+            if(!/^\/(?:workers\/scripts(?:\/vigia-runtime\/(?:deployments|versions\/[a-f0-9-]{36}))?|builds\/workers\/[a-f0-9-]+\/builds\?per_page=5|builds\/builds\/[a-f0-9-]{36})$/.test(path))throw Error('scope');
+            const r=await fetch(root+path,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(15000)});
+            out.reads.push({path,http:r.status});if(!r.ok)throw Error('http-'+r.status);
+            const j=await r.json();if(!j.success)throw Error('invalid-envelope');return j.result;
+          }
+          try{
+            const a=await get('/workers/scripts/vigia-runtime/deployments');
+            const active=a.deployments?.[0];out.active={id:active?.id,created_on:active?.created_on,versions:active?.versions};
+            if(active?.versions?.length!==1||active.versions[0].percentage!==100)throw Error('ambiguous-production');
+            const v=await get('/workers/scripts/vigia-runtime/versions/'+active.versions[0].version_id);out.version={id:v.id,number:v.number,created_on:v.metadata?.created_on,annotations:v.annotations};
+            const scripts=await get('/workers/scripts');const worker=scripts.find(x=>x.id==='vigia-runtime');out.worker={id:worker?.id,tag:worker?.tag};
+            if(!worker?.tag)throw Error('worker-tag');
+            const bs=await get('/builds/workers/'+worker.tag+'/builds?per_page=5');out.buildResultKeys=Object.keys(bs||{});
+            const list=Array.isArray(bs)?bs:bs.builds||bs.results||[];out.builds=list.map(minimal);
+            const b=await get('/builds/builds/5823ee01-5cd3-49b5-94af-717920adf975');out.exactBuildKeys=Object.keys(b||{});out.exactBuild=minimal(b);
+            const end=await get('/workers/scripts/vigia-runtime/deployments');out.stable=end.deployments?.[0]?.id===active.id&&JSON.stringify(end.deployments?.[0]?.versions)===JSON.stringify(active.versions);
+            out.status=out.stable?'OBSERVED':'HOLD';
+          }catch(e){out.status='HOLD';out.reason=e.message;process.exitCode=1;}
+          out.completedAt=new Date().toISOString();console.log('F2G_BUILD_DISCOVERY '+JSON.stringify(out));
+          NODE
