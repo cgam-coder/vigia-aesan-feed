@@ -1,0 +1,117 @@
+# PROPOSED ONLY: not pushed, not executed. Requires explicit exception to no-new-commits.
+# One auxiliary commit on cgam-coder/vigia-aesan-feed branch v16/f6c-production-observer-readonly.
+# No PR, merge, data/config mutation or direct deployment. Existing credential stays in Actions.
+# GET-only Cloudflare allowlist, fixed expiry, bounded attempts. Identity -> observe release.
+# Actual observed build SHA must be matched to the exact #239 merge by the release owner.
+name: V16 F6-C GET-only production observer
+on:
+  push:
+    branches: [v16/f6c-production-observer-readonly]
+    paths: [".github/workflows/v16-f6c-observer.yml"]
+permissions:
+  contents: read
+jobs:
+  identity:
+    if: github.event.head_commit.message == 'V16 F6-C authorized GET-only observer' && github.run_attempt <= 2
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    outputs:
+      rollback_version: ${{ steps.identity.outputs.rollback_version }}
+      observed_at: ${{ steps.identity.outputs.observed_at }}
+    steps:
+      - name: GET deployments version deployments
+        id: identity
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          const out={phase:'V16-F6-C',observedAt:new Date().toISOString(),productionMutationAttempts:0,reads:[]};
+          async function get(path){
+           if(Date.now()>Date.parse('2026-10-07T18:00:00Z'))throw Error('expired');
+           if(!/^\/(?:workers\/scripts(?:\/vigia-runtime\/(?:deployments|versions\/[a-f0-9-]{36}))?|builds\/workers\/[a-f0-9-]+\/builds\?per_page=10|builds\/builds\/[a-f0-9-]{36}(?:\/logs(?:\?cursor=[A-Za-z0-9_%.-]+)?)?)$/.test(path))throw Error('scope');
+           const r=await fetch(root+path,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN},signal:AbortSignal.timeout(15000)});
+           out.reads.push({path,http:r.status,at:new Date().toISOString()});
+           if(!r.ok)throw Error('HTTP-'+r.status);const j=await r.json();if(!j.success)throw Error('envelope');return j.result;
+          }
+          async function identity(){
+           const a=(await get('/workers/scripts/vigia-runtime/deployments')).deployments?.[0];
+           if(a?.versions?.length!==1||a.versions[0].percentage!==100)throw Error('production-ambiguous');
+           const v=await get('/workers/scripts/vigia-runtime/versions/'+a.versions[0].version_id);
+           const end=(await get('/workers/scripts/vigia-runtime/deployments')).deployments?.[0];
+           if(end?.id!==a.id||JSON.stringify(end.versions)!==JSON.stringify(a.versions))throw Error('allocation-drift');
+           return {deploymentId:a.id,createdOn:a.created_on,versionId:v.id,percentage:100,versionNumber:v.number,versionCreatedOn:v.metadata?.created_on};
+          }
+          
+          try{out.active=await identity();out.status='PASS';}catch(e){out.status='HOLD';out.reason=e.message;process.exitCode=1;}
+          out.completedAt=new Date().toISOString();console.log('F6C_IDENTITY_TERMINAL '+JSON.stringify(out));
+          if(out.status==='PASS'){const fs=await import('node:fs');fs.appendFileSync(process.env.GITHUB_OUTPUT,'rollback_version='+out.active.versionId+'\nobserved_at='+out.observedAt+'\n');}
+          NODE
+  release:
+    needs: identity
+    if: github.event.head_commit.message == 'V16 F6-C authorized GET-only observer' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 23
+    steps:
+      - name: Observe new production build logs and stable allocation
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ROLLBACK_VERSION: ${{ needs.identity.outputs.rollback_version }}
+          OBSERVED_AT: ${{ needs.identity.outputs.observed_at }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          const out={phase:'V16-F6-C',observedAt:new Date().toISOString(),productionMutationAttempts:0,reads:[]};
+          async function get(path){
+           if(Date.now()>Date.parse('2026-10-07T18:00:00Z'))throw Error('expired');
+           if(!/^\/(?:workers\/scripts(?:\/vigia-runtime\/(?:deployments|versions\/[a-f0-9-]{36}))?|builds\/workers\/[a-f0-9-]+\/builds\?per_page=10|builds\/builds\/[a-f0-9-]{36}(?:\/logs(?:\?cursor=[A-Za-z0-9_%.-]+)?)?)$/.test(path))throw Error('scope');
+           const r=await fetch(root+path,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN},signal:AbortSignal.timeout(15000)});
+           out.reads.push({path,http:r.status,at:new Date().toISOString()});
+           if(!r.ok)throw Error('HTTP-'+r.status);const j=await r.json();if(!j.success)throw Error('envelope');return j.result;
+          }
+          async function identity(){
+           const a=(await get('/workers/scripts/vigia-runtime/deployments')).deployments?.[0];
+           if(a?.versions?.length!==1||a.versions[0].percentage!==100)throw Error('production-ambiguous');
+           const v=await get('/workers/scripts/vigia-runtime/versions/'+a.versions[0].version_id);
+           const end=(await get('/workers/scripts/vigia-runtime/deployments')).deployments?.[0];
+           if(end?.id!==a.id||JSON.stringify(end.versions)!==JSON.stringify(a.versions))throw Error('allocation-drift');
+           return {deploymentId:a.id,createdOn:a.created_on,versionId:v.id,percentage:100,versionNumber:v.number,versionCreatedOn:v.metadata?.created_on};
+          }
+          
+          const baseline='872e107664f8c149bbb5b8e9486ccb17e8369dcf',notBefore=Date.parse(process.env.OBSERVED_AT);
+          try{
+           const tag=(await get('/workers/scripts')).find(x=>x.id==='vigia-runtime')?.tag;if(!tag)throw Error('worker-tag');
+           let build;
+           for(let i=0;i<60;i++){
+            const bs=await get('/builds/workers/'+tag+'/builds?per_page=10'),list=Array.isArray(bs)?bs:bs.builds||bs.results||[];
+            const matches=list.filter(b=>b.build_trigger_metadata?.branch==='main'&&b.build_trigger_metadata?.deploy_command==='npx wrangler deploy'&&b.build_trigger_metadata?.commit_hash!==baseline&&Date.parse(b.created_on)>=notBefore);
+            if(matches.length>1)throw Error('multiple-new-production-builds');
+            if(matches.length===1){build=await get('/builds/builds/'+matches[0].build_uuid);if(build.status==='stopped')break;}
+            console.log('F6C_BUILD_PENDING '+JSON.stringify({at:new Date().toISOString(),id:build?.build_uuid,status:build?.status}));
+            await new Promise(r=>setTimeout(r,20000));
+           }
+           if(!build)throw Error('new-production-build-not-found');
+           out.build={id:build.build_uuid,status:build.status,outcome:build.build_outcome,commit:build.build_trigger_metadata.commit_hash,branch:build.build_trigger_metadata.branch,buildCommand:build.build_trigger_metadata.build_command,deployCommand:build.build_trigger_metadata.deploy_command,createdOn:build.created_on,stoppedOn:build.stopped_on};
+           if(build.status!=='stopped'||build.build_outcome!=='success')throw Error('production-build-not-success');
+           const strings=[];function collect(v){if(typeof v==='string')strings.push(v);else if(Array.isArray(v))v.forEach(collect);else if(v&&typeof v==='object')Object.values(v).forEach(collect);}
+           out.logPages=[];let cursor='';
+           for(let p=0;p<12;p++){
+            const logs=await get('/builds/builds/'+build.build_uuid+'/logs'+(cursor?'?cursor='+encodeURIComponent(cursor):''));
+            out.logPages.push({page:p,lines:logs.lines?.length,cursor:logs.cursor,truncated:logs.truncated});
+            collect(logs.lines);collect(logs.events);
+            if(!logs.truncated)break;
+            if(!logs.cursor||logs.cursor===cursor)throw Error('log-pagination-stuck');cursor=logs.cursor;
+           }
+           if(out.logPages.at(-1).truncated)throw Error('logs-not-complete');
+           const all=strings.join('\n');
+           out.evidenceLines=strings.flatMap(s=>s.split('\n')).filter(s=>/Running Cloudflare CI|ℹ tests |ℹ pass |ℹ fail |Validated cloudflare artifact|Version ID:|0 errors|post.build/i.test(s));
+           out.gates={unit:/tests 841/.test(all)&&/pass 841/.test(all),postBuild:/tests 115/.test(all)&&/pass 115/.test(all),typecheck:/Running Cloudflare CI: typecheck/.test(all),lint:/0 errors/.test(all),artifactSafety:/Validated cloudflare artifact: safety scan and ESM Worker default.fetch passed/.test(all)};
+           if(!Object.values(out.gates).every(Boolean))throw Error('technical-gate-evidence-missing');
+           out.active=await identity();
+           out.deployedVersionFromBuildLog=all.match(/(?:Current )?Version ID:\s*([a-f0-9-]{36})/i)?.[1]||null;
+           if(out.deployedVersionFromBuildLog!==out.active.versionId)throw Error('build-active-version-unproven');
+           if(out.active.versionId===process.env.ROLLBACK_VERSION)throw Error('still-rollback-version');
+           out.status='PASS';
+          }catch(e){out.status='HOLD';out.reason=e.message;process.exitCode=1;}
+          out.completedAt=new Date().toISOString();console.log('F6C_RELEASE_TERMINAL '+JSON.stringify(out));
+          NODE
