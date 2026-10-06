@@ -1,4 +1,4 @@
-# Pending explicit owner exception: one auxiliary workflow commit only.
+# Pending explicit owner exception: one corrective auxiliary workflow commit after the exhausted original attempt.
 # No checkout, product/config writes, deploy, or Cloudflare mutation methods.
 # Browser steps run on isolated Actions hosts without Cloudflare credentials.
 name: V17 F1-B GET-only production observer and live smoke
@@ -171,13 +171,28 @@ jobs:
               try {
                 await go(p, '/es/alertas?period=30d&source=RASFF');
                 if (!(await p.locator('.na-alert-card__map-action').count())) { row.naturallyUnobservable = 'No live detailed RASFF record'; return; }
+                const geographyResponse = p.waitForResponse(r => new URL(r.url()).pathname === '/api/terminal/alert-geography');
                 await p.locator('.na-alert-card__map-action').first().click(); await p.locator('.na-alert-card[data-map-selected="true"]').waitFor();
-                await p.waitForFunction(() => document.querySelector('.na-terminal-map .na-geo-map-geometry [data-code]'));
+                const geography = await geographyResponse; assert.equal(geography.status(), 200); await geography.json();
+                await p.waitForFunction(() => {
+                  const map = document.querySelector('.na-terminal-map[data-detail="true"]');
+                  const status = map?.querySelector('.na-terminal-map__status')?.textContent || '';
+                  return map?.querySelector('.na-geo-map-geometry [data-code]') && status && !/Cargando|No se pudo consultar|Cartografía no disponible/.test(status);
+                });
                 const camera = () => p.locator('.na-terminal-map__pan,.na-terminal-map__fit,.na-terminal-map__layer').evaluateAll(ns => ns.map(n => n.getAttribute('style')));
-                const selected = await camera(); await p.locator('.na-terminal-map__controls button').first().click(); await p.waitForTimeout(100);
+                async function settledCamera() {
+                  let previous = '', consecutive = 0;
+                  for (let i = 0; i < 40; i++) {
+                    await p.waitForTimeout(100); const value = await camera(), serialized = JSON.stringify(value);
+                    consecutive = serialized === previous ? consecutive + 1 : 0; previous = serialized;
+                    if (consecutive >= 3) return value;
+                  }
+                  throw Error('camera-did-not-settle');
+                }
+                const selected = await settledCamera(); row.selectedCamera = selected; await p.locator('.na-terminal-map__controls button').first().click(); await p.waitForTimeout(100);
                 assert.notDeepEqual(await camera(), selected);
                 await p.locator('.na-terminal-map__viewport').press('ArrowRight'); await p.locator('.na-terminal-map__controls button').last().click(); await p.waitForTimeout(100);
-                assert.deepEqual(await camera(), selected, 'map reset');
+                assert.deepEqual(await settledCamera(), selected, 'map reset to fully loaded alert framing');
                 await p.locator('.na-terminal-map__back').click(); await p.waitForTimeout(100);
                 assert.equal(await p.locator('.na-alert-card[data-map-selected="true"]').count(), 0);
                 await screenshot(p, key);
@@ -190,7 +205,18 @@ jobs:
               try {
                 await go(p, '/es/alertas?period=30d&source=AESAN');
                 const radio = p.locator('.na-terminal-aesan-types input[type="radio"]'); assert.ok(await radio.count() >= 3);
-                assert.equal(await radio.first().evaluate(n => getComputedStyle(n).appearance), 'auto');
+                assert.equal(await radio.first().evaluate(n => getComputedStyle(n).appearance), 'none', 'approved styling retains native radio semantics');
+                assert.equal(await p.locator('.na-terminal-aesan-types input[name="aesanType"]:checked').count(), 1);
+                const choice = radio.nth(1), value = await choice.getAttribute('value');
+                const classificationResponse = p.waitForResponse(r => r.url().includes('/api/terminal/alerts?') && new URL(r.url()).searchParams.get('aesanType') === value);
+                await choice.locator('..').click(); const classified = await (await classificationResponse).json(); await ready(p);
+                await p.waitForFunction(value => new URL(location.href).searchParams.get('aesanType') === value && document.querySelector('input[name="aesanType"]:checked')?.value === value, value);
+                assert.equal(await p.locator('.na-terminal-aesan-types input[name="aesanType"]:checked').count(), 1);
+                assert.equal(await p.locator('.na-alert-card').count(), classified.items.length);
+                await choice.focus(); await p.keyboard.press('Space'); assert.equal(await choice.isChecked(), true);
+                await p.emulateMedia({ forcedColors: 'active' });
+                assert.equal(await radio.first().evaluate(n => getComputedStyle(n).appearance), 'auto', 'native appearance in forced colors');
+                await p.emulateMedia({ forcedColors: 'none' });
                 const response = p.waitForResponse(r => r.url().includes('/api/terminal/alerts?') && new URL(r.url()).searchParams.get('country') === 'ES');
                 await p.locator('#terminal-country').selectOption('ES'); const d = await (await response).json(); await ready(p);
                 assert.equal(await p.locator('.na-alert-card').count(), d.items.length);
@@ -454,13 +480,28 @@ jobs:
               try {
                 await go(p, '/es/alertas?period=30d&source=RASFF');
                 if (!(await p.locator('.na-alert-card__map-action').count())) { row.naturallyUnobservable = 'No live detailed RASFF record'; return; }
+                const geographyResponse = p.waitForResponse(r => new URL(r.url()).pathname === '/api/terminal/alert-geography');
                 await p.locator('.na-alert-card__map-action').first().click(); await p.locator('.na-alert-card[data-map-selected="true"]').waitFor();
-                await p.waitForFunction(() => document.querySelector('.na-terminal-map .na-geo-map-geometry [data-code]'));
+                const geography = await geographyResponse; assert.equal(geography.status(), 200); await geography.json();
+                await p.waitForFunction(() => {
+                  const map = document.querySelector('.na-terminal-map[data-detail="true"]');
+                  const status = map?.querySelector('.na-terminal-map__status')?.textContent || '';
+                  return map?.querySelector('.na-geo-map-geometry [data-code]') && status && !/Cargando|No se pudo consultar|Cartografía no disponible/.test(status);
+                });
                 const camera = () => p.locator('.na-terminal-map__pan,.na-terminal-map__fit,.na-terminal-map__layer').evaluateAll(ns => ns.map(n => n.getAttribute('style')));
-                const selected = await camera(); await p.locator('.na-terminal-map__controls button').first().click(); await p.waitForTimeout(100);
+                async function settledCamera() {
+                  let previous = '', consecutive = 0;
+                  for (let i = 0; i < 40; i++) {
+                    await p.waitForTimeout(100); const value = await camera(), serialized = JSON.stringify(value);
+                    consecutive = serialized === previous ? consecutive + 1 : 0; previous = serialized;
+                    if (consecutive >= 3) return value;
+                  }
+                  throw Error('camera-did-not-settle');
+                }
+                const selected = await settledCamera(); row.selectedCamera = selected; await p.locator('.na-terminal-map__controls button').first().click(); await p.waitForTimeout(100);
                 assert.notDeepEqual(await camera(), selected);
                 await p.locator('.na-terminal-map__viewport').press('ArrowRight'); await p.locator('.na-terminal-map__controls button').last().click(); await p.waitForTimeout(100);
-                assert.deepEqual(await camera(), selected, 'map reset');
+                assert.deepEqual(await settledCamera(), selected, 'map reset to fully loaded alert framing');
                 await p.locator('.na-terminal-map__back').click(); await p.waitForTimeout(100);
                 assert.equal(await p.locator('.na-alert-card[data-map-selected="true"]').count(), 0);
                 await screenshot(p, key);
@@ -473,7 +514,18 @@ jobs:
               try {
                 await go(p, '/es/alertas?period=30d&source=AESAN');
                 const radio = p.locator('.na-terminal-aesan-types input[type="radio"]'); assert.ok(await radio.count() >= 3);
-                assert.equal(await radio.first().evaluate(n => getComputedStyle(n).appearance), 'auto');
+                assert.equal(await radio.first().evaluate(n => getComputedStyle(n).appearance), 'none', 'approved styling retains native radio semantics');
+                assert.equal(await p.locator('.na-terminal-aesan-types input[name="aesanType"]:checked').count(), 1);
+                const choice = radio.nth(1), value = await choice.getAttribute('value');
+                const classificationResponse = p.waitForResponse(r => r.url().includes('/api/terminal/alerts?') && new URL(r.url()).searchParams.get('aesanType') === value);
+                await choice.locator('..').click(); const classified = await (await classificationResponse).json(); await ready(p);
+                await p.waitForFunction(value => new URL(location.href).searchParams.get('aesanType') === value && document.querySelector('input[name="aesanType"]:checked')?.value === value, value);
+                assert.equal(await p.locator('.na-terminal-aesan-types input[name="aesanType"]:checked').count(), 1);
+                assert.equal(await p.locator('.na-alert-card').count(), classified.items.length);
+                await choice.focus(); await p.keyboard.press('Space'); assert.equal(await choice.isChecked(), true);
+                await p.emulateMedia({ forcedColors: 'active' });
+                assert.equal(await radio.first().evaluate(n => getComputedStyle(n).appearance), 'auto', 'native appearance in forced colors');
+                await p.emulateMedia({ forcedColors: 'none' });
                 const response = p.waitForResponse(r => r.url().includes('/api/terminal/alerts?') && new URL(r.url()).searchParams.get('country') === 'ES');
                 await p.locator('#terminal-country').selectOption('ES'); const d = await (await response).json(); await ready(p);
                 assert.equal(await p.locator('.na-alert-card').count(), d.items.length);
