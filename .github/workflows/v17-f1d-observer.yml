@@ -1,0 +1,182 @@
+# PROPOSED ONLY. Requires explicit approval for one isolated auxiliary commit.
+# No checkout, browser, packages, artifacts action, deployment command or data write.
+name: V17 F1-D GET-only production observer
+on:
+  push:
+    branches: [v17/f1d-production-observer-readonly]
+    paths: [".github/workflows/v17-f1d-observer.yml"]
+permissions:
+  contents: read
+jobs:
+  identity:
+    if: github.event.head_commit.message == 'V17 F1-D authorized GET-only observer' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    outputs:
+      rollback_version: ${{ steps.identity.outputs.rollback_version }}
+      observed_at: ${{ steps.identity.outputs.observed_at }}
+    steps:
+      - name: Seal stable production allocation and exact candidate
+        id: identity
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GH_READ_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'NODE'
+          const fs = await import('node:fs');
+          const CF_ROOT = 'https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          const GH_ROOT = 'https://api.github.com/repos/cgam-coder/vigia-runtime';
+          const BASE = '6c3f9a11d8252bf6e92321bf8141ed158c4b53b8';
+          const HEAD = 'a88c4b80026fbb2c4c04316e42c8fdd2393d2ac5';
+          const TREE = '233b42f6919c491a5094ac0904a00b71f4545f71';
+          const EXPIRES = Date.parse('2026-10-07T18:00:00Z');
+          const out = {phase:'V17-F1-D', observedAt:new Date().toISOString(), candidateHead:HEAD, candidateTree:TREE, productionMutationAttempts:0, reads:[]};
+          function guard() { if(Date.now()>EXPIRES) throw Error('expired'); }
+          async function cf(path) {
+           guard();
+           if(!/^\/(?:workers\/scripts(?:\/vigia-runtime\/(?:deployments|versions\/[a-f0-9-]{36}))?|builds\/workers\/[a-f0-9-]+\/builds\?per_page=10|builds\/builds\/[a-f0-9-]{36}(?:\/logs(?:\?cursor=[A-Za-z0-9_%.-]+)?)?)$/.test(path)) throw Error('cf-scope');
+           const r=await fetch(CF_ROOT+path,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN},signal:AbortSignal.timeout(15000)});
+           out.reads.push({service:'CF',path,http:r.status,at:new Date().toISOString()});
+           if(!r.ok)throw Error('CF-HTTP-'+r.status);const j=await r.json();if(!j.success)throw Error('CF-envelope');return j.result;
+          }
+          async function gh(path) {
+           guard();
+           if(!/^\/(?:pulls\/245|branches\/main|git\/commits\/[a-f0-9]{40})$/.test(path))throw Error('gh-scope');
+           const r=await fetch(GH_ROOT+path,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+process.env.GH_READ_TOKEN,Accept:'application/vnd.github+json'},signal:AbortSignal.timeout(15000)});
+           out.reads.push({service:'GH',path,http:r.status,at:new Date().toISOString()});
+           if(!r.ok)throw Error('GH-HTTP-'+r.status);return r.json();
+          }
+          async function identity() {
+           const a=(await cf('/workers/scripts/vigia-runtime/deployments')).deployments?.[0];
+           if(a?.versions?.length!==1||a.versions[0].percentage!==100)throw Error('production-allocation-ambiguous');
+           const v=await cf('/workers/scripts/vigia-runtime/versions/'+a.versions[0].version_id);
+           const b=(await cf('/workers/scripts/vigia-runtime/deployments')).deployments?.[0];
+           if(a.id!==b?.id||JSON.stringify(a.versions)!==JSON.stringify(b.versions))throw Error('allocation-drift');
+           if(v.id!==a.versions[0].version_id)throw Error('version-identity-mismatch');
+           return {deploymentId:a.id,createdOn:a.created_on,versionId:v.id,percentage:100,versionNumber:v.number,versionCreatedOn:v.metadata?.created_on};
+          }
+          function expectedPR(pr) {
+           if(pr.head?.sha!==HEAD||pr.base?.ref!=='main'||pr.base?.repo?.full_name!=='cgam-coder/vigia-runtime'||pr.head?.repo?.full_name!=='cgam-coder/vigia-runtime')throw Error('PR245-drift');
+          }
+          
+          try {
+           const pr=await gh('/pulls/245');expectedPR(pr);
+           if(pr.merged||pr.state!=='open')throw Error('PR245-already-merged-or-closed');
+           if((await gh('/branches/main')).commit?.sha!==BASE)throw Error('runtime-main-drift');
+           const candidate=await gh('/git/commits/'+HEAD);
+           if(candidate.tree?.sha!==TREE||candidate.parents?.length!==1||candidate.parents[0].sha!==BASE)throw Error('candidate-tree-or-parent-drift');
+           out.active=await identity();
+           if(out.active.versionId!=='b763cb8a-3f7d-4472-afc8-9388c1f3e51a'||out.active.versionNumber!==86)throw Error('expected-production86-drift');
+           out.status='PASS';
+           fs.appendFileSync(process.env.GITHUB_OUTPUT,'rollback_version='+out.active.versionId+'\nobserved_at='+out.observedAt+'\n');
+          } catch(e) {out.status='HOLD';out.reason=e.message;process.exitCode=1;}
+          out.completedAt=new Date().toISOString();console.log('V17_F1D_IDENTITY_TERMINAL '+JSON.stringify(out));
+          NODE
+  release:
+    needs: identity
+    if: github.event.head_commit.message == 'V17 F1-D authorized GET-only observer' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 23
+    steps:
+      - name: Observe exact PR245 merge build logs and stable production allocation
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GH_READ_TOKEN: ${{ github.token }}
+          ROLLBACK_VERSION: ${{ needs.identity.outputs.rollback_version }}
+          OBSERVED_AT: ${{ needs.identity.outputs.observed_at }}
+        run: |
+          node --input-type=module <<'NODE'
+          const fs = await import('node:fs');
+          const CF_ROOT = 'https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          const GH_ROOT = 'https://api.github.com/repos/cgam-coder/vigia-runtime';
+          const BASE = '6c3f9a11d8252bf6e92321bf8141ed158c4b53b8';
+          const HEAD = 'a88c4b80026fbb2c4c04316e42c8fdd2393d2ac5';
+          const TREE = '233b42f6919c491a5094ac0904a00b71f4545f71';
+          const EXPIRES = Date.parse('2026-10-07T18:00:00Z');
+          const out = {phase:'V17-F1-D', observedAt:new Date().toISOString(), candidateHead:HEAD, candidateTree:TREE, productionMutationAttempts:0, reads:[]};
+          function guard() { if(Date.now()>EXPIRES) throw Error('expired'); }
+          async function cf(path) {
+           guard();
+           if(!/^\/(?:workers\/scripts(?:\/vigia-runtime\/(?:deployments|versions\/[a-f0-9-]{36}))?|builds\/workers\/[a-f0-9-]+\/builds\?per_page=10|builds\/builds\/[a-f0-9-]{36}(?:\/logs(?:\?cursor=[A-Za-z0-9_%.-]+)?)?)$/.test(path)) throw Error('cf-scope');
+           const r=await fetch(CF_ROOT+path,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN},signal:AbortSignal.timeout(15000)});
+           out.reads.push({service:'CF',path,http:r.status,at:new Date().toISOString()});
+           if(!r.ok)throw Error('CF-HTTP-'+r.status);const j=await r.json();if(!j.success)throw Error('CF-envelope');return j.result;
+          }
+          async function gh(path) {
+           guard();
+           if(!/^\/(?:pulls\/245|branches\/main|git\/commits\/[a-f0-9]{40})$/.test(path))throw Error('gh-scope');
+           const r=await fetch(GH_ROOT+path,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+process.env.GH_READ_TOKEN,Accept:'application/vnd.github+json'},signal:AbortSignal.timeout(15000)});
+           out.reads.push({service:'GH',path,http:r.status,at:new Date().toISOString()});
+           if(!r.ok)throw Error('GH-HTTP-'+r.status);return r.json();
+          }
+          async function identity() {
+           const a=(await cf('/workers/scripts/vigia-runtime/deployments')).deployments?.[0];
+           if(a?.versions?.length!==1||a.versions[0].percentage!==100)throw Error('production-allocation-ambiguous');
+           const v=await cf('/workers/scripts/vigia-runtime/versions/'+a.versions[0].version_id);
+           const b=(await cf('/workers/scripts/vigia-runtime/deployments')).deployments?.[0];
+           if(a.id!==b?.id||JSON.stringify(a.versions)!==JSON.stringify(b.versions))throw Error('allocation-drift');
+           if(v.id!==a.versions[0].version_id)throw Error('version-identity-mismatch');
+           return {deploymentId:a.id,createdOn:a.created_on,versionId:v.id,percentage:100,versionNumber:v.number,versionCreatedOn:v.metadata?.created_on};
+          }
+          function expectedPR(pr) {
+           if(pr.head?.sha!==HEAD||pr.base?.ref!=='main'||pr.base?.repo?.full_name!=='cgam-coder/vigia-runtime'||pr.head?.repo?.full_name!=='cgam-coder/vigia-runtime')throw Error('PR245-drift');
+          }
+          
+          try {
+           const notBefore=Date.parse(process.env.OBSERVED_AT);
+           if(!Number.isFinite(notBefore)||Date.now()-notBefore>180000)throw Error('identity-not-fresh');
+           const tag=(await cf('/workers/scripts')).find(x=>x.id==='vigia-runtime')?.tag;
+           if(!tag||!/^[a-f0-9-]+$/.test(tag))throw Error('worker-tag');
+           let merge=null, build=null;
+           for(let i=0;i<45;i++) {
+            const pr=await gh('/pulls/245');expectedPR(pr);
+            if(!pr.merged) {
+             if(pr.state!=='open'||(await gh('/branches/main')).commit?.sha!==BASE)throw Error('premerge-main-or-PR-drift');
+            } else {
+             if(!merge) {
+              merge=await gh('/git/commits/'+pr.merge_commit_sha);
+              if(merge.tree?.sha!==TREE||merge.parents?.length!==2||merge.parents[0].sha!==BASE||merge.parents[1].sha!==HEAD)throw Error('merge-tree-or-parents-mismatch');
+              if((await gh('/branches/main')).commit?.sha!==merge.sha)throw Error('main-not-exact-PR245-merge');
+              out.merge={sha:merge.sha,tree:merge.tree.sha,parents:merge.parents.map(x=>x.sha)};
+             }
+             const bs=await cf('/builds/workers/'+tag+'/builds?per_page=10');
+             const list=Array.isArray(bs)?bs:bs.builds||bs.results||[];
+             const matches=list.filter(b=>b.build_trigger_metadata?.branch==='main'&&b.build_trigger_metadata?.deploy_command==='npx wrangler deploy'&&b.build_trigger_metadata?.commit_hash===merge.sha&&Date.parse(b.created_on)>=notBefore);
+             if(matches.length>1)throw Error('multiple-exact-production-builds');
+             if(matches.length===1) {
+              build=await cf('/builds/builds/'+matches[0].build_uuid);
+              if(build.status==='stopped')break;
+             }
+            }
+            console.log('V17_F1D_PENDING '+JSON.stringify({at:new Date().toISOString(),iteration:i,merge:merge?.sha,build:build?.build_uuid,status:build?.status}));
+            if(i<44)await new Promise(r=>setTimeout(r,20000));
+           }
+           if(!merge||!build||build.status!=='stopped'||build.build_outcome!=='success')throw Error('exact-production-build-not-success');
+           const m=build.build_trigger_metadata;
+           if(m?.branch!=='main'||m.commit_hash!==merge.sha||m.build_command!=='npm run build:cloudflare'||m.deploy_command!=='npx wrangler deploy')throw Error('build-configuration-mismatch');
+           out.build={id:build.build_uuid,status:build.status,outcome:build.build_outcome,commit:m.commit_hash,branch:m.branch,buildCommand:m.build_command,deployCommand:m.deploy_command,createdOn:build.created_on,stoppedOn:build.stopped_on};
+           const strings=[];
+           function collect(v){if(typeof v==='string')strings.push(v);else if(Array.isArray(v))v.forEach(collect);else if(v&&typeof v==='object')Object.values(v).forEach(collect);}
+           out.logPages=[];let cursor='';
+           for(let p=0;p<12;p++) {
+            const logs=await cf('/builds/builds/'+build.build_uuid+'/logs'+(cursor?'?cursor='+encodeURIComponent(cursor):''));
+            out.logPages.push({page:p,truncated:logs.truncated});collect(logs.lines);collect(logs.events);
+            if(!logs.truncated)break;
+            if(!logs.cursor||logs.cursor===cursor)throw Error('log-pagination-stuck');cursor=logs.cursor;
+           }
+           if(out.logPages.at(-1).truncated)throw Error('incomplete-build-logs');
+           const all=strings.join('\n');
+           const testCounts=Array.from(all.matchAll(/ℹ tests\s+(\d+)/g),x=>Number(x[1]));
+           const passCounts=Array.from(all.matchAll(/ℹ pass\s+(\d+)/g),x=>Number(x[1]));
+           const failCounts=Array.from(all.matchAll(/ℹ fail\s+(\d+)/g),x=>Number(x[1]));
+           out.gates={unit:testCounts.includes(848)&&passCounts.includes(848),postBuild:testCounts.includes(115)&&passCounts.includes(115),zeroFailures:failCounts.length>=2&&failCounts.every(x=>x===0),typecheck:/Running Cloudflare CI: typecheck/.test(all),lint:/Running Cloudflare CI: lint/.test(all)&&/0 errors/.test(all),artifactSafety:/Validated cloudflare artifact: safety scan and ESM Worker default.fetch passed/.test(all)};
+           if(!Object.values(out.gates).every(Boolean))throw Error('technical-gate-evidence-missing');
+           out.evidenceLines=strings.flatMap(s=>s.split('\n')).filter(s=>/Running Cloudflare CI|ℹ tests |ℹ pass |ℹ fail |Validated cloudflare artifact|Version ID:|0 errors/i.test(s));
+           out.active=await identity();
+           out.deployedVersionFromBuildLog=all.match(/(?:Current )?Version ID:\s*([a-f0-9-]{36})/i)?.[1]||null;
+           if(out.deployedVersionFromBuildLog!==out.active.versionId||out.active.versionId===process.env.ROLLBACK_VERSION||out.active.versionNumber<=86)throw Error('build-active-version-unproven');
+           if((await gh('/branches/main')).commit?.sha!==merge.sha)throw Error('final-main-drift');
+           out.status='PASS';
+          } catch(e) {out.status='HOLD';out.reason=e.message;process.exitCode=1;}
+          out.completedAt=new Date().toISOString();console.log('V17_F1D_RELEASE_TERMINAL '+JSON.stringify(out));
+          NODE
