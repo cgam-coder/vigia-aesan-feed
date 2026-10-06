@@ -1,0 +1,541 @@
+# Pending explicit owner exception: one auxiliary workflow commit only.
+# No checkout, product/config writes, deploy, or Cloudflare mutation methods.
+# Browser steps run on isolated Actions hosts without Cloudflare credentials.
+name: V17 F1-B GET-only production observer and live smoke
+on:
+  push:
+    branches: [v17/f1b-production-observer-readonly]
+    paths: [".github/workflows/v17-f1b-observer.yml"]
+permissions:
+  contents: read
+jobs:
+  identity:
+    if: github.repository == 'cgam-coder/vigia-aesan-feed' && github.event.head_commit.message == 'V17 F1-B authorized GET-only observer' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    outputs:
+      rollback_version: ${{ steps.identity.outputs.rollback_version }}
+      observed_at: ${{ steps.identity.outputs.observed_at }}
+    steps:
+      - name: GET deployments version deployments
+        id: identity
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          const out={phase:'V17-F1-B',observedAt:new Date().toISOString(),productionMutationAttempts:0,candidateHead:'bad79c54387ede453e278c02f6733e1caf70d031',candidateTree:'7fd849d9492318940b6c4800067cc7f7ad8c79d9',reads:[]};
+          async function get(path){
+           if(Date.now()>Date.parse('2026-10-07T18:00:00Z'))throw Error('expired');
+           if(!/^\/(?:workers\/scripts(?:\/vigia-runtime\/(?:deployments|versions\/[a-f0-9-]{36}))?|builds\/workers\/[a-f0-9-]+\/builds\?per_page=10|builds\/builds\/[a-f0-9-]{36}(?:\/logs(?:\?cursor=[A-Za-z0-9_%.-]+)?)?)$/.test(path))throw Error('scope');
+           const r=await fetch(root+path,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN},signal:AbortSignal.timeout(15000)});
+           out.reads.push({path,http:r.status,at:new Date().toISOString()});
+           if(!r.ok)throw Error('HTTP-'+r.status);const j=await r.json();if(!j.success)throw Error('envelope');return j.result;
+          }
+          async function identity(){
+           const a=(await get('/workers/scripts/vigia-runtime/deployments')).deployments?.[0];
+           if(a?.versions?.length!==1||a.versions[0].percentage!==100)throw Error('production-ambiguous');
+           const v=await get('/workers/scripts/vigia-runtime/versions/'+a.versions[0].version_id);
+           const end=(await get('/workers/scripts/vigia-runtime/deployments')).deployments?.[0];
+           if(end?.id!==a.id||JSON.stringify(end.versions)!==JSON.stringify(a.versions))throw Error('allocation-drift');
+           return {deploymentId:a.id,createdOn:a.created_on,versionId:v.id,percentage:100,versionNumber:v.number,versionCreatedOn:v.metadata?.created_on};
+          }
+          
+          try{out.active=await identity();if(out.active.versionId!=='423e1605-fe1d-48e3-a767-2828d13bf905'||out.active.versionNumber!==85)throw Error('rollback-baseline-drift');out.status='PASS';}catch(e){out.status='HOLD';out.reason=e.message;process.exitCode=1;}
+          out.completedAt=new Date().toISOString();const fs=await import('node:fs');fs.mkdirSync('evidence',{recursive:true});fs.writeFileSync('evidence/identity.json',JSON.stringify(out,null,2));console.log('V17_F1B_IDENTITY_TERMINAL '+JSON.stringify(out));
+          if(out.status==='PASS'){const fs=await import('node:fs');fs.appendFileSync(process.env.GITHUB_OUTPUT,'rollback_version='+out.active.versionId+'\nobserved_at='+out.observedAt+'\n');}
+          NODE
+      - name: Prepare pinned isolated live browser
+        run: |
+          npm install --no-save --ignore-scripts playwright@1.62.1
+          npx playwright install --with-deps chromium
+          cat > smoke.mjs <<'JS'
+          // Proposed, not executed: live read-only QA in an isolated Actions runner.
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          import { chromium } from 'playwright';
+          const phase = process.argv[2];
+          assert.ok(['before', 'after'].includes(phase));
+          assert.ok(Date.now() <= Date.parse('2026-10-07T18:00:00Z'), 'expired');
+          const out = 'evidence', origin = 'https://nagamealert.com';
+          fs.mkdirSync(out, { recursive: true });
+          const prior = phase === 'after' ? JSON.parse(fs.readFileSync(out + '/before.json')) : null;
+          const report = { phase, at: new Date().toISOString(), method: 'Live production HTML/CSS/JS/API, GET/HEAD only, no fixtures or response substitution', rows: [], errors: [] };
+          const browser = await chromium.launch({ headless: true });
+          const save = () => fs.writeFileSync(out + '/' + phase + '.json', JSON.stringify(report, null, 2));
+          async function run(key, task) {
+            const row = { key, status: 'RUNNING' }; report.rows.push(row);
+            try { await task(row); row.status = 'PASS'; }
+            catch (e) { row.status = 'FAIL'; row.reason = e.stack; }
+            save(); console.log('V17_SMOKE_ROW ' + JSON.stringify({ phase, key, status: row.status, reason: row.reason }));
+          }
+          async function context(width, theme) {
+            const c = await browser.newContext({ viewport: { width, height: width === 1363 ? 768 : width === 390 ? 844 : 700 }, colorScheme: theme, reducedMotion: 'reduce', hasTouch: width <= 390 });
+            await c.addInitScript(t => { localStorage.setItem('nagamealert-theme', t); localStorage.setItem('nagamealert.analytics-consent.v1', JSON.stringify({ version: 1, choice: 'rejected', updatedAt: Date.now() })); }, theme);
+            await c.route('**/*', r => Date.now() <= Date.parse('2026-10-07T18:00:00Z') && ['GET', 'HEAD'].includes(r.request().method()) ? r.continue() : r.abort('blockedbyclient'));
+            const p = await c.newPage(); p.setDefaultTimeout(15000);
+            p.on('pageerror', e => report.errors.push(e.message));
+            return { c, p };
+          }
+          async function ready(p, terminal = true) {
+            if (terminal) await p.locator('.na-terminal-results[aria-busy="false"]').waitFor({ timeout: 45000 });
+            await p.evaluate(async () => { await document.fonts.ready; await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); });
+            await p.waitForTimeout(150);
+            assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, 'no horizontal overflow');
+          }
+          async function go(p, route, terminal = true) {
+            const r = await p.goto(origin + route, { waitUntil: 'domcontentloaded', timeout: 45000 });
+            assert.equal(r.status(), 200); await ready(p, terminal);
+          }
+          async function box(p, selector) {
+            return p.locator(selector).first().evaluate(n => { const r = n.getBoundingClientRect(), s = getComputedStyle(n); return { top: r.top, bottom: r.bottom, width: r.width, height: r.height, inset: parseFloat(s.top), position: s.position, overflow: s.overflowY, maxHeight: s.maxHeight, scrollHeight: n.scrollHeight, clientHeight: n.clientHeight, scrollTop: n.scrollTop }; });
+          }
+          async function screenshot(p, key) { await p.screenshot({ path: out + '/' + phase + '-' + key + '.png', animations: 'disabled' }); }
+          async function terminal(source, theme) {
+            const key = 'desktop-' + (source || 'ALL').replaceAll(' ', '-') + '-' + theme;
+            await run(key, async row => {
+              const { c, p } = await context(1363, theme);
+              try {
+                const route = '/es/alertas?period=' + (source ? '30d' : '7d') + (source ? '&source=' + encodeURIComponent(source) : '');
+                await go(p, route);
+                row.count = await p.locator('.na-alert-card').count();
+                row.panorama = source ? null : await box(p, '.na-terminal-panorama');
+                row.filters = await box(p, '.na-terminal-filters');
+                row.cards = await p.locator('.na-alert-card').evaluateAll(ns => ns.slice(0, 3).map(n => ({ href: n.querySelector('h3 a').getAttribute('href'), height: n.getBoundingClientRect().height, padding: getComputedStyle(n).padding, title: n.querySelector('h3').textContent, clamp: getComputedStyle(n.querySelector('h3')).webkitLineClamp })));
+                if (phase === 'after') {
+                  assert.ok(!['auto', 'scroll'].includes(row.filters.overflow));
+                  assert.equal(await p.locator('h1').count(), 1);
+                  assert.equal(await p.locator('#terminal-results-title').count(), 1);
+                  assert.equal(await p.locator('.na-terminal-results').getAttribute('aria-labelledby'), 'terminal-results-title');
+                  row.typography = await p.locator('.na-terminal-results-context h2,.na-terminal-results-context p').evaluateAll(ns => ns.map(n => { const s = getComputedStyle(n); return { size: s.fontSize, line: s.lineHeight, weight: s.fontWeight, top: n.getBoundingClientRect().top }; }));
+                  assert.equal(new Set(row.typography.map(x => x.size)).size, 1);
+                  assert.equal(new Set(row.typography.map(x => x.line)).size, 1);
+                  assert.ok(Number(row.typography[0].weight) > Number(row.typography[1].weight));
+                  assert.ok(Math.max(...row.typography.map(x => x.top)) - Math.min(...row.typography.map(x => x.top)) <= 2);
+                  if (!source) {
+                    assert.ok(row.filters.bottom <= 768 && row.panorama.bottom <= 768, 'ALL panels fit');
+                    assert.equal(await p.locator('.na-terminal-panorama__distribution li').count(), 5);
+                    const donut = await box(p, '.na-terminal-panorama__donut'); assert.equal(donut.width, 124); assert.equal(donut.height, 124);
+                    assert.equal(await p.locator('.na-terminal-panorama').evaluate(n => getComputedStyle(n, '::after').content), 'none');
+                    const old = prior.rows.find(r => r.key === key); assert.ok(old && old.status === 'PASS');
+                    assert.ok(row.filters.height < old.filters.height && row.panorama.height < old.panorama.height);
+                    row.density = row.cards.map(card => { const oldCard = old.cards.find(x => x.href === card.href); return { href: card.href, before: oldCard?.height ?? null, after: card.height, reduction: oldCard ? 1 - card.height / oldCard.height : null }; });
+                    for (const card of row.cards) assert.ok(card.clamp === 'none' || card.clamp === 'unset');
+                  }
+                }
+                if (source) {
+                  await p.locator('.na-terminal-map__viewport').waitFor();
+                  row.map = await box(p, '.na-terminal-map');
+                  if (phase === 'after') { assert.equal(row.map.maxHeight, 'none'); assert.equal(row.map.overflow, 'visible'); assert.ok(row.map.scrollHeight <= row.map.clientHeight + 1); }
+                }
+                await screenshot(p, key + '-initial');
+                row.scroll = [];
+                for (const y of [500, 1500, 3000]) {
+                  await p.evaluate(y => scrollTo(0, y), y); await p.waitForTimeout(150);
+                  const state = { y: await p.evaluate(() => scrollY), source: await box(p, '.na-terminal-sourcebar'), band: await box(p, '.na-terminal-context-band'), filters: await box(p, '.na-terminal-filters'), grid: await box(p, '.na-terminal__grid'), map: source ? await box(p, '.na-terminal-map') : null };
+                  row.scroll.push(state);
+                  if (phase === 'after') {
+                    assert.ok(state.band.top >= state.source.bottom - 1, 'context below sources');
+                    assert.ok(Math.abs(state.filters.top - state.filters.inset) <= 1 || Math.abs(state.filters.bottom - state.grid.bottom) <= 2, 'sticky filters or normal footer release');
+                    if (state.map) { assert.ok(Math.abs(state.map.top - state.map.inset) <= 1 || Math.abs(state.map.bottom - state.grid.bottom) <= 2); assert.equal(state.map.scrollTop, 0); }
+                  }
+                }
+                await screenshot(p, key + '-scroll');
+                await p.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await p.waitForTimeout(150);
+                const footer = await box(p, '.na-public-footer');
+                if (phase === 'after') { assert.ok((await box(p, '.na-terminal-filters')).bottom <= footer.top + 1); if (source) assert.ok((await box(p, '.na-terminal-map')).bottom <= footer.top + 1); }
+                await screenshot(p, key + '-footer');
+              } finally { await c.close(); }
+            });
+          }
+          async function mobile(width, theme) {
+            const key = 'mobile-' + width + '-' + theme;
+            await run(key, async row => {
+              const { c, p } = await context(width, theme);
+              try {
+                await go(p, '/es/alertas?period=30d&source=AESAN');
+                row.geometry = await p.locator('.na-public-header,.na-terminal-sourcebar,.na-terminal-mobile-toolbar').evaluateAll(ns => ns.map(n => { const r = n.getBoundingClientRect(), s = getComputedStyle(n); return { class: n.className, width: r.width, height: r.height, padding: s.padding, position: s.position }; }));
+                if (phase === 'after') assert.deepEqual(row.geometry, prior.rows.find(r => r.key === key).geometry);
+                await p.locator('.na-terminal-filter-trigger').tap(); await p.locator('.na-terminal-filters__body').waitFor();
+                assert.equal(await p.locator('.na-terminal-filters__body').evaluate(n => getComputedStyle(n).overflowY), 'auto');
+                await p.keyboard.press('Escape'); assert.equal(await p.locator('.na-terminal-filters').getAttribute('open'), null);
+                assert.equal(await p.locator('.na-terminal-filter-trigger').evaluate(n => n === document.activeElement), true);
+                await screenshot(p, key);
+              } finally { await c.close(); }
+            });
+          }
+          async function mapActions(theme, width) {
+            const key = 'map-actions-' + theme + '-' + width;
+            await run(key, async row => {
+              const { c, p } = await context(width, theme);
+              try {
+                await go(p, '/es/alertas?period=30d&source=RASFF');
+                if (!(await p.locator('.na-alert-card__map-action').count())) { row.naturallyUnobservable = 'No live detailed RASFF record'; return; }
+                await p.locator('.na-alert-card__map-action').first().click(); await p.locator('.na-alert-card[data-map-selected="true"]').waitFor();
+                await p.waitForFunction(() => document.querySelector('.na-terminal-map .na-geo-map-geometry [data-code]'));
+                const camera = () => p.locator('.na-terminal-map__pan,.na-terminal-map__fit,.na-terminal-map__layer').evaluateAll(ns => ns.map(n => n.getAttribute('style')));
+                const selected = await camera(); await p.locator('.na-terminal-map__controls button').first().click(); await p.waitForTimeout(100);
+                assert.notDeepEqual(await camera(), selected);
+                await p.locator('.na-terminal-map__viewport').press('ArrowRight'); await p.locator('.na-terminal-map__controls button').last().click(); await p.waitForTimeout(100);
+                assert.deepEqual(await camera(), selected, 'map reset');
+                await p.locator('.na-terminal-map__back').click(); await p.waitForTimeout(100);
+                assert.equal(await p.locator('.na-alert-card[data-map-selected="true"]').count(), 0);
+                await screenshot(p, key);
+              } finally { await c.close(); }
+            });
+          }
+          async function filters(theme) {
+            await run('filters-pagination-' + theme, async row => {
+              const { c, p } = await context(1363, theme);
+              try {
+                await go(p, '/es/alertas?period=30d&source=AESAN');
+                const radio = p.locator('.na-terminal-aesan-types input[type="radio"]'); assert.ok(await radio.count() >= 3);
+                assert.equal(await radio.first().evaluate(n => getComputedStyle(n).appearance), 'auto');
+                const response = p.waitForResponse(r => r.url().includes('/api/terminal/alerts?') && new URL(r.url()).searchParams.get('country') === 'ES');
+                await p.locator('#terminal-country').selectOption('ES'); const d = await (await response).json(); await ready(p);
+                assert.equal(await p.locator('.na-alert-card').count(), d.items.length);
+                assert.equal(await p.locator('#terminal-results-title').evaluate(n => n === document.activeElement), true);
+                await p.locator('.na-terminal-filter-actions button[data-variant="quiet"]').click(); await ready(p);
+                await p.locator('#terminal-period-desktop').selectOption('custom'); await ready(p);
+                assert.equal(await p.locator('#terminal-from').getAttribute('type'), 'date'); assert.equal(await p.locator('#terminal-to').getAttribute('type'), 'date');
+                await go(p, '/es/alertas?period=30d');
+                if (await p.locator('.na-alert-pagination button').count()) { await p.locator('.na-alert-pagination button').click(); await p.waitForURL('**cursor=**'); await ready(p); await p.goBack(); await ready(p); assert.ok(!new URL(p.url()).searchParams.has('cursor')); }
+                else row.pagination = 'Naturally unobservable: fewer than one page';
+              } finally { await c.close(); }
+            });
+          }
+          async function preserve(theme) {
+            await run('preservation-' + theme, async row => {
+              const { c, p } = await context(1363, theme);
+              try {
+                row.routes = [];
+                for (const route of ['/es/', '/es/fuentes', '/es/metodologia', '/es/fuentes/aesan', '/es/fuentes/rapna', '/es/fuentes/rasff', '/es/fuentes/safety-gate', '/es/fuentes/oecd']) {
+                  await go(p, route, false); row.routes.push({ route, footer: await p.locator('.na-public-footer a').evaluateAll(ns => ns.map(n => [n.textContent, n.getAttribute('href')])) });
+                  if (route === '/es/') assert.equal(await p.locator('[data-home-version]').getAttribute('data-home-version'), 'f7-pixel-locked');
+                }
+                await go(p, '/es/fuentes/aesan', false); const detail = await p.locator('.na-source-authority__latest li a').first().getAttribute('href');
+                await go(p, detail, false); assert.equal(await p.locator('h1').count(), 1); assert.equal(await p.locator('.na-alert-detail__hero').count(), 1);
+                row.detail = detail;
+                if (phase === 'after') assert.deepEqual(row.routes, prior.rows.find(r => r.key === 'preservation-' + theme).routes);
+                await screenshot(p, 'detail-' + theme);
+              } finally { await c.close(); }
+            });
+          }
+          try {
+            for (const theme of ['light', 'dark']) {
+              for (const source of ['', 'AESAN', 'RAPNA', 'RASFF', 'SAFETY GATE', 'OECD']) await terminal(source, theme);
+              for (const width of [390, 320]) await mobile(width, theme);
+              await mapActions(theme, 1363); await mapActions(theme, 320); await filters(theme); await preserve(theme);
+            }
+            report.status = report.rows.every(r => r.status === 'PASS') && !report.errors.length ? 'PASS' : 'HOLD'; save();
+            console.log('V17_LIVE_SMOKE_TERMINAL ' + JSON.stringify({ phase, status: report.status, groups: report.rows.length, errors: report.errors, failed: report.rows.filter(r => r.status !== 'PASS').map(r => r.key) }));
+            if (report.status !== 'PASS') process.exitCode = 1;
+          } finally { save(); await browser.close(); }
+          JS
+      - name: Live baseline read-only smoke
+        run: node smoke.mjs before
+      - name: Seal unchanged rollback after baseline smoke
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ROLLBACK_VERSION: ${{ steps.identity.outputs.rollback_version }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/workers/scripts/vigia-runtime';
+          if(Date.now()>Date.parse('2026-10-07T18:00:00Z'))throw Error('expired');
+          async function read(){const r=await fetch(root+'/deployments',{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN},signal:AbortSignal.timeout(15000)});if(!r.ok)throw Error('HTTP-'+r.status);const j=await r.json();if(!j.success)throw Error('envelope');return j.result.deployments?.[0];}
+          const a=await read(),b=await read();
+          if(a?.versions?.length!==1||a.versions[0].version_id!==process.env.ROLLBACK_VERSION||a.versions[0].percentage!==100||JSON.stringify(a)!==JSON.stringify(b))throw Error('rollback-drift');
+          const seal={at:new Date().toISOString(),deploymentId:a.id,versions:a.versions,productionMutationAttempts:0};fs.writeFileSync('evidence/rollback-seal.json',JSON.stringify(seal,null,2));console.log('V17_F1B_ROLLBACK_SEAL '+JSON.stringify(seal));
+          NODE
+      - name: Save baseline and rollback evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v17-f1b-before
+          path: evidence/
+          retention-days: 7
+  release:
+    needs: identity
+    if: github.repository == 'cgam-coder/vigia-aesan-feed' && github.event.head_commit.message == 'V17 F1-B authorized GET-only observer' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    steps:
+      - name: Load sealed baseline
+        uses: actions/download-artifact@v4
+        with:
+          name: v17-f1b-before
+          path: evidence/
+      - name: Observe new production build logs and stable allocation
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ROLLBACK_VERSION: ${{ needs.identity.outputs.rollback_version }}
+          OBSERVED_AT: ${{ needs.identity.outputs.observed_at }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          const out={phase:'V17-F1-B',observedAt:new Date().toISOString(),productionMutationAttempts:0,candidateHead:'bad79c54387ede453e278c02f6733e1caf70d031',candidateTree:'7fd849d9492318940b6c4800067cc7f7ad8c79d9',reads:[]};
+          async function get(path){
+           if(Date.now()>Date.parse('2026-10-07T18:00:00Z'))throw Error('expired');
+           if(!/^\/(?:workers\/scripts(?:\/vigia-runtime\/(?:deployments|versions\/[a-f0-9-]{36}))?|builds\/workers\/[a-f0-9-]+\/builds\?per_page=10|builds\/builds\/[a-f0-9-]{36}(?:\/logs(?:\?cursor=[A-Za-z0-9_%.-]+)?)?)$/.test(path))throw Error('scope');
+           const r=await fetch(root+path,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN},signal:AbortSignal.timeout(15000)});
+           out.reads.push({path,http:r.status,at:new Date().toISOString()});
+           if(!r.ok)throw Error('HTTP-'+r.status);const j=await r.json();if(!j.success)throw Error('envelope');return j.result;
+          }
+          async function identity(){
+           const a=(await get('/workers/scripts/vigia-runtime/deployments')).deployments?.[0];
+           if(a?.versions?.length!==1||a.versions[0].percentage!==100)throw Error('production-ambiguous');
+           const v=await get('/workers/scripts/vigia-runtime/versions/'+a.versions[0].version_id);
+           const end=(await get('/workers/scripts/vigia-runtime/deployments')).deployments?.[0];
+           if(end?.id!==a.id||JSON.stringify(end.versions)!==JSON.stringify(a.versions))throw Error('allocation-drift');
+           return {deploymentId:a.id,createdOn:a.created_on,versionId:v.id,percentage:100,versionNumber:v.number,versionCreatedOn:v.metadata?.created_on};
+          }
+          
+          const baseline='f70b58f6785d0c401814e8f834a1e8906f2213fd',notBefore=Date.parse(process.env.OBSERVED_AT);
+          try{
+           const tag=(await get('/workers/scripts')).find(x=>x.id==='vigia-runtime')?.tag;if(!tag)throw Error('worker-tag');
+           let build;
+           for(let i=0;i<45;i++){
+            const bs=await get('/builds/workers/'+tag+'/builds?per_page=10'),list=Array.isArray(bs)?bs:bs.builds||bs.results||[];
+            const matches=list.filter(b=>b.build_trigger_metadata?.branch==='main'&&b.build_trigger_metadata?.deploy_command==='npx wrangler deploy'&&b.build_trigger_metadata?.commit_hash!==baseline&&Date.parse(b.created_on)>=notBefore);
+            if(matches.length>1)throw Error('multiple-new-production-builds');
+            if(matches.length===1){build=await get('/builds/builds/'+matches[0].build_uuid);if(build.status==='stopped')break;}
+            console.log('V17_F1B_BUILD_PENDING '+JSON.stringify({at:new Date().toISOString(),id:build?.build_uuid,status:build?.status}));
+            await new Promise(r=>setTimeout(r,20000));
+           }
+           if(!build)throw Error('new-production-build-not-found');
+           out.build={id:build.build_uuid,status:build.status,outcome:build.build_outcome,commit:build.build_trigger_metadata.commit_hash,branch:build.build_trigger_metadata.branch,buildCommand:build.build_trigger_metadata.build_command,deployCommand:build.build_trigger_metadata.deploy_command,createdOn:build.created_on,stoppedOn:build.stopped_on};
+           if(build.status!=='stopped'||build.build_outcome!=='success')throw Error('production-build-not-success');
+           const strings=[];function collect(v){if(typeof v==='string')strings.push(v);else if(Array.isArray(v))v.forEach(collect);else if(v&&typeof v==='object')Object.values(v).forEach(collect);}
+           out.logPages=[];let cursor='';
+           for(let p=0;p<12;p++){
+            const logs=await get('/builds/builds/'+build.build_uuid+'/logs'+(cursor?'?cursor='+encodeURIComponent(cursor):''));
+            out.logPages.push({page:p,lines:logs.lines?.length,cursor:logs.cursor,truncated:logs.truncated});
+            collect(logs.lines);collect(logs.events);
+            if(!logs.truncated)break;
+            if(!logs.cursor||logs.cursor===cursor)throw Error('log-pagination-stuck');cursor=logs.cursor;
+           }
+           if(out.logPages.at(-1).truncated)throw Error('logs-not-complete');
+           const all=strings.join('\n');
+           out.evidenceLines=strings.flatMap(s=>s.split('\n')).filter(s=>/Running Cloudflare CI|ℹ tests |ℹ pass |ℹ fail |Validated cloudflare artifact|Version ID:|0 errors|post.build/i.test(s));
+           out.gates={unit:/tests 843/.test(all)&&/pass 843/.test(all),postBuild:/tests 115/.test(all)&&/pass 115/.test(all),typecheck:/Running Cloudflare CI: typecheck/.test(all),lint:/0 errors/.test(all),artifactSafety:/Validated cloudflare artifact: safety scan and ESM Worker default.fetch passed/.test(all)};
+           if(!Object.values(out.gates).every(Boolean))throw Error('technical-gate-evidence-missing');
+           out.active=await identity();
+           out.deployedVersionFromBuildLog=all.match(/(?:Current )?Version ID:\s*([a-f0-9-]{36})/i)?.[1]||null;
+           if(out.deployedVersionFromBuildLog!==out.active.versionId)throw Error('build-active-version-unproven');
+           if(out.active.versionId===process.env.ROLLBACK_VERSION)throw Error('still-rollback-version');
+           out.status='PASS';
+          }catch(e){out.status='HOLD';out.reason=e.message;process.exitCode=1;}
+          out.completedAt=new Date().toISOString();const fs=await import('node:fs');fs.writeFileSync('evidence/release.json',JSON.stringify(out,null,2));console.log('V17_F1B_RELEASE_TERMINAL '+JSON.stringify(out));
+          NODE
+      - name: Prepare pinned isolated live browser
+        run: |
+          npm install --no-save --ignore-scripts playwright@1.62.1
+          npx playwright install --with-deps chromium
+          cat > smoke.mjs <<'JS'
+          // Proposed, not executed: live read-only QA in an isolated Actions runner.
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          import { chromium } from 'playwright';
+          const phase = process.argv[2];
+          assert.ok(['before', 'after'].includes(phase));
+          assert.ok(Date.now() <= Date.parse('2026-10-07T18:00:00Z'), 'expired');
+          const out = 'evidence', origin = 'https://nagamealert.com';
+          fs.mkdirSync(out, { recursive: true });
+          const prior = phase === 'after' ? JSON.parse(fs.readFileSync(out + '/before.json')) : null;
+          const report = { phase, at: new Date().toISOString(), method: 'Live production HTML/CSS/JS/API, GET/HEAD only, no fixtures or response substitution', rows: [], errors: [] };
+          const browser = await chromium.launch({ headless: true });
+          const save = () => fs.writeFileSync(out + '/' + phase + '.json', JSON.stringify(report, null, 2));
+          async function run(key, task) {
+            const row = { key, status: 'RUNNING' }; report.rows.push(row);
+            try { await task(row); row.status = 'PASS'; }
+            catch (e) { row.status = 'FAIL'; row.reason = e.stack; }
+            save(); console.log('V17_SMOKE_ROW ' + JSON.stringify({ phase, key, status: row.status, reason: row.reason }));
+          }
+          async function context(width, theme) {
+            const c = await browser.newContext({ viewport: { width, height: width === 1363 ? 768 : width === 390 ? 844 : 700 }, colorScheme: theme, reducedMotion: 'reduce', hasTouch: width <= 390 });
+            await c.addInitScript(t => { localStorage.setItem('nagamealert-theme', t); localStorage.setItem('nagamealert.analytics-consent.v1', JSON.stringify({ version: 1, choice: 'rejected', updatedAt: Date.now() })); }, theme);
+            await c.route('**/*', r => Date.now() <= Date.parse('2026-10-07T18:00:00Z') && ['GET', 'HEAD'].includes(r.request().method()) ? r.continue() : r.abort('blockedbyclient'));
+            const p = await c.newPage(); p.setDefaultTimeout(15000);
+            p.on('pageerror', e => report.errors.push(e.message));
+            return { c, p };
+          }
+          async function ready(p, terminal = true) {
+            if (terminal) await p.locator('.na-terminal-results[aria-busy="false"]').waitFor({ timeout: 45000 });
+            await p.evaluate(async () => { await document.fonts.ready; await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); });
+            await p.waitForTimeout(150);
+            assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, 'no horizontal overflow');
+          }
+          async function go(p, route, terminal = true) {
+            const r = await p.goto(origin + route, { waitUntil: 'domcontentloaded', timeout: 45000 });
+            assert.equal(r.status(), 200); await ready(p, terminal);
+          }
+          async function box(p, selector) {
+            return p.locator(selector).first().evaluate(n => { const r = n.getBoundingClientRect(), s = getComputedStyle(n); return { top: r.top, bottom: r.bottom, width: r.width, height: r.height, inset: parseFloat(s.top), position: s.position, overflow: s.overflowY, maxHeight: s.maxHeight, scrollHeight: n.scrollHeight, clientHeight: n.clientHeight, scrollTop: n.scrollTop }; });
+          }
+          async function screenshot(p, key) { await p.screenshot({ path: out + '/' + phase + '-' + key + '.png', animations: 'disabled' }); }
+          async function terminal(source, theme) {
+            const key = 'desktop-' + (source || 'ALL').replaceAll(' ', '-') + '-' + theme;
+            await run(key, async row => {
+              const { c, p } = await context(1363, theme);
+              try {
+                const route = '/es/alertas?period=' + (source ? '30d' : '7d') + (source ? '&source=' + encodeURIComponent(source) : '');
+                await go(p, route);
+                row.count = await p.locator('.na-alert-card').count();
+                row.panorama = source ? null : await box(p, '.na-terminal-panorama');
+                row.filters = await box(p, '.na-terminal-filters');
+                row.cards = await p.locator('.na-alert-card').evaluateAll(ns => ns.slice(0, 3).map(n => ({ href: n.querySelector('h3 a').getAttribute('href'), height: n.getBoundingClientRect().height, padding: getComputedStyle(n).padding, title: n.querySelector('h3').textContent, clamp: getComputedStyle(n.querySelector('h3')).webkitLineClamp })));
+                if (phase === 'after') {
+                  assert.ok(!['auto', 'scroll'].includes(row.filters.overflow));
+                  assert.equal(await p.locator('h1').count(), 1);
+                  assert.equal(await p.locator('#terminal-results-title').count(), 1);
+                  assert.equal(await p.locator('.na-terminal-results').getAttribute('aria-labelledby'), 'terminal-results-title');
+                  row.typography = await p.locator('.na-terminal-results-context h2,.na-terminal-results-context p').evaluateAll(ns => ns.map(n => { const s = getComputedStyle(n); return { size: s.fontSize, line: s.lineHeight, weight: s.fontWeight, top: n.getBoundingClientRect().top }; }));
+                  assert.equal(new Set(row.typography.map(x => x.size)).size, 1);
+                  assert.equal(new Set(row.typography.map(x => x.line)).size, 1);
+                  assert.ok(Number(row.typography[0].weight) > Number(row.typography[1].weight));
+                  assert.ok(Math.max(...row.typography.map(x => x.top)) - Math.min(...row.typography.map(x => x.top)) <= 2);
+                  if (!source) {
+                    assert.ok(row.filters.bottom <= 768 && row.panorama.bottom <= 768, 'ALL panels fit');
+                    assert.equal(await p.locator('.na-terminal-panorama__distribution li').count(), 5);
+                    const donut = await box(p, '.na-terminal-panorama__donut'); assert.equal(donut.width, 124); assert.equal(donut.height, 124);
+                    assert.equal(await p.locator('.na-terminal-panorama').evaluate(n => getComputedStyle(n, '::after').content), 'none');
+                    const old = prior.rows.find(r => r.key === key); assert.ok(old && old.status === 'PASS');
+                    assert.ok(row.filters.height < old.filters.height && row.panorama.height < old.panorama.height);
+                    row.density = row.cards.map(card => { const oldCard = old.cards.find(x => x.href === card.href); return { href: card.href, before: oldCard?.height ?? null, after: card.height, reduction: oldCard ? 1 - card.height / oldCard.height : null }; });
+                    for (const card of row.cards) assert.ok(card.clamp === 'none' || card.clamp === 'unset');
+                  }
+                }
+                if (source) {
+                  await p.locator('.na-terminal-map__viewport').waitFor();
+                  row.map = await box(p, '.na-terminal-map');
+                  if (phase === 'after') { assert.equal(row.map.maxHeight, 'none'); assert.equal(row.map.overflow, 'visible'); assert.ok(row.map.scrollHeight <= row.map.clientHeight + 1); }
+                }
+                await screenshot(p, key + '-initial');
+                row.scroll = [];
+                for (const y of [500, 1500, 3000]) {
+                  await p.evaluate(y => scrollTo(0, y), y); await p.waitForTimeout(150);
+                  const state = { y: await p.evaluate(() => scrollY), source: await box(p, '.na-terminal-sourcebar'), band: await box(p, '.na-terminal-context-band'), filters: await box(p, '.na-terminal-filters'), grid: await box(p, '.na-terminal__grid'), map: source ? await box(p, '.na-terminal-map') : null };
+                  row.scroll.push(state);
+                  if (phase === 'after') {
+                    assert.ok(state.band.top >= state.source.bottom - 1, 'context below sources');
+                    assert.ok(Math.abs(state.filters.top - state.filters.inset) <= 1 || Math.abs(state.filters.bottom - state.grid.bottom) <= 2, 'sticky filters or normal footer release');
+                    if (state.map) { assert.ok(Math.abs(state.map.top - state.map.inset) <= 1 || Math.abs(state.map.bottom - state.grid.bottom) <= 2); assert.equal(state.map.scrollTop, 0); }
+                  }
+                }
+                await screenshot(p, key + '-scroll');
+                await p.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await p.waitForTimeout(150);
+                const footer = await box(p, '.na-public-footer');
+                if (phase === 'after') { assert.ok((await box(p, '.na-terminal-filters')).bottom <= footer.top + 1); if (source) assert.ok((await box(p, '.na-terminal-map')).bottom <= footer.top + 1); }
+                await screenshot(p, key + '-footer');
+              } finally { await c.close(); }
+            });
+          }
+          async function mobile(width, theme) {
+            const key = 'mobile-' + width + '-' + theme;
+            await run(key, async row => {
+              const { c, p } = await context(width, theme);
+              try {
+                await go(p, '/es/alertas?period=30d&source=AESAN');
+                row.geometry = await p.locator('.na-public-header,.na-terminal-sourcebar,.na-terminal-mobile-toolbar').evaluateAll(ns => ns.map(n => { const r = n.getBoundingClientRect(), s = getComputedStyle(n); return { class: n.className, width: r.width, height: r.height, padding: s.padding, position: s.position }; }));
+                if (phase === 'after') assert.deepEqual(row.geometry, prior.rows.find(r => r.key === key).geometry);
+                await p.locator('.na-terminal-filter-trigger').tap(); await p.locator('.na-terminal-filters__body').waitFor();
+                assert.equal(await p.locator('.na-terminal-filters__body').evaluate(n => getComputedStyle(n).overflowY), 'auto');
+                await p.keyboard.press('Escape'); assert.equal(await p.locator('.na-terminal-filters').getAttribute('open'), null);
+                assert.equal(await p.locator('.na-terminal-filter-trigger').evaluate(n => n === document.activeElement), true);
+                await screenshot(p, key);
+              } finally { await c.close(); }
+            });
+          }
+          async function mapActions(theme, width) {
+            const key = 'map-actions-' + theme + '-' + width;
+            await run(key, async row => {
+              const { c, p } = await context(width, theme);
+              try {
+                await go(p, '/es/alertas?period=30d&source=RASFF');
+                if (!(await p.locator('.na-alert-card__map-action').count())) { row.naturallyUnobservable = 'No live detailed RASFF record'; return; }
+                await p.locator('.na-alert-card__map-action').first().click(); await p.locator('.na-alert-card[data-map-selected="true"]').waitFor();
+                await p.waitForFunction(() => document.querySelector('.na-terminal-map .na-geo-map-geometry [data-code]'));
+                const camera = () => p.locator('.na-terminal-map__pan,.na-terminal-map__fit,.na-terminal-map__layer').evaluateAll(ns => ns.map(n => n.getAttribute('style')));
+                const selected = await camera(); await p.locator('.na-terminal-map__controls button').first().click(); await p.waitForTimeout(100);
+                assert.notDeepEqual(await camera(), selected);
+                await p.locator('.na-terminal-map__viewport').press('ArrowRight'); await p.locator('.na-terminal-map__controls button').last().click(); await p.waitForTimeout(100);
+                assert.deepEqual(await camera(), selected, 'map reset');
+                await p.locator('.na-terminal-map__back').click(); await p.waitForTimeout(100);
+                assert.equal(await p.locator('.na-alert-card[data-map-selected="true"]').count(), 0);
+                await screenshot(p, key);
+              } finally { await c.close(); }
+            });
+          }
+          async function filters(theme) {
+            await run('filters-pagination-' + theme, async row => {
+              const { c, p } = await context(1363, theme);
+              try {
+                await go(p, '/es/alertas?period=30d&source=AESAN');
+                const radio = p.locator('.na-terminal-aesan-types input[type="radio"]'); assert.ok(await radio.count() >= 3);
+                assert.equal(await radio.first().evaluate(n => getComputedStyle(n).appearance), 'auto');
+                const response = p.waitForResponse(r => r.url().includes('/api/terminal/alerts?') && new URL(r.url()).searchParams.get('country') === 'ES');
+                await p.locator('#terminal-country').selectOption('ES'); const d = await (await response).json(); await ready(p);
+                assert.equal(await p.locator('.na-alert-card').count(), d.items.length);
+                assert.equal(await p.locator('#terminal-results-title').evaluate(n => n === document.activeElement), true);
+                await p.locator('.na-terminal-filter-actions button[data-variant="quiet"]').click(); await ready(p);
+                await p.locator('#terminal-period-desktop').selectOption('custom'); await ready(p);
+                assert.equal(await p.locator('#terminal-from').getAttribute('type'), 'date'); assert.equal(await p.locator('#terminal-to').getAttribute('type'), 'date');
+                await go(p, '/es/alertas?period=30d');
+                if (await p.locator('.na-alert-pagination button').count()) { await p.locator('.na-alert-pagination button').click(); await p.waitForURL('**cursor=**'); await ready(p); await p.goBack(); await ready(p); assert.ok(!new URL(p.url()).searchParams.has('cursor')); }
+                else row.pagination = 'Naturally unobservable: fewer than one page';
+              } finally { await c.close(); }
+            });
+          }
+          async function preserve(theme) {
+            await run('preservation-' + theme, async row => {
+              const { c, p } = await context(1363, theme);
+              try {
+                row.routes = [];
+                for (const route of ['/es/', '/es/fuentes', '/es/metodologia', '/es/fuentes/aesan', '/es/fuentes/rapna', '/es/fuentes/rasff', '/es/fuentes/safety-gate', '/es/fuentes/oecd']) {
+                  await go(p, route, false); row.routes.push({ route, footer: await p.locator('.na-public-footer a').evaluateAll(ns => ns.map(n => [n.textContent, n.getAttribute('href')])) });
+                  if (route === '/es/') assert.equal(await p.locator('[data-home-version]').getAttribute('data-home-version'), 'f7-pixel-locked');
+                }
+                await go(p, '/es/fuentes/aesan', false); const detail = await p.locator('.na-source-authority__latest li a').first().getAttribute('href');
+                await go(p, detail, false); assert.equal(await p.locator('h1').count(), 1); assert.equal(await p.locator('.na-alert-detail__hero').count(), 1);
+                row.detail = detail;
+                if (phase === 'after') assert.deepEqual(row.routes, prior.rows.find(r => r.key === 'preservation-' + theme).routes);
+                await screenshot(p, 'detail-' + theme);
+              } finally { await c.close(); }
+            });
+          }
+          try {
+            for (const theme of ['light', 'dark']) {
+              for (const source of ['', 'AESAN', 'RAPNA', 'RASFF', 'SAFETY GATE', 'OECD']) await terminal(source, theme);
+              for (const width of [390, 320]) await mobile(width, theme);
+              await mapActions(theme, 1363); await mapActions(theme, 320); await filters(theme); await preserve(theme);
+            }
+            report.status = report.rows.every(r => r.status === 'PASS') && !report.errors.length ? 'PASS' : 'HOLD'; save();
+            console.log('V17_LIVE_SMOKE_TERMINAL ' + JSON.stringify({ phase, status: report.status, groups: report.rows.length, errors: report.errors, failed: report.rows.filter(r => r.status !== 'PASS').map(r => r.key) }));
+            if (report.status !== 'PASS') process.exitCode = 1;
+          } finally { save(); await browser.close(); }
+          JS
+      - name: Live production read-only smoke
+        run: node smoke.mjs after
+      - name: Recheck allocation after live smoke
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const proof=JSON.parse(fs.readFileSync('evidence/release.json')),smoke=JSON.parse(fs.readFileSync('evidence/after.json'));
+          if(proof.status!=='PASS'||smoke.status!=='PASS')throw Error('release-or-smoke-not-pass');
+          if(Date.now()>Date.parse('2026-10-07T18:00:00Z'))throw Error('expired');
+          const url='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/workers/scripts/vigia-runtime/deployments';
+          async function read(){const r=await fetch(url,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN},signal:AbortSignal.timeout(15000)});if(!r.ok)throw Error('HTTP-'+r.status);const j=await r.json();if(!j.success)throw Error('envelope');return j.result.deployments?.[0];}
+          const a=await read(),b=await read();
+          if(a?.id!==proof.active.deploymentId||a?.versions?.length!==1||a.versions[0].version_id!==proof.active.versionId||a.versions[0].percentage!==100||JSON.stringify(a)!==JSON.stringify(b))throw Error('post-smoke-allocation-drift');
+          const result={status:'PASS',observedAt:new Date().toISOString(),active:proof.active,build:proof.build,smokeGroups:smoke.rows.length,productionMutationAttempts:0,operatorMustMatchBuildCommitToExactPR242Merge:true};fs.writeFileSync('evidence/final.json',JSON.stringify(result,null,2));console.log('V17_F1B_FINAL_TERMINAL '+JSON.stringify(result));
+          NODE
+      - name: Save final evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v17-f1b-after
+          path: evidence/
+          retention-days: 7
