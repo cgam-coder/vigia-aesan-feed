@@ -18,7 +18,7 @@ jobs:
           OBSERVER_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           node --input-type=module <<'NODE'
-          const m=process.env.OBSERVER_MESSAGE.match(/^V17 social PNG observer (baseline|final) ([a-f0-9]{40})$/);
+          const m=process.env.OBSERVER_MESSAGE.match(/^V17 social PNG observer (baseline|preview|final) ([a-f0-9]{40})$/);
           if(!m)throw Error('message-scope');
           const phase=m[1],expected=m[2],expiry=Date.parse('2026-10-08T01:00:00Z');
           const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
@@ -43,11 +43,11 @@ jobs:
           let final;
           for(let attempt=1;attempt<=12;attempt++){
             const active=await identity();
-            const list=phase==='baseline'?[await get('/builds/builds/525b73ca-3e5f-43d0-bf17-248d44263847')]:await get('/builds/workers/c16d1153847b48f7ba2245915cfd97ab/builds?per_page=10');
+            const list=phase==='baseline'?[await get('/builds/builds/525b73ca-3e5f-43d0-bf17-248d44263847')]:phase==='preview'?[await get('/builds/builds/dc3aa16e-df8b-4782-b58f-6591e8ef87a9')]:await get('/builds/workers/c16d1153847b48f7ba2245915cfd97ab/builds?per_page=10');
             const rows=Array.isArray(list)?list:(list.builds??list.items??[]);
-            const candidates=rows.filter(b=>b.build_trigger_metadata?.commit_hash===expected&&b.build_trigger_metadata?.branch==='main');
+            const candidates=rows.filter(b=>b.build_trigger_metadata?.commit_hash===expected&&b.build_trigger_metadata?.branch===(phase==='preview'?'v17/social-orange-share-image':'main'));
             const summary=candidates.map(b=>({id:b.id??b.build_uuid,status:b.status,outcome:b.build_outcome,commit:b.build_trigger_metadata?.commit_hash,branch:b.build_trigger_metadata?.branch,deployCommand:b.build_trigger_metadata?.deploy_command}));
-            const found=summary.find(b=>b.status==='stopped'&&b.outcome==='success'&&b.deployCommand==='npx wrangler deploy');
+            const found=summary.find(b=>b.status==='stopped'&&b.outcome==='success'&&(phase==='preview'||b.deployCommand==='npx wrangler deploy'));
             let deployedVersion=null,gates={},evidenceLines=[];
             if(found){
               const strings=[];let cursor='';
@@ -66,7 +66,7 @@ jobs:
               gates={units:u>=0&&/fail 0/.test(ub),typecheck:tc>u,lint:t.includes('0 errors'),artifact:t.includes('Validated cloudflare artifact: safety scan and ESM Worker default.fetch passed'),postbuild:p>tc&&/fail 0/.test(pb)};
               evidenceLines=strings.filter(s=>/Running Cloudflare CI|tests [0-9]|pass [0-9]|fail [0-9]|problems \(0 errors|Validated cloudflare artifact|Version ID:/.test(s));
             }
-            const verdict=found&&deployedVersion===active.versionId&&Object.values(gates).every(Boolean)&&(phase!=='baseline'||active.versionId===rollback)?'PASS':'HOLD';
+            const verdict=found&&(phase==='preview'||deployedVersion===active.versionId)&&Object.values(gates).every(Boolean)&&(phase!=='baseline'||active.versionId===rollback)?'PASS':'HOLD';
             final={phase,verdict,attempt,observedAt:new Date().toISOString(),expected,active,rollbackAvailable:rollbackMeta.id,builds:summary,deployedVersion,gates,evidenceLines,productionMutationAttempts:0};
             console.log('SOCIAL_PNG_CERTIFICATION '+JSON.stringify(final));
             if(verdict==='PASS')break;
