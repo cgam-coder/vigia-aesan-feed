@@ -1,0 +1,105 @@
+# V17 F1V final production certification. Read-only GET allowlist; isolated feed branch.
+# Expires 2026-10-08 00:00Z, no deploy, no D1 writes, no credentials output.
+name: V17 F1V final production social-share observer (GET only)
+on:
+  push:
+    branches:
+      - v17/f1v-social-observer-readonly
+permissions:
+  contents: read
+jobs:
+  certify:
+    if: github.event.head_commit.message == 'V17-F1V final product GET-only observer' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Observe new build and two stable allocation reads
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const account="9c1807c68493f14259248b5f5782cc6f";
+          const root="https://api.cloudflare.com/client/v4/accounts/"+account;
+          const expected="00cd93eb1c6de66f0f582cefcc8da01260464c91";
+          const rollback="747e5613-c3db-4e89-906d-97f8c7f4b304";
+          const builds=["525b73ca-3e5f-43d0-bf17-248d44263847","6e1c93c0-e989-4dba-9809-7122b601fd27"];
+          const start=Date.parse("2026-10-07T20:36:20.449Z");
+          const expiry=Date.parse("2026-10-08T00:00:00Z");
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          if(!token)throw Error("missing-token");
+          const allowed=/^\/(?:workers\/scripts\/vigia-runtime\/(?:deployments|versions\/[a-f0-9-]{36})|builds\/builds\/(?:525b73ca-3e5f-43d0-bf17-248d44263847|6e1c93c0-e989-4dba-9809-7122b601fd27)(?:\/logs(?:\?cursor=[A-Za-z0-9_%.-]+)?)?)$/;
+          async function get(path){
+            if(Date.now()>expiry)throw Error("observer-expired");
+            if(!allowed.test(path))throw Error("GET-not-allowlisted");
+            const r=await fetch(root+path,{method:"GET",redirect:"error",
+              headers:{Authorization:"Bearer "+token,Accept:"application/json"},
+              signal:AbortSignal.timeout(15000)});
+            if(!r.ok)throw Error("Cloudflare HTTP "+r.status);
+            const j=await r.json();
+            if(!j.success)throw Error("Cloudflare response not successful");
+            return j.result;
+          }
+          const identity=async()=>{
+            const d=(await get("/workers/scripts/vigia-runtime/deployments"))?.deployments?.[0];
+            if(!d||d.versions?.length!==1||d.versions[0]?.percentage!==100)throw Error("allocation-not-100-or-ambiguous");
+            const v=d.versions[0].version_id;
+            if(!/^[a-f0-9-]{36}$/.test(v))throw Error("invalid-version-id");
+            const vmeta=await get("/workers/scripts/vigia-runtime/versions/"+v);
+            const second=(await get("/workers/scripts/vigia-runtime/deployments"))?.deployments?.[0];
+            if(d.id!==second?.id||JSON.stringify(d.versions)!==JSON.stringify(second.versions))throw Error("allocation-drift");
+            return {deploymentId:d.id,createdOn:d.created_on,versionId:v,versionNumber:vmeta.number,versionCreatedOn:vmeta.metadata?.created_on,percentage:100};
+          };
+          let final;
+          for(let attempt=1;attempt<=12;attempt++){
+            const active=await identity();
+            const observations=[];
+            for(const id of builds){
+              const b=await get("/builds/builds/"+id);
+              observations.push({id,status:b.status,outcome:b.build_outcome,
+                branch:b.build_trigger_metadata?.branch,commit:b.build_trigger_metadata?.commit_hash,
+                buildCommand:b.build_trigger_metadata?.build_command,
+                deployCommand:b.build_trigger_metadata?.deploy_command,
+                createdOn:b.created_on,stoppedOn:b.stopped_on});
+            }
+            const successDeploy=observations.filter(b=>b.status==="stopped"&&b.outcome==="success"&&b.branch==="main"&&b.commit===expected&&b.deployCommand==="npx wrangler deploy");
+            const fresh=Date.parse(active.createdOn)>start&&Date.parse(active.versionCreatedOn)>start;
+            const transitioned=active.versionId!==rollback;
+            let logVersionId=null,logGates={};
+            if(successDeploy.length===1&&transitioned&&fresh){
+              const strings=[];let cursor="";
+              for(let page=0;page<10;page++){
+                const l=await get("/builds/builds/"+successDeploy[0].id+"/logs"+(cursor?"?cursor="+encodeURIComponent(cursor):""));
+                const collect=value=>{
+                  if(typeof value==="string")strings.push(value);
+                  else if(Array.isArray(value))value.forEach(collect);
+                  else if(value&&typeof value==="object")Object.values(value).forEach(collect);
+                };
+                collect(l.lines);collect(l.events);
+                if(!l.truncated)break;
+                if(!l.cursor||l.cursor===cursor)throw Error("truncated-logs-stalled");
+                cursor=l.cursor;
+                if(page===9)throw Error("truncated-logs-unresolved");
+              }
+              const text=strings.join("\n");
+              logVersionId=text.match(/(?:Current )?Version ID:\s*([a-f0-9-]{36})/i)?.[1]??null;
+              logGates={
+                units:/Running Cloudflare CI: unit tests/.test(text)&&/# fail 0/.test(text),
+                typecheck:/Running Cloudflare CI: typecheck/.test(text),
+                lint:/Running Cloudflare CI: lint/.test(text)&&/0 errors/.test(text),
+                artifact:/Validated cloudflare artifact: safety scan and ESM Worker default.fetch passed/.test(text),
+                postBuild:/Running Cloudflare CI: post-build tests/.test(text)&&/# tests 117/.test(text)&&/# pass 117/.test(text),
+              };
+            }
+            const allLogGates=Object.keys(logGates).length>0&&Object.values(logGates).every(Boolean);
+            const verdict=successDeploy.length===1&&transitioned&&fresh&&logVersionId===active.versionId&&allLogGates?"PASS":"HOLD";
+            final={verdict,attempt,at:new Date().toISOString(),expectedCommit:expected,rollback,
+              active,builds:observations,successfulProductionBuilds:successDeploy.length,fresh,transitioned,
+              deployedVersionFromBuildLog:logVersionId,logGates};
+            console.log("SOCIAL_RELEASE "+JSON.stringify(final));
+            if(verdict==="PASS")break;
+            if(attempt<12)await new Promise(resolve=>setTimeout(resolve,16000));
+          }
+          const fs=await import("node:fs");
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,"### V17 social release state\n\n"+JSON.stringify(final,null,2)+"\n");
+          if(final.verdict!=="PASS")process.exitCode=1;
+          NODE
