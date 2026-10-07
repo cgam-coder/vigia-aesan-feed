@@ -50,7 +50,7 @@ jobs:
             return {deploymentId:d.id,createdOn:d.created_on,versionId:v,versionNumber:vmeta.number,versionCreatedOn:vmeta.metadata?.created_on,percentage:100};
           };
           let final;
-          for(let attempt=1;attempt<=12;attempt++){
+          for(let attempt=1;attempt<=2;attempt++){
             const active=await identity();
             const observations=[];
             for(const id of builds){
@@ -82,13 +82,21 @@ jobs:
               }
               const text=strings.join("\n");
               logVersionId=text.match(/(?:Current )?Version ID:\s*([a-f0-9-]{36})/i)?.[1]??null;
+              const clean=text.replace(/\\x1b\\[[0-9;]*m/gu,"");
+              const unitStart=clean.indexOf("Running Cloudflare CI: unit tests");
+              const typeStart=clean.indexOf("Running Cloudflare CI: typecheck");
+              const postStart=clean.indexOf("Running Cloudflare CI: post-build tests");
+              const unitBlock=unitStart>=0&&typeStart>unitStart?clean.slice(unitStart,typeStart):"";
+              const postBlock=postStart>=0?clean.slice(postStart):"";
               logGates={
-                units:/Running Cloudflare CI: unit tests/.test(text)&&/# fail 0/.test(text),
-                typecheck:/Running Cloudflare CI: typecheck/.test(text),
-                lint:/Running Cloudflare CI: lint/.test(text)&&/0 errors/.test(text),
-                artifact:/Validated cloudflare artifact: safety scan and ESM Worker default.fetch passed/.test(text),
-                postBuild:/Running Cloudflare CI: post-build tests/.test(text)&&/# tests 117/.test(text)&&/# pass 117/.test(text),
+                units:/\\btests\\s+870\\b/u.test(unitBlock)&&/\\bpass\\s+870\\b/u.test(unitBlock)&&/\\bfail\\s+0\\b/u.test(unitBlock),
+                typecheck:typeStart>=0,
+                lint:/Running Cloudflare CI: lint/u.test(clean)&&/0 errors/u.test(clean),
+                artifact:/Validated cloudflare artifact: safety scan and ESM Worker default.fetch passed/u.test(clean),
+                postBuild:/\\btests\\s+117\\b/u.test(postBlock)&&/\\bpass\\s+117\\b/u.test(postBlock)&&/\\bfail\\s+0\\b/u.test(postBlock),
               };
+              const selected=clean.split("\\n").filter(x=>/Running Cloudflare CI:|Validated cloudflare artifact|(?:tests|pass|fail)\\s+(?:870|117|0)\\b/u.test(x));
+              console.log("SOCIAL_BUILD_GATES "+JSON.stringify({logVersionId,summaryLines:selected.slice(-18),logGates}));
             }
             const allLogGates=Object.keys(logGates).length>0&&Object.values(logGates).every(Boolean);
             const verdict=successDeploy.length===1&&transitioned&&fresh&&logVersionId===active.versionId&&allLogGates?"PASS":"HOLD";
@@ -97,7 +105,7 @@ jobs:
               deployedVersionFromBuildLog:logVersionId,logGates};
             console.log("SOCIAL_RELEASE "+JSON.stringify(final));
             if(verdict==="PASS")break;
-            if(attempt<12)await new Promise(resolve=>setTimeout(resolve,16000));
+            if(attempt<2)await new Promise(resolve=>setTimeout(resolve,16000));
           }
           const fs=await import("node:fs");
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,"### V17 social release state\n\n"+JSON.stringify(final,null,2)+"\n");
