@@ -1,0 +1,76 @@
+# Bounded GET-only verification for the owner-authorized social PNG replacement.
+# No checkout, deploy, D1 access, or mutation API. feed/main remains unchanged.
+name: V17 social PNG GET-only certification
+on:
+  push:
+    branches: [v17/social-png-observer-readonly]
+permissions:
+  contents: read
+jobs:
+  certify:
+    if: github.repository == 'cgam-coder/vigia-aesan-feed' && startsWith(github.event.head_commit.message, 'V17 social PNG observer ') && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Read stable Worker allocation and exact build
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          OBSERVER_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          node --input-type=module <<'NODE'
+          const m=process.env.OBSERVER_MESSAGE.match(/^V17 social PNG observer (baseline|final) ([a-f0-9]{40})$/);
+          if(!m)throw Error('message-scope');
+          const phase=m[1],expected=m[2],expiry=Date.parse('2026-10-08T01:00:00Z');
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          const rollback='83dabc51-29bd-43dd-b828-10e32f946f2b';
+          const allowed=/^\/(?:workers\/scripts\/vigia-runtime\/(?:deployments|versions\/[a-f0-9-]{36})|builds\/workers\/c16d1153847b48f7ba2245915cfd97ab\/builds\?per_page=10|builds\/builds\/[a-f0-9-]{36}(?:\/logs(?:\?cursor=[A-Za-z0-9_%.-]+)?)?)$/;
+          async function get(path){
+            if(Date.now()>expiry)throw Error('expired');
+            if(!allowed.test(path))throw Error('path-scope');
+            const r=await fetch(root+path,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN},signal:AbortSignal.timeout(15000)});
+            if(!r.ok)throw Error('HTTP-'+r.status);const j=await r.json();if(!j.success)throw Error('envelope');return j.result;
+          }
+          async function identity(){
+            const a=(await get('/workers/scripts/vigia-runtime/deployments')).deployments?.[0];
+            if(a?.versions?.length!==1||a.versions[0].percentage!==100)throw Error('allocation-ambiguous');
+            const v=await get('/workers/scripts/vigia-runtime/versions/'+a.versions[0].version_id);
+            const b=(await get('/workers/scripts/vigia-runtime/deployments')).deployments?.[0];
+            if(a.id!==b?.id||JSON.stringify(a.versions)!==JSON.stringify(b.versions))throw Error('allocation-drift');
+            return {deploymentId:a.id,versionId:v.id,versionNumber:v.number,percentage:100,createdOn:a.created_on};
+          }
+          const rollbackMeta=await get('/workers/scripts/vigia-runtime/versions/'+rollback);
+          if(rollbackMeta.id!==rollback)throw Error('rollback-missing');
+          let final;
+          for(let attempt=1;attempt<=12;attempt++){
+            const active=await identity();
+            const list=phase==='baseline'?[await get('/builds/builds/525b73ca-3e5f-43d0-bf17-248d44263847')]:await get('/builds/workers/c16d1153847b48f7ba2245915cfd97ab/builds?per_page=10');
+            const rows=Array.isArray(list)?list:(list.builds??list.items??[]);
+            const candidates=rows.filter(b=>b.build_trigger_metadata?.commit_hash===expected&&b.build_trigger_metadata?.branch==='main');
+            const summary=candidates.map(b=>({id:b.id??b.build_uuid,status:b.status,outcome:b.build_outcome,commit:b.build_trigger_metadata?.commit_hash,branch:b.build_trigger_metadata?.branch,deployCommand:b.build_trigger_metadata?.deploy_command}));
+            const found=summary.find(b=>b.status==='stopped'&&b.outcome==='success'&&b.deployCommand==='npx wrangler deploy');
+            let deployedVersion=null,gates={},evidenceLines=[];
+            if(found){
+              const strings=[];let cursor='';
+              for(let page=0;page<10;page++){
+                const l=await get('/builds/builds/'+found.id+'/logs'+(cursor?'?cursor='+encodeURIComponent(cursor):''));
+                const collect=v=>{if(typeof v==='string')strings.push(v);else if(Array.isArray(v))v.forEach(collect);else if(v&&typeof v==='object')Object.values(v).forEach(collect);};
+                collect(l.lines);collect(l.events);
+                if(!l.truncated)break;
+                if(!l.cursor||cursor===l.cursor||page===9)throw Error('logs-truncated');
+                cursor=l.cursor;
+              }
+              const t=strings.join('\n');
+              deployedVersion=t.match(/(?:Current )?Version ID:\s*([a-f0-9-]{36})/i)?.[1]??null;
+              const u=t.indexOf('Running Cloudflare CI: unit tests'),tc=t.indexOf('Running Cloudflare CI: typecheck'),p=t.indexOf('Running Cloudflare CI: post-build tests');
+              const ub=t.slice(u,tc),pb=t.slice(p);
+              gates={units:u>=0&&/fail 0/.test(ub),typecheck:tc>u,lint:t.includes('0 errors'),artifact:t.includes('Validated cloudflare artifact: safety scan and ESM Worker default.fetch passed'),postbuild:p>tc&&/fail 0/.test(pb)};
+              evidenceLines=strings.filter(s=>/Running Cloudflare CI|tests [0-9]|pass [0-9]|fail [0-9]|problems \(0 errors|Validated cloudflare artifact|Version ID:/.test(s));
+            }
+            const verdict=found&&deployedVersion===active.versionId&&Object.values(gates).every(Boolean)&&(phase!=='baseline'||active.versionId===rollback)?'PASS':'HOLD';
+            final={phase,verdict,attempt,observedAt:new Date().toISOString(),expected,active,rollbackAvailable:rollbackMeta.id,builds:summary,deployedVersion,gates,evidenceLines,productionMutationAttempts:0};
+            console.log('SOCIAL_PNG_CERTIFICATION '+JSON.stringify(final));
+            if(verdict==='PASS')break;
+            if(attempt<12)await new Promise(r=>setTimeout(r,20000));
+          }
+          if(final.verdict!=='PASS')process.exitCode=1;
+          NODE
