@@ -89,14 +89,13 @@ jobs:
               const unitBlock=unitStart>=0&&typeStart>unitStart?clean.slice(unitStart,typeStart):"";
               const postBlock=postStart>=0?clean.slice(postStart):"";
               logGates={
-                units:/\\btests\\s+870\\b/u.test(unitBlock)&&/\\bpass\\s+870\\b/u.test(unitBlock)&&/\\bfail\\s+0\\b/u.test(unitBlock),
+                units:unitBlock.includes("tests 870")&&unitBlock.includes("pass 870")&&unitBlock.includes("fail 0"),
                 typecheck:typeStart>=0,
-                lint:/Running Cloudflare CI: lint/u.test(clean)&&/0 errors/u.test(clean),
-                artifact:/Validated cloudflare artifact: safety scan and ESM Worker default.fetch passed/u.test(clean),
-                postBuild:/\\btests\\s+117\\b/u.test(postBlock)&&/\\bpass\\s+117\\b/u.test(postBlock)&&/\\bfail\\s+0\\b/u.test(postBlock),
+                lint:clean.includes("Running Cloudflare CI: lint")&&clean.includes("0 errors"),
+                artifact:clean.includes("Validated cloudflare artifact: safety scan and ESM Worker default.fetch passed"),
+                postBuild:postBlock.includes("tests 117")&&postBlock.includes("pass 117")&&postBlock.includes("fail 0"),
               };
-              const selected=clean.split("\\n").filter(x=>/Running Cloudflare CI:|Validated cloudflare artifact|(?:tests|pass|fail)\\s+(?:870|117|0)\\b/u.test(x));
-              console.log("SOCIAL_BUILD_GATES "+JSON.stringify({logVersionId,summaryLines:selected.slice(-18),logGates}));
+              console.log("SOCIAL_BUILD_GATES "+JSON.stringify({logVersionId,logGates}));
             }
             const allLogGates=Object.keys(logGates).length>0&&Object.values(logGates).every(Boolean);
             const verdict=successDeploy.length===1&&transitioned&&fresh&&logVersionId===active.versionId&&allLogGates?"PASS":"HOLD";
