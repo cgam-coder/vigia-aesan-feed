@@ -1,0 +1,76 @@
+# Expiring read-only Cloudflare diagnostic; isolated branch, no feed/main writes.
+name: V17 F1V failed deployment read-only diagnostics
+on:
+  push:
+    branches:
+      - v17/f1v-social-observer-readonly
+permissions:
+  contents: read
+jobs:
+  diagnostic:
+    if: github.event.head_commit.message == 'V17-F1V failed production build diagnostic GET-only' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Fetch only the two previously identified Cloudflare build logs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root="https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f";
+          const ids=["793f86d3-2cf5-4139-8107-bda09edc873d","2d517e13-2de3-4f3d-8dab-c90a820f1dc2"];
+          const expiry=Date.parse("2026-10-08T00:00:00Z");
+          const allowed=/^\/builds\/builds\/(?:793f86d3-2cf5-4139-8107-bda09edc873d|2d517e13-2de3-4f3d-8dab-c90a820f1dc2)(?:\/logs(?:\?cursor=[A-Za-z0-9_%.-]+)?)?$/;
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          if(!token)throw Error("token-unavailable");
+          async function get(path){
+            if(Date.now()>expiry)throw Error("expired");
+            if(!allowed.test(path))throw Error("out-of-scope");
+            const response=await fetch(root+path,{method:"GET",redirect:"error",
+              headers:{Authorization:"Bearer "+token,Accept:"application/json"},
+              signal:AbortSignal.timeout(15000)});
+            if(!response.ok)throw Error("Cloudflare GET HTTP "+response.status);
+            const obj=await response.json();
+            if(!obj.success)throw Error("Cloudflare API success=false");
+            return obj.result;
+          }
+          function safeLine(s){
+            return s.replace(/(?:Bearer\s+\S+|(?:TOKEN|SECRET|KEY|AUTHORIZATION)\s*[=:]\s*\S+)/giu,"[REDACTED]").slice(0,340);
+          }
+          const collect=(value,target)=>{
+            if(typeof value==="string")target.push(value);
+            else if(Array.isArray(value))value.forEach(v=>collect(v,target));
+            else if(value&&typeof value==="object")Object.values(value).forEach(v=>collect(v,target));
+          };
+          const observations=[];
+          for(const id of ids){
+            try{
+              const build=await get("/builds/builds/"+id);
+              const b={id,status:build.status,outcome:build.build_outcome,
+                branch:build.build_trigger_metadata?.branch,
+                commit:build.build_trigger_metadata?.commit_hash,
+                createdOn:build.created_on,stoppedOn:build.stopped_on,logPages:[],errors:[]};
+              let cursor="";
+              const entries=[];
+              for(let page=0;page<8;page++){
+                const path="/builds/builds/"+id+"/logs"+(cursor?"?cursor="+encodeURIComponent(cursor):"");
+                const logs=await get(path);
+                b.logPages.push({page,lines:logs.lines?.length,truncated:logs.truncated});
+                collect(logs.lines,entries);collect(logs.events,entries);
+                if(!logs.truncated)break;
+                if(!logs.cursor||logs.cursor===cursor)throw Error("log cursor stalled");
+                cursor=logs.cursor;
+              }
+              b.errors=entries.flatMap(s=>s.split("\n"))
+                .filter(s=>/(?:\bERROR\b|\bFAIL(?:ED|URE)?\b|exception|npm ERR|deploy.*(?:denied|error|fail)|timed out|quota exceeded|rate.limit)/iu.test(s))
+                .filter(s=>!/(?:CLOUDFLARE_API_TOKEN|Authorization:|Bearer\s+)/iu.test(s))
+                .slice(-24).map(safeLine);
+              observations.push(b);
+            }catch(e){observations.push({id,error:e instanceof Error?e.message:String(e)});}
+          }
+          const report={purpose:"read-only diagnostics of F1V GitHub merge builds",at:new Date().toISOString(),observations};
+          console.log(JSON.stringify(report));
+          const fs=await import("node:fs");
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,"### F1V Cloudflare diagnostic\n\n"+JSON.stringify(report,null,2)+"\n");
+          if(observations.every(x=>x.error))process.exitCode=1;
+          NODE
