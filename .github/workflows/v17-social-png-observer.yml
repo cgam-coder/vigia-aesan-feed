@@ -43,11 +43,11 @@ jobs:
           let final;
           for(let attempt=1;attempt<=12;attempt++){
             const active=await identity();
-            const list=phase==='baseline'?[await get('/builds/builds/525b73ca-3e5f-43d0-bf17-248d44263847')]:phase==='preview'?[await get('/builds/builds/dc3aa16e-df8b-4782-b58f-6591e8ef87a9')]:await get('/builds/workers/c16d1153847b48f7ba2245915cfd97ab/builds?per_page=10');
+            const list=phase==='baseline'?[await get('/builds/builds/525b73ca-3e5f-43d0-bf17-248d44263847')]:phase==='preview'?[await get('/builds/builds/dc3aa16e-df8b-4782-b58f-6591e8ef87a9')]:[await get('/builds/builds/fc2f9574-0214-41ec-852d-a43a6f9e66c9')];
             const rows=Array.isArray(list)?list:(list.builds??list.items??[]);
             const candidates=rows.filter(b=>b.build_trigger_metadata?.commit_hash===expected&&b.build_trigger_metadata?.branch===(phase==='preview'?'v17/social-orange-share-image':'main'));
-            const summary=candidates.map(b=>({id:b.id??b.build_uuid,status:b.status,outcome:b.build_outcome,commit:b.build_trigger_metadata?.commit_hash,branch:b.build_trigger_metadata?.branch,deployCommand:b.build_trigger_metadata?.deploy_command}));
-            const found=summary.find(b=>b.status==='stopped'&&b.outcome==='success'&&(phase==='preview'||b.deployCommand==='npx wrangler deploy'));
+            const summary=candidates.map(b=>({id:b.id??b.build_uuid,status:b.status,outcome:b.build_outcome,commit:b.build_trigger_metadata?.commit_hash,branch:b.build_trigger_metadata?.branch,deployCommand:b.build_trigger_metadata?.deploy_command,buildCommand:b.build_trigger_metadata?.build_command}));
+            const found=summary.find(b=>b.status==='stopped'&&b.outcome==='success'&&(phase==='preview'||(b.deployCommand==='npx wrangler deploy'&&b.buildCommand==='npm run build:cloudflare')));
             let deployedVersion=null,gates={},evidenceLines=[];
             if(found){
               const strings=[];let cursor='';
@@ -63,10 +63,10 @@ jobs:
               deployedVersion=t.match(/(?:Current )?Version ID:\s*([a-f0-9-]{36})/i)?.[1]??null;
               const u=t.indexOf('Running Cloudflare CI: unit tests'),tc=t.indexOf('Running Cloudflare CI: typecheck'),p=t.indexOf('Running Cloudflare CI: post-build tests');
               const ub=t.slice(u,tc),pb=t.slice(p);
-              gates={units:u>=0&&/fail 0/.test(ub),typecheck:tc>u,lint:t.includes('0 errors'),artifact:t.includes('Validated cloudflare artifact: safety scan and ESM Worker default.fetch passed'),postbuild:p>tc&&/fail 0/.test(pb)};
+              gates={units:u>=0&&/tests 870/.test(ub)&&/pass 870/.test(ub)&&/fail 0/.test(ub),typecheck:tc>u,lint:t.includes('0 errors'),artifact:t.includes('Validated cloudflare artifact: safety scan and ESM Worker default.fetch passed'),postbuild:p>tc&&/tests 117/.test(pb)&&/pass 117/.test(pb)&&/fail 0/.test(pb)};
               evidenceLines=strings.filter(s=>/Running Cloudflare CI|tests [0-9]|pass [0-9]|fail [0-9]|problems \(0 errors|Validated cloudflare artifact|Version ID:/.test(s));
             }
-            const verdict=found&&(phase==='preview'||deployedVersion===active.versionId)&&Object.values(gates).every(Boolean)&&(phase!=='baseline'||active.versionId===rollback)?'PASS':'HOLD';
+            const verdict=found&&(phase==='preview'||deployedVersion===active.versionId)&&Object.values(gates).every(Boolean)&&(phase!=='baseline'||active.versionId===rollback)&&(phase!=='final'||active.versionId!==rollback)?'PASS':'HOLD';
             final={phase,verdict,attempt,observedAt:new Date().toISOString(),expected,active,rollbackAvailable:rollbackMeta.id,builds:summary,deployedVersion,gates,evidenceLines,productionMutationAttempts:0};
             console.log('SOCIAL_PNG_CERTIFICATION '+JSON.stringify(final));
             if(verdict==='PASS')break;
