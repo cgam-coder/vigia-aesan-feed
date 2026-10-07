@@ -1,4 +1,5 @@
 # Expiring GET-only Cloudflare baseline for corrective PR #268.
+# Repeat premerge identity after CI PASS of head 0b42c6e00c66d6995e7afa80e97504b5d5a64f93.
 # Isolated from feed/main. No deploy, D1, or secret disclosure.
 name: V17 F1V corrective allocation preflight
 on:
