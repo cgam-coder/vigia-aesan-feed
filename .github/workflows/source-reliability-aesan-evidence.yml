@@ -1,0 +1,56 @@
+name: Source reliability exact AESAN evidence and natural receipt
+on:
+  push:
+    branches: [source-reliability/final-aesan-evidence-20261008-1954]
+permissions:
+  contents: read
+jobs:
+  checkpoint:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: GET-only independent strict watchdog and durable SELECT evidence
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {runWatchdog} from './scripts/freshness-watchdog.mjs';
+          const base='https://vigia-runtime.c-gamiz93.workers.dev',root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          if(Date.now()>Date.parse('2026-10-08T20:20:00Z'))throw Error('checkpoint expired');
+          const safeFetch=(u,i={})=>{if((i.method??'GET')!=='GET')throw Error('GET-only watchdog');return fetch(u,{...i,signal:AbortSignal.any([AbortSignal.timeout(20000),...(i.signal?[i.signal]:[])])});};
+          const report=await runWatchdog({url:base+'/api/freshness',token:process.env.SYNC_TOKEN,fetchImpl:safeFetch});
+          console.log('FINAL_STRICT_WATCHDOG '+JSON.stringify({at:new Date().toISOString(),...report}));
+          for(const path of ['/api/source-reliability?observe=1','/api/aesan/sync?observe=1','/api/rasff/sync?observe=1','/api/safety-gate/sync?observe=1','/api/oecd/sync?observe=1']){
+           const r=await safeFetch(base+path,{headers:{Authorization:'Bearer '+process.env.SYNC_TOKEN}}),p=await r.json();if(p.state)delete p.state.ownershipFingerprint;
+           console.log('FUNCTIONAL_NATIVE '+JSON.stringify({at:new Date().toISOString(),path,http:r.status,body:p}));if(!r.ok)throw Error('native read');
+          }
+          for(const sql of [
+            "SELECT owner_id,expires_at,epoch,state_json FROM source_reliability_control WHERE id=1",
+            "SELECT id,source,mode,kind,epoch,started_at,deadline,phase,write_intent_at,finished_at,receipt_json FROM source_reliability_jobs WHERE finished_at IS NULL OR started_at>='2026-10-08T19:45:00Z' ORDER BY started_at",
+            "SELECT * FROM source_sync_locks",
+            "SELECT source,mode,status,cursor,total_units,last_success_at,started_at,updated_at,lease_owner_id,lease_expires_at,last_error,records_observed,records_persisted,new_count,updated_count,detail_failures,page_errors,plan_version FROM source_sync_state",
+            "SELECT source,mode,cycle_id,completed_at,total_units,records_observed,coverage,audit_status,audit_checked_at,updated_at FROM source_revision_certifications",
+            "SELECT id,reference,content_hash,version_count,published_at,detected_at,updated_at FROM alerts WHERE source='AESAN' AND reference IN ('ES2026/604','ES2026/382')",
+            "SELECT COUNT(*) AS changes_after_attempt FROM alerts WHERE source='SAFETY GATE' AND (detected_at>='2026-10-08T13:41:39Z' OR updated_at>='2026-10-08T13:41:39Z')"
+          ]){
+           if(!sql.startsWith('SELECT '))throw Error('SELECT only');const r=await fetch(root+'/d1/database/55596003-1b90-4f66-aad8-decb21205f13/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql}),signal:AbortSignal.timeout(20000)}),p=await r.json();
+           if(!r.ok||!p.success||p.result.some(x=>!x.success||x.meta?.changes||x.meta?.rows_written))throw Error('D1 SELECT unconfirmed');for(const row of p.result.flatMap(x=>x.results))if(row.state_json){const s=JSON.parse(row.state_json);delete s.ownershipFingerprint;row.state_json=JSON.stringify(s);}
+           console.log('FUNCTIONAL_SELECT '+JSON.stringify({at:new Date().toISOString(),sql,data:p}));
+          }
+          for(const service of ['vigia-runtime','vigia-source-runner']){const r=await safeFetch(root+'/workers/scripts/'+service+'/deployments',{headers:{Authorization:'Bearer '+process.env.CF_TOKEN}}),p=await r.json();if(!r.ok||!p.success)throw Error('allocation read');console.log('FUNCTIONAL_ALLOCATION '+JSON.stringify({at:new Date().toISOString(),service,deployments:p.result.deployments.slice(0,2)}));}
+
+          for(const path of ['/alertas/buscador-alertas','/alertas/alertas-alimentarias','/alertas/buscador-alertas?type=649ce619-367b-4ad2-96cd-27b905fb6020']){
+           const url='https://www.aesan.gob.es'+path,r=await safeFetch(url,{headers:{Accept:'text/html,application/xhtml+xml','User-Agent':'NagameAlert-Freshness/1.0'},cache:'no-store'}),html=await r.text();
+           if(!r.ok)throw Error('official page unavailable');
+           const html2=html.replace(/\\bseeMoreCardSlide\\b/g,'seeMoreCard seeMoreCardSlide');
+           const cards=[...html2.matchAll(/<a\\b([^>]*\\bclass\\s*=\\s*(?:"[^"]*\\bseeMoreCard\\b[^"]*"|'[^']*\\bseeMoreCard\\b[^']*')[^>]*)>([\\s\\S]*?)<\\/a>/gi)].map(m=>({href:m[1].match(/\\bhref\\s*=\\s*"([^"]*)"/i)?.[1],attributeReference:m[1].match(/ES\\s*(20\\d{2})\\s*[/.-]\\s*(\\d+)/i)?.slice(1),bodyReference:m[2].replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').match(/ES\\s*(20\\d{2})\\s*[/.-]\\s*(\\d+)/i)?.slice(1),date:m[2].match(/seeMoreCard-heading__value[^>]*>([^<]*)</i)?.[1]}));
+           console.log('AESAN_OFFICIAL_DISCOVERY_READ '+JSON.stringify({at:new Date().toISOString(),url,cache:r.headers.get('cache-control'),age:r.headers.get('age'),cards}));
+          }
+
+          if(!report.allFresh)console.log('INTEGRAL_VERDICT HOLD; read collection completed successfully; no productive PASS claimed');
+          NODE
