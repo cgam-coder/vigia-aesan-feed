@@ -1,0 +1,66 @@
+name: SR271 full official carousel index and detail certification
+on:
+  push:
+    branches: [diagnostics/safety-gate-portal-readonly-20261008]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: github.event.head_commit.message == 'SR271 full official carousel index one-shot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Read only the declared official pages and two official details
+        run: |
+          node --input-type=module <<'NODE'
+          const root="https://ec.europa.eu/safety-gate-alerts/";
+          const maxPages=95, maxRecords=1200;
+          const snapshots=[];const all=[];
+          let expected=null,expectedPages=null,stable=true;
+          for(let page=0;page<maxPages;page++){
+            const response=await fetch(root+"public/api/notification/carousel/?",{method:"POST",redirect:"error",headers:{
+              Accept:"application/json","Content-Type":"application/json",language:"es"
+            },body:JSON.stringify({language:"es",page:String(page)}),signal:AbortSignal.timeout(16000)});
+            if(response.status!==200)throw Error("page "+page+" HTTP "+response.status);
+            const data=await response.json();
+            if(!Array.isArray(data.content)||!Number.isInteger(data.totalPages)||!Number.isInteger(data.totalElements)||
+              !Number.isInteger(data.size)||!Number.isInteger(data.number)||data.number!==page||
+              data.size!==9)throw Error("invalid portal pagination "+page);
+            if(page===0){
+              expected=data.totalElements;expectedPages=data.totalPages;
+              if(expected<1||expected>maxRecords||expectedPages>maxPages||
+                expectedPages!==Math.ceil(expected/data.size))throw Error("bound invalid");
+            }
+            if(data.totalElements!==expected||data.totalPages!==expectedPages)throw Error("collection changed during read");
+            if((page<expectedPages-1 && (data.last!==false||data.content.length!==9))||
+              (page===expectedPages-1 && (data.last!==true||data.content.length!==expected-(expectedPages-1)*9)))
+              throw Error("incomplete / incorrect end marker at page "+page);
+            for(const x of data.content){
+              if(!Number.isSafeInteger(x.id)||typeof x.reference!=="string"||!x.reference.trim()||
+                !Number.isFinite(Date.parse(x.publicationDate??"")))throw Error("invalid identity or official date");
+              all.push({id:x.id,reference:x.reference,date:x.publicationDate,updated:x.modificationDate,
+                hasMaterialCorrigendum:x.corrigendum});
+            }
+            if(page<2||page===expectedPages-1) snapshots.push({page,first:data.content[0]?.reference,last:data.content.at(-1)?.reference});
+            if(page===expectedPages-1)break;
+          }
+          const uniqId=new Set(all.map(x=>x.id)),uniqRef=new Set(all.map(x=>x.reference));
+          if(all.length!==expected||uniqId.size!==expected||uniqRef.size!==expected)throw Error("incomplete / duplicate collection");
+          const dateSorted=all.every((x,i)=>i===0 || Date.parse(all[i-1].date)>=Date.parse(x.date));
+          if(!dateSorted)throw Error("publication sort not descending");
+          const detailResults=[];
+          for(const item of [all[0],all[1]]){
+            const url=root+"public/api/notification/"+item.id+"?language=es";
+            const res=await fetch(url,{method:"GET",redirect:"error",headers:{Accept:"application/json"},signal:AbortSignal.timeout(15000)});
+            let data=null;try{data=await res.json()}catch{}
+            const row={id:item.id,reference:item.reference,http:res.status,
+              bodyId:data?.id,bodyReference:data?.reference,fields:data?Object.keys(data).slice(0,24):[]};
+            detailResults.push(row);
+          }
+          const result={verdict:detailResults.every(x=>x.http===200&&x.bodyId===x.id&&x.bodyReference===x.reference)?"PASS":"HOLD",
+            records:all.length,uniqueId:uniqId.size,uniqueReference:uniqRef.size,
+            pages:expectedPages,totalElements:expected,sortedByOfficialPublicationDate:dateSorted,samples:snapshots,
+            firstFive:all.slice(0,5).map(({id,reference,date})=>({id,reference,date})),details:detailResults};
+          console.log("SR271_FULL_CAROUSEL "+JSON.stringify(result));
+          if(result.verdict!=="PASS")process.exitCode=1;
+          NODE
