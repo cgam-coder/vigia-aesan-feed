@@ -1,0 +1,38 @@
+name: Source reliability one-shot fenced obsolete audit scope invalidation
+on:
+  push:
+    branches: [source-reliability/final-audit-scope-invalidation-20261008-2012]
+permissions:
+  contents: read
+jobs:
+  invalidate:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Preserve old evidence and enable only the next natural corrected-scope audit
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f',base='https://vigia-runtime.c-gamiz93.workers.dev';
+          if(Date.now()>Date.parse('2026-10-08T20:14:00Z'))throw Error('scope invalidation window expired');
+          async function cf(path){const r=await fetch(root+path,{headers:{Authorization:'Bearer '+process.env.CF_TOKEN},signal:AbortSignal.timeout(20000)}),p=await r.json();if(!r.ok||!p.success)throw Error('CF GET failed');return p.result;}
+          async function query(sql,params=[]){const r=await fetch(root+'/d1/database/55596003-1b90-4f66-aad8-decb21205f13/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql,params}),signal:AbortSignal.timeout(20000)}),p=await r.json();if(!r.ok||!p.success||p.result.some(x=>!x.success))throw Error('D1 outcome requires independent read; no retry');return p.result[0];}
+          const d=await cf('/workers/scripts/vigia-runtime/deployments'),a=d.deployments[0];
+          if(a.id!=='433b6f0b-d1ba-4eb4-9323-c0f32258808b'||a.versions.length!==1||a.versions[0].version_id!=='c10ed4a7-85a0-4eeb-af8f-a122256e2862'||a.versions[0].percentage!==100)throw Error('allocation changed; no write');
+          const nr=await fetch(base+'/api/source-reliability?observe=1',{headers:{Authorization:'Bearer '+process.env.SYNC_TOKEN},signal:AbortSignal.timeout(20000)}),native=await nr.json();if(!nr.ok||native.buildSha!=='91c6b8d7e3b5f5fa4ceb73ee3668d1a89e51fadd'||native.activeLease||native.mode!=='five-source-coordinated')throw Error('new generation not idle; no write');
+          const read=await query('SELECT owner_id,expires_at,epoch,state_json FROM source_reliability_control WHERE id=1');
+          if(read.meta?.rows_written||read.meta?.changes)throw Error('read wrote rows');
+          const c=read.results[0],s=JSON.parse(c.state_json),audit=s.lastAudit;
+          if(c.owner_id!==null||c.expires_at!==null||s.configVersion!==2||!audit||s.lastAuditAt!==audit.finishedAt||Date.parse(audit.finishedAt)>=Date.parse(a.created_on))throw Error('new audit already exists or fence changed; no write');
+          const oldAudit=JSON.stringify(audit),oldAttempts=JSON.stringify({attempts:s.attempts,revisions:s.revisionAttempts});
+          console.log('AUDIT_SCOPE_BEFORE '+JSON.stringify({at:new Date().toISOString(),epoch:c.epoch,build:native.buildSha,deployment:a.id,previousAuditAt:s.lastAuditAt,reason:'pre-deployment audit used incomplete official AESAN discovery; preserve evidence and request next natural audit'}));
+          const updated=await query("UPDATE source_reliability_control SET state_json=json_set(state_json,'$.lastAuditAt',NULL) WHERE id=1 AND owner_id IS NULL AND expires_at IS NULL AND epoch=? AND state_json=? RETURNING epoch,json_extract(state_json,'$.lastAuditAt') AS lastAuditAt",[c.epoch,c.state_json]);
+          console.log('AUDIT_SCOPE_CAS_RESULT '+JSON.stringify({at:new Date().toISOString(),rows:updated.results,meta:updated.meta,oneRequest:true,noIngestion:true,noReceiptChange:true}));
+          if(updated.results.length!==1)throw Error('CAS lost; no retry');
+          const after=await query('SELECT owner_id,expires_at,epoch,state_json FROM source_reliability_control WHERE id=1');if(after.meta?.rows_written||after.meta?.changes)throw Error('post read wrote');
+          const p=after.results[0],post=JSON.parse(p.state_json);
+          console.log('AUDIT_SCOPE_AFTER '+JSON.stringify({at:new Date().toISOString(),epoch:p.epoch,owner:p.owner_id,lastAuditAt:post.lastAuditAt,evidencePreserved:JSON.stringify(post.lastAudit)===oldAudit,attemptsPreserved:JSON.stringify({attempts:post.attempts,revisions:post.revisionAttempts})===oldAttempts}));
+          NODE
