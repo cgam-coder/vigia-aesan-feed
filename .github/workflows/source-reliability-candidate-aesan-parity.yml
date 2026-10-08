@@ -140,7 +140,7 @@ jobs:
            const d=await readCF('/deployments'),allocation=d.deployments[0],settings=await readCF('/settings'),schedule=await readCF('/schedules'),bindings=settings.bindings??[];
            console.log('EXACT_PREMERGE_ALLOCATION '+JSON.stringify({at:new Date().toISOString(),service,allocation,schedule,flags:bindings.filter(x=>x.type==='plain_text'&&/MODE/.test(x.name)).map(x=>({name:x.name,text:x.text}))}));
            if(allocation.versions.length!==1||allocation.versions[0].version_id!==expected||allocation.versions[0].percentage!==100||!bindings.some(x=>x.type==='d1'&&x.id==='55596003-1b90-4f66-aad8-decb21205f13')||bindings.some(x=>x.name==='NAGAMEALERT_SAFETY_GATE_RECENT_MODE'&&x.text==='delta'))throw Error('allocation or settings changed; HOLD');
-           if(service==='vigia-runtime'&&!schedule.crons?.some(x=>x.cron==='*/5 * * * *'))throw Error('cron changed; HOLD');
+           if(service==='vigia-runtime'&&!schedule.schedules?.some(x=>x.cron==='*/5 * * * *'))throw Error('cron changed; HOLD');
           }
           if(native.activeLease||native.buildSha!=='937ee3bbb18b19eb7bb0b03654ca64dcd5faa832')throw Error('coordinator active or build changed; HOLD');
 
