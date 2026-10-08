@@ -22,7 +22,8 @@ jobs:
     uses: ./.github/workflows/source-execution-owner.yml
     with:
       base_url: ${{ needs.runtime_target.outputs.base_url }}
-    secrets: inherit
+    secrets:
+      SOURCE_OWNER_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
 
   reconcile:
     needs: [writer_gate, runtime_target, native_owner]

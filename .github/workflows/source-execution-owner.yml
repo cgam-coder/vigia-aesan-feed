@@ -4,7 +4,7 @@ on:
     inputs:
       base_url: { required: true, type: string }
     secrets:
-      VIGIA_SYNC_TOKEN: { required: true }
+      SOURCE_OWNER_TOKEN: { required: true }
     outputs:
       legacy_allowed:
         value: ${{ jobs.observe.outputs.legacy_allowed }}
@@ -24,5 +24,5 @@ jobs:
       - id: owner
         env:
           VIGIA_BASE_URL: ${{ inputs.base_url }}
-          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.SOURCE_OWNER_TOKEN }}
         run: node scripts/source-execution-owner.mjs
