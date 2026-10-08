@@ -1,0 +1,56 @@
+# One-shot public GET-only inspection of official European Commission portal frontend.
+# No token, no NagameAlert endpoints, no mutation. Expires 2026-10-09.
+name: SR271 Safety Gate portal frontend API discovery (read-only)
+on:
+  push:
+    branches: [diagnostics/safety-gate-portal-readonly-20261008]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: github.event.head_commit.message == 'SR271 official portal GET-only frontend discovery' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check official frontend scripts for declared API routes
+        run: |
+          node --input-type=module <<'NODE'
+          const origin="https://ec.europa.eu";
+          const allowed=origin+"/safety-gate-alerts/";
+          const page=allowed+"screen/search";
+          if(Date.now()>Date.parse("2026-10-09T00:00:00Z"))throw Error("expired");
+          async function get(url){
+            if(!url.startsWith(allowed))throw Error("outside official scope");
+            const res=await fetch(url,{method:"GET",redirect:"follow",headers:{Accept:"text/html,*/*"},
+              signal:AbortSignal.timeout(16000)});
+            if(!res.url.startsWith(allowed))throw Error("redirect out of scope");
+            const contentLength=Number(res.headers.get("content-length")||0);
+            if(contentLength>6000000)throw Error("oversized response");
+            const bytes=await res.arrayBuffer();
+            if(bytes.byteLength>6000000)throw Error("oversized response read");
+            return {status:res.status,text:new TextDecoder().decode(bytes),length:bytes.byteLength,url:res.url};
+          }
+          const response=await get(page);
+          const html=response.text;
+          const srcs=[...html.matchAll(/<script\b[^>]*src=["']([^"']+)["']/giu)].map(m=>new URL(m[1],response.url).href)
+            .filter(u=>u.startsWith(allowed));
+          const links=[...html.matchAll(/<link\b[^>]*href=["']([^"']+\.js(?:\?[^"']*)?)["']/giu)].map(m=>new URL(m[1],response.url).href)
+            .filter(u=>u.startsWith(allowed));
+          const scripts=[...new Set([...srcs,...links])].slice(-5);
+          console.log("PORTAL_HTML "+JSON.stringify({http:response.status,length:html.length,title:html.match(/<title[^>]*>([^<]+)<\/title>/iu)?.[1]??null,
+            path:new URL(response.url).pathname,scripts:scripts.map(s=>s.slice(0,260)),doctype:html.slice(0,60)}));
+          const patterns=[/mostRecent/giu,/notification\/(?:search|mostRecent|recent)/giu,/\/(?:public\/)?api\/(?:notification|search)[^"'\s<>)]{0,90}/giu, /weeklyReport/giu];
+          let count=0;
+          for(const url of scripts) {
+            try {
+              const js=await get(url);
+              const extracts=[];
+              for(const p of patterns) {
+                const m=[...js.text.matchAll(p)].slice(0,12);
+                for(const x of m) extracts.push({hit:x[0].slice(0,140),near:js.text.slice(Math.max(0,(x.index??0)-90),(x.index??0)+170).replace(/\s+/gu," ").slice(0,240)});
+              }
+              console.log("PORTAL_SCRIPT "+JSON.stringify({path:new URL(url).pathname,length:js.length,http:js.status,matches:extracts.slice(0,22)}));
+              if(++count>=5)break;
+            }catch(e){console.log("PORTAL_SCRIPT_ERROR "+JSON.stringify({path:new URL(url).pathname,error:e?.name||String(e).slice(0,60)}));}
+          }
+          NODE
