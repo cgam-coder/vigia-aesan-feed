@@ -44,20 +44,14 @@ jobs:
           const buildResponse=await fetch(root+"/builds/builds?version_ids="+active.versions[0].version_id,{headers:{Authorization:"Bearer "+process.env.CF_TOKEN},signal:AbortSignal.timeout(60000)});
           let buildMetadata={http:buildResponse.status};if(buildResponse.ok){const payload=await buildResponse.json();buildMetadata={http:buildResponse.status,success:payload.success,builds:(Array.isArray(payload.result?.builds)?payload.result.builds:Object.values(payload.result?.builds??{}).flatMap(v=>Array.isArray(v)?v:[v])).map(b=>({build_uuid:b.build_uuid,status:b.status,metadata:{branch:b.build_trigger_metadata?.branch,commit:b.build_trigger_metadata?.commit_hash}}))};}
           console.log("SR_BUILD_PROVENANCE "+JSON.stringify(buildMetadata));
-          const gqlQuery='query GetWorkersAnalytics($accountTag: string, $datetimeStart: string, $datetimeEnd: string, $scriptName: string) {viewer {accounts(filter: {accountTag: $accountTag}) {workersInvocationsAdaptive(limit: 100, filter: {scriptName: $scriptName,datetime_geq: $datetimeStart,datetime_leq: $datetimeEnd}) {sum {subrequests requests errors} quantiles {cpuTimeP50 cpuTimeP99} dimensions {datetime scriptName status}}}}}';
+          const q='query GetWorkersAnalytics($accountTag: string, $datetimeStart: string, $datetimeEnd: string, $scriptName: string) {viewer {accounts(filter: {accountTag: $accountTag}) {workersInvocationsAdaptive(limit: 100, filter: {scriptName: $scriptName,datetime_geq: $datetimeStart,datetime_leq: $datetimeEnd}) {sum {subrequests requests errors} quantiles {cpuTimeP50 cpuTimeP99} dimensions {scriptName status}}}}}';
           for(const scriptName of ["vigia-runtime","vigia-source-runner"]){
-            try{const r=await fetch("https://api.cloudflare.com/client/v4/graphql",{method:"POST",headers:{Authorization:"Bearer "+process.env.CF_TOKEN,"Content-Type":"application/json"},body:JSON.stringify({query:gqlQuery,variables:{accountTag:"9c1807c68493f14259248b5f5782cc6f",datetimeStart:"2026-10-08T13:28:00Z",datetimeEnd:new Date().toISOString(),scriptName}}),signal:AbortSignal.timeout(30000)});
-            console.log("SR_PROVIDER_READ "+JSON.stringify({scriptName,http:r.status,data:await r.json()}));}catch{console.log("SR_PROVIDER_READ "+JSON.stringify({scriptName,outcome:"HOLD",reason:"analytics-read-unavailable"}));}
+            const r=await fetch("https://api.cloudflare.com/client/v4/graphql",{method:"POST",headers:{Authorization:"Bearer "+process.env.CF_TOKEN,"Content-Type":"application/json"},body:JSON.stringify({query:q,variables:{accountTag:"9c1807c68493f14259248b5f5782cc6f",datetimeStart:"2026-10-08T13:28:55Z",datetimeEnd:new Date().toISOString(),scriptName}}),signal:AbortSignal.timeout(30000)});
+            console.log("SR_PROVIDER_AGGREGATE "+JSON.stringify({scriptName,http:r.status,data:await r.json()}));
           }
-          const queries=[
-            "SELECT id,source,mode,kind,epoch,started_at,deadline,finished_at,receipt_json FROM source_reliability_jobs ORDER BY started_at DESC LIMIT 20",
-            "SELECT owner_id,expires_at,epoch,last_scheduled_time,json_extract(state_json,'$.lastWakeAt') AS last_wake_at,json_extract(state_json,'$.lastOutcome') AS last_outcome FROM source_reliability_control WHERE id=1"
-          ];
-          for(const sql of queries){
-            if(!sql.startsWith("SELECT ")||sql.includes(";"))throw Error("non-read diagnostic");
-            try{const r=await fetch(root+"/d1/database/55596003-1b90-4f66-aad8-decb21205f13/query",{method:"POST",headers:{Authorization:"Bearer "+process.env.CF_TOKEN,"Content-Type":"application/json"},body:JSON.stringify({sql}),signal:AbortSignal.timeout(30000)});
-            const p=await r.json();console.log("SR_DURABLE_READ "+JSON.stringify({sql,http:r.status,success:p.success,errors:p.errors,rows:p.result?.flatMap(x=>x.results??[])}));}catch{console.log("SR_DURABLE_READ "+JSON.stringify({sql,outcome:"HOLD",reason:"durable-read-unavailable"}));}
-          }
+          const sql="SELECT source,COUNT(*) AS checks,MAX(checked_at) AS last_checked_at FROM source_checks WHERE source='SAFETY GATE' AND checked_at >= '2026-10-08T13:41:39.973Z' GROUP BY source";
+          const r=await fetch(root+"/d1/database/55596003-1b90-4f66-aad8-decb21205f13/query",{method:"POST",headers:{Authorization:"Bearer "+process.env.CF_TOKEN,"Content-Type":"application/json"},body:JSON.stringify({sql}),signal:AbortSignal.timeout(30000)});
+          console.log("SR_SG_WRITE_RECONCILIATION_READ "+JSON.stringify({sql,http:r.status,data:await r.json()}));
           const after=(await cf("/workers/scripts/vigia-runtime/deployments")).deployments?.[0];
           if(JSON.stringify(active)!==JSON.stringify(after))throw Error("allocation changed");
           console.log("SR_FINAL_PREFLIGHT "+JSON.stringify({zeroWrite:true,control,states}));
