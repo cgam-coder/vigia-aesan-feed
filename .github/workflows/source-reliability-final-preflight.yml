@@ -1,4 +1,4 @@
-name: Source reliability checkpoint before native activation (GET only)
+name: Source reliability final preflight (GET only)
 on:
   push:
     branches: [source-reliability/final-preflight-20261008]
@@ -18,7 +18,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           const root="https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f";
-          const cfAllow=/^\/workers\/scripts\/vigia-runtime\/(?:deployments|versions\/[a-f0-9-]{36}|schedules|settings)$/;
+          const cfAllow=/^(?:\/workers\/scripts\/vigia-runtime\/(?:deployments|versions\/[a-f0-9-]{36}|schedules|settings)|\/builds\/builds\?version_ids=[a-f0-9-]{36})$/;
           async function request(url,token){
             if(Date.now()>Date.parse("2026-10-08T14:00:00Z"))throw Error("expired preflight");
             const r=await fetch(url,{method:"GET",redirect:"error",headers:{Authorization:"Bearer "+token,Accept:"application/json"},signal:AbortSignal.timeout(25000)});
@@ -37,7 +37,10 @@ jobs:
           const sourcePaths=["/api/freshness?observe=1&policy=1","/api/freshness?observe=1",...["aesan","rapna","rasff","safety-gate","oecd"].map(x=>"/api/"+x+"/sync?observe=1")];
           const states=[];
           for(const path of sourcePaths)states.push({path,body:await request("https://vigia-runtime.c-gamiz93.workers.dev"+path,process.env.SYNC_TOKEN)});
+          const buildResponse=await fetch(root+"/builds/builds?version_ids="+active.versions[0].version_id,{headers:{Authorization:"Bearer "+process.env.CF_TOKEN},signal:AbortSignal.timeout(25000)});
+          let buildMetadata={http:buildResponse.status};if(buildResponse.ok){const payload=await buildResponse.json();buildMetadata={http:buildResponse.status,success:payload.success,builds:(payload.result?.builds??[]).map(b=>({build_uuid:b.build_uuid,status:b.status,metadata:b.build_trigger_metadata}))};}
+          console.log("SR_BUILD_PROVENANCE "+JSON.stringify(buildMetadata));
           const after=(await cf("/workers/scripts/vigia-runtime/deployments")).deployments?.[0];
           if(JSON.stringify(active)!==JSON.stringify(after))throw Error("allocation changed");
-          console.log("SR_FINAL_PREFLIGHT "+JSON.stringify({zeroWrite:true,phase:"native-capacity-checkpoint",control,states}));
+          console.log("SR_FINAL_PREFLIGHT "+JSON.stringify({zeroWrite:true,control,states}));
           NODE
