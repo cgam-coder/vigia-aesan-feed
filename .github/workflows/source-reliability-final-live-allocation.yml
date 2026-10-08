@@ -1,0 +1,30 @@
+name: Source reliability immediate authenticated deployment allocation
+on:
+  push:
+    branches: [source-reliability/final-live-allocation-20261008-2010]
+permissions:
+  contents: read
+jobs:
+  read:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Read deployment allocation version rollback and native ledger
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f',base='https://vigia-runtime.c-gamiz93.workers.dev';
+          if(Date.now()>Date.parse('2026-10-08T20:20:00Z'))throw Error('read window expired');
+          async function cf(path){const r=await fetch(root+path,{headers:{Authorization:'Bearer '+process.env.CF_TOKEN},signal:AbortSignal.timeout(20000)}),p=await r.json();if(!r.ok||!p.success)throw Error('CF GET rejected');return p.result;}
+          for(const service of ['vigia-runtime','vigia-source-runner']){
+           const d=await cf('/workers/scripts/'+service+'/deployments'),a=d.deployments[0],v=await cf('/workers/scripts/'+service+'/versions/'+a.versions[0].version_id),s=await cf('/workers/scripts/'+service+'/settings'),cron=await cf('/workers/scripts/'+service+'/schedules');
+           console.log('LIVE_ALLOCATION_VERIFIED '+JSON.stringify({at:new Date().toISOString(),service,number:v.number,active:a,rollback:d.deployments.slice(1,3),cron,db:s.bindings?.filter(x=>x.type==='d1').map(x=>({name:x.name,id:x.id})),flags:s.bindings?.filter(x=>x.type==='plain_text'&&/MODE/.test(x.name)).map(x=>({name:x.name,text:x.text})),services:s.bindings?.filter(x=>x.type==='service').map(x=>({name:x.name,service:x.service}))}));
+          }
+          const r=await fetch(base+'/api/source-reliability?observe=1',{headers:{Authorization:'Bearer '+process.env.SYNC_TOKEN},signal:AbortSignal.timeout(20000)}),p=await r.json();if(!r.ok)throw Error('native GET');if(p.state)delete p.state.ownershipFingerprint;
+          console.log('LIVE_NATIVE_VERIFIED '+JSON.stringify({at:new Date().toISOString(),body:p}));
+          const builds=await cf('/builds/workers/c16d1153847b48f7ba2245915cfd97ab/builds?per_page=2');
+          console.log('LIVE_BUILD_VERIFIED '+JSON.stringify({at:new Date().toISOString(),builds:builds.map(b=>({id:b.build_uuid,status:b.status,outcome:b.build_outcome,sha:b.build_trigger_metadata?.commit_hash,branch:b.build_trigger_metadata?.branch,keys:Object.keys(b)}))}));
+          NODE
