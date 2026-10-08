@@ -34,7 +34,10 @@ jobs:
           const control={at:new Date().toISOString(),active,rollback:a?.[1]??null,versionNumber:version.number,
             schedulerMode:flag("NAGAMEALERT_RECENT_SCHEDULER_MODE"),delta:flag("NAGAMEALERT_SAFETY_GATE_RECENT_MODE"),
             limits:settings.limits??null,usageModel:settings.usage_model??null,databases:db,schedules};
-          const sourcePaths=["/api/source-reliability?observe=1","/api/freshness?observe=1&policy=1","/api/freshness?observe=1",...["aesan","rapna","rasff","safety-gate","oecd"].map(x=>"/api/"+x+"/sync?observe=1")];
+          const ownerResponse=await fetch("https://vigia-runtime.c-gamiz93.workers.dev/api/source-reliability?observe=1",{headers:{Authorization:"Bearer "+process.env.SYNC_TOKEN,"Cache-Control":"no-store"},signal:AbortSignal.timeout(25000)});
+          let owner=null;try{owner=await ownerResponse.json();}catch{}
+          console.log("SR_NATIVE_OWNER "+JSON.stringify({http:ownerResponse.status,body:owner}));
+          const sourcePaths=["/api/freshness?observe=1&policy=1","/api/freshness?observe=1",...["aesan","rapna","rasff","safety-gate","oecd"].map(x=>"/api/"+x+"/sync?observe=1")];
           const states=[];
           for(const path of sourcePaths)states.push({path,body:await request("https://vigia-runtime.c-gamiz93.workers.dev"+path,process.env.SYNC_TOKEN)});
           const buildResponse=await fetch(root+"/builds/builds?version_ids="+active.versions[0].version_id,{headers:{Authorization:"Bearer "+process.env.CF_TOKEN},signal:AbortSignal.timeout(25000)});
