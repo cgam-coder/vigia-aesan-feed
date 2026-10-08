@@ -128,7 +128,7 @@ jobs:
           const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f',base='https://vigia-runtime.c-gamiz93.workers.dev';
           if(Date.now()>Date.parse('2026-10-08T20:10:00Z'))throw Error('candidate read expired');
           const official=await fetchOfficialFreshness('AESAN');
-          const sql="SELECT id,reference,content_hash,version_count,published_at,updated_at FROM alerts WHERE source='AESAN' ORDER BY published_at DESC,updated_at DESC LIMIT 20";
+          const sql="SELECT id,reference,content_hash,version_count,published_at,updated_at FROM alerts WHERE source='AESAN' ORDER BY COALESCE(published_at,detected_at) DESC,id DESC LIMIT 20";
           const r=await fetch(root+'/d1/database/55596003-1b90-4f66-aad8-decb21205f13/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql}),signal:AbortSignal.timeout(20000)}),p=await r.json();
           if(!r.ok||!p.success||p.result.some(x=>!x.success||x.meta?.changes||x.meta?.rows_written))throw Error('SELECT result unconfirmed');
           const rows=p.result[0].results,ids=new Set(rows.map(x=>x.reference)),officialIds=new Set(official.anchors.map(x=>x.identity)),missing=official.anchors.filter(x=>!ids.has(x.identity)),unexpected=rows.filter(x=>!officialIds.has(x.reference));
