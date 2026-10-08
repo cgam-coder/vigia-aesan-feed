@@ -4,17 +4,172 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-10-05T20:55:23.943Z",
+  "generatedAt": "2026-10-08T17:25:08.982Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
-    "totalAlerts": 129,
+    "totalAlerts": 130,
     "earliestPublishedAt": "2025-01-01T23:00:00.000Z",
-    "latestPublishedAt": "2026-10-04T22:00:00.000Z",
+    "latestPublishedAt": "2026-10-07T22:00:00.000Z",
     "lastFullSyncAt": "2026-09-25T16:02:23.792Z",
     "pagesScanned": 9,
     "legacyIndexesScanned": 0
   },
   "alerts": [
+    {
+      "id": "aesan:ES2026/604",
+      "reference": "ES2026/604",
+      "sourceRecordId": "0bd6a376-15ae-4301-9500-e9b9a973ec26",
+      "sourceRecordIdType": "idAlert",
+      "sourceRecordSchemaVersion": 2,
+      "sourceRecordHash": "812692a6827330ed110d5bbce836637bbeaca1c5f39c78ce2994b37a3c892b25",
+      "previousReferences": [],
+      "referenceHistory": [],
+      "source": "AESAN",
+      "type": "Alimentaria",
+      "priority": "Alta",
+      "title": "Alerta por presencia de sildenafilo en complemento alimenticio (Ref. ES2026/604)",
+      "product": "complemento alimenticio",
+      "brand": "",
+      "productClass": "Complementos alimenticios",
+      "productKey": "complemento alimenticio",
+      "brandKey": "",
+      "provider": "",
+      "providerKey": "",
+      "providerRole": "",
+      "providerEvidence": "",
+      "notifyingText": "",
+      "hazard": "Sildenafilo",
+      "origin": "No indicado",
+      "scope": "Personas consumidoras del complemento alimenticio indicado",
+      "action": "Se recomienda a las personas que tengan en su domicilio el producto incluido en esta alerta se abstengan de consumirlo.",
+      "lots": [],
+      "imageUrl": "https://www.aesan.gob.es/dam/jcr:34e09128-c364-4d6d-94c9-b4f006909cc0/alerta_08_10_2026.2026-10-08-17-07-02.png",
+      "officialTitle": "Alerta por presencia de sildenafilo en complemento alimenticio (Ref. ES2026/604)",
+      "publishedFields": [],
+      "materialParagraphs": [
+        {
+          "value": "La Agencia Española de Seguridad Alimentaria y Nutrición informa de que la Agencia Española de Medicamentos y Productos Sanitarios (AEMPS) ha ordenado la retirada del complemento alimenticio “El toro” por la presencia de sildenafilo no declarado en el etiquetado.",
+          "sourceField": "article.body.p[0]",
+          "order": 0,
+          "section": "publication"
+        },
+        {
+          "value": "La inclusión de las sustancias activas como sildenafilo en cantidad suficiente para restaurar, corregir o modificar una función fisiológica ejerciendo una acción farmacológica puede producir reacciones adversas de diversa gravedad.",
+          "sourceField": "article.body.p[1]",
+          "order": 1,
+          "section": "publication"
+        },
+        {
+          "value": "Se adjuntan imágenes disponibles:",
+          "sourceField": "article.body.p[2]",
+          "order": 2,
+          "section": "publication"
+        },
+        {
+          "value": "Pueden ampliar información en el siguiente enlace:",
+          "sourceField": "article.body.p[3]",
+          "order": 3,
+          "section": "publication"
+        },
+        {
+          "value": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+          "sourceField": "article.body.p[4]",
+          "order": 4,
+          "section": "publication"
+        },
+        {
+          "value": "Se recomienda a las personas que tengan en su domicilio productos afectados por esta alerta, se abstengan de consumirlos.",
+          "sourceField": "article.body.p[5]",
+          "order": 5,
+          "section": "publication"
+        },
+        {
+          "value": "Puede ampliar información de AESAN sobre complementos alimenticios en el siguiente enlace:",
+          "sourceField": "article.body.p[6]",
+          "order": 6,
+          "section": "publication"
+        },
+        {
+          "value": "Asimismo, puede ser de interés la siguiente información sobre comercio por internet:",
+          "sourceField": "article.body.p[7]",
+          "order": 7,
+          "section": "publication"
+        }
+      ],
+      "resources": [
+        {
+          "kind": "image",
+          "url": "https://www.aesan.gob.es/dam/jcr:34e09128-c364-4d6d-94c9-b4f006909cc0/alerta_08_10_2026.2026-10-08-17-07-02.png",
+          "label": null,
+          "sourceField": "article.image[0]",
+          "order": 0
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:2178a5cd-77f9-4c54-abdb-6865aebf74c1/saber_complementos.pdf",
+          "label": "¿Qué necesito saber sobre los complementos alimenticios?",
+          "sourceField": "article.link[1]",
+          "order": 1
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:f3ee1883-76dc-4d00-a6ba-4dc2618331fc/Decalogo_consumo_responsable_complementos_alimenticios.pdf",
+          "label": "Decálogo para un consumo responsable de los complementos alimenticios”.",
+          "sourceField": "article.link[2]",
+          "order": 2
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:7fd7f1f6-1592-42bc-9ef7-4d45eedf15fc/Cinco_preguntas.pdf",
+          "label": "5 Preguntas que debes hacerte antes de tomar un complemento alimenticio",
+          "sourceField": "article.link[3]",
+          "order": 3
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:d6b6ac5d-6345-403e-a62b-79e9a07307b8/COMPRA_SEGURA_DE_ALIMENTOS_POR_INTERNET.pdf",
+          "label": "Compra segura a través de internet",
+          "sourceField": "article.link[4]",
+          "order": 4
+        }
+      ],
+      "officialDates": [
+        {
+          "label": null,
+          "value": "08/10/2026",
+          "sourceField": "pageInfo.date",
+          "order": 0
+        }
+      ],
+      "url": "https://www.aesan.gob.es/alertas/2026_70",
+      "publishedAt": "2026-10-07T22:00:00.000Z",
+      "detectedAt": "2026-10-08T17:25:08.982Z",
+      "updatedAt": "2026-10-07T22:00:00.000Z",
+      "contentHash": "812692a6827330ed110d5bbce836637bbeaca1c5f39c78ce2994b37a3c892b25",
+      "versionCount": 1,
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "food_supplements",
+        "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+        "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios",
+        "publications": [
+          {
+            "sourceRecordId": "0bd6a376-15ae-4301-9500-e9b9a973ec26",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_70",
+            "matches": [
+              {
+                "code": "food_supplements",
+                "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+                "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios"
+              }
+            ]
+          }
+        ]
+      }
+    },
     {
       "id": "aesan:ES2026/597",
       "reference": "ES2026/597",
