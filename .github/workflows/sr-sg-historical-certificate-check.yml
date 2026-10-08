@@ -43,7 +43,9 @@ jobs:
             h?.pagesScanned===1118&&h?.coverage==="official-index-complete"&&h?.cursorKey===null&&
             h?.completedAt&&h?.lastError===null&&h?.detailFailures===0&&h?.pageErrors===0);
           const certPass=Boolean(cert&&cert.source==="SAFETY GATE"&&cert.mode==="historical-reconcile"&&
-            cert.status==="certified"&&cert.auditStatus==="passed");
+            cert.cycleId===h?.planVersion&&cert.completedAt===h?.completedAt&&
+            cert.coverage==="official-index-complete"&&cert.auditStatus==="passed"&&
+            cert.evidence?.scope==="full-archive"&&cert.evidence?.contentAuthority==="official-json-detail");
           const integrityPass=critical.every(k=>integrity[k]===0);
           const result={at:new Date().toISOString(),getStatus:[observation.status,audit.status],
             historical:{status:h?.status,cursor:h?.cursor,totalUnits:h?.totalUnits,pagesScanned:h?.pagesScanned,
@@ -51,6 +53,8 @@ jobs:
               lastErrorPresent:h?.lastError!=null,detailFailures:h?.detailFailures,pageErrors:h?.pageErrors,
               cursorKeyPresent:h?.cursorKey!=null},certificate:cert?{
               source:cert.source,mode:cert.mode,status:cert.status,auditStatus:cert.auditStatus,
+              cycleMatches:cert.cycleId===h?.planVersion,scope:cert.evidence?.scope,
+              contentAuthority:cert.evidence?.contentAuthority,
               coverage:cert.coverage,checkedAt:cert.checkedAt,completedAt:cert.completedAt
             }:null,audit:{checkedAt:a?.checkedAt,integrity,
               counts:{alerts:a?.counts?.safetyGateAlerts,uniqueReferences:a?.counts?.safetyGateUniqueReferences,
