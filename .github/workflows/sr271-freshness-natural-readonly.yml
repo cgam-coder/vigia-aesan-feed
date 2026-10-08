@@ -1,0 +1,75 @@
+# One-time GET-only read of persisted freshness after PR272 release; no writes to runtime, D1 or feed/main.
+name: SR271 natural freshness verification GET-only
+on:
+  push:
+    branches: [observations/sr271-cloudflare-20261008]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: github.event.head_commit.message == 'SR271 natural freshness GET-only one-shot' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Observe certified freshness and source sync state without audit or recovery
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const host="https://vigia-runtime.c-gamiz93.workers.dev";
+          const allowed=new Set([
+            "/api/freshness?observe=1",
+            "/api/freshness?observe=1&policy=1",
+            "/api/safety-gate/sync?observe=1",
+          ]);
+          const token=process.env.VIGIA_SYNC_TOKEN;
+          if(!token)throw Error("read credential unavailable");
+          async function read(path){
+            if(Date.now()>Date.parse("2026-10-09T00:00:00Z"))throw Error("observer expired");
+            if(!allowed.has(path))throw Error("GET path not allowlisted");
+            const response=await fetch(host+path,{
+              method:"GET",redirect:"error",
+              headers:{Authorization:"Bearer "+token,Accept:"application/json","Cache-Control":"no-cache"},
+              signal:AbortSignal.timeout(28000),
+            });
+            if(response.status!==200)throw Error("Authorized GET "+response.status);
+            const result=await response.json();
+            return result;
+          }
+          const [policy,current,safety]=await Promise.all([
+            read("/api/freshness?observe=1&policy=1"),
+            read("/api/freshness?observe=1"),
+            read("/api/safety-gate/sync?observe=1")
+          ]);
+          const now=new Date();
+          const stateArray=Array.isArray(current.states)?current.states:[];
+          const sources=["AESAN","RAPNA","RASFF","SAFETY GATE","OECD"];
+          const policyMap=new Map((policy.policies||[]).map(x=>[x.source,x]));
+          const stateMap=new Map(stateArray.map(x=>[x.source,x]));
+          const output=sources.map(source=>{
+            const s=stateMap.get(source)||{},p=policyMap.get(source)||{};
+            const age= s.lastSyncSuccessAt==null?null:(now-Date.parse(s.lastSyncSuccessAt))/60000;
+            const revisionAge=s.revisionLastSuccessAt==null?null:(now-Date.parse(s.revisionLastSuccessAt))/60000;
+            const parity=s.latestIdentityParity===true&&s.missingOfficialIdentities?.length===0&&s.revisionMismatches?.length===0;
+            const recentFresh=age!==null&&age>=0&&age<=p.recent?.freshMaxAgeMinutes;
+            const revisionFresh=p.revision?.required===false?s.revisionStatus==="not-required":
+              s.revisionStatus==="fresh"&&revisionAge!==null&&revisionAge>=0&&revisionAge<=p.revision?.maxAgeMinutes;
+            const pass=s.status==="fresh"&&s.error===null&&parity&&recentFresh&&revisionFresh;
+            return {source,verdict:pass?"PASS":"HOLD",status:s.status??null,
+              checkedAt:s.checkedAt??null,lastSyncSuccessAt:s.lastSyncSuccessAt??null,
+              recentAgeMinutes:age===null?null:Number(age.toFixed(2)),
+              recentThresholdMinutes:p.recent?.freshMaxAgeMinutes??null,
+              parity,revisionFresh,revisionAgeMinutes:revisionAge===null?null:Number(revisionAge.toFixed(2)),
+              error:s.error===null?null:s.error===undefined?"absent":String(s.error).slice(0,160),
+              activeLease:s.activeLease??null,lastSuccessfulParityAt:s.lastSuccessfulParityAt??null};
+          });
+          const r=safety.recent||{};
+          const result={observedAt:now.toISOString(),deploymentCertifiedAt:"2026-10-08T09:43:33.650Z",
+            policyVersion:policy.policyVersion,states:output,allFiveFresh:output.every(x=>x.verdict==="PASS"),
+            safetyRecent:{status:r.status,startedAt:r.startedAt,completedAt:r.completedAt,
+              lastSuccessAt:r.lastSuccessAt,cursor:r.cursor,pagesScanned:r.pagesScanned,
+              recordsObserved:r.recordsObserved,recordsPersisted:r.recordsPersisted,
+              lastError:r.lastError,coverage:r.coverage},
+            safetyLeasePresent:safety.lease!==null&&safety.lease!==undefined};
+          console.log("SR271_FRESHNESS "+JSON.stringify(result));
+          NODE
