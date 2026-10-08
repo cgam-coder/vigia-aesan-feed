@@ -1,0 +1,74 @@
+name: Source reliability bounded postdeployment natural audit and strict watchdog
+on:
+  push:
+    branches: [source-reliability/final-postdeployment-20261008-2005]
+permissions:
+  contents: read
+jobs:
+  checkpoint:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: GET-only independent strict watchdog and durable SELECT evidence
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {runWatchdog} from './scripts/freshness-watchdog.mjs';
+          const base='https://vigia-runtime.c-gamiz93.workers.dev',root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          if(Date.now()>Date.parse('2026-10-08T20:20:00Z'))throw Error('checkpoint expired');
+          const safeFetch=(u,i={})=>{if((i.method??'GET')!=='GET')throw Error('GET-only watchdog');return fetch(u,{...i,signal:AbortSignal.any([AbortSignal.timeout(20000),...(i.signal?[i.signal]:[])])});};
+
+          let matched=false,lastNative=null,lastDeployment=null;
+          for(let check=0;check<18&&Date.now()<Date.parse('2026-10-08T20:18:00Z');check++){
+           const dr=await safeFetch(root+'/workers/scripts/vigia-runtime/deployments',{headers:{Authorization:'Bearer '+process.env.CF_TOKEN}}),dp=await dr.json();
+           if(!dr.ok||!dp.success)throw Error('allocation poll failed');
+           const allocation=dp.result.deployments[0];
+           const nr=await safeFetch(base+'/api/source-reliability?observe=1',{headers:{Authorization:'Bearer '+process.env.SYNC_TOKEN}}),native=await nr.json();
+           if(!nr.ok)throw Error('native poll failed');
+           lastNative=native;lastDeployment=allocation;
+           const audit=native.state?.lastAudit,auditAfterDeployment=audit&&Date.parse(audit.startedAt)>=Date.parse(allocation.created_on);
+           matched=native.buildSha==='91c6b8d7e3b5f5fa4ceb73ee3668d1a89e51fadd'&&allocation.versions.length===1&&allocation.versions[0].percentage===100&&auditAfterDeployment&&!native.activeLease&&audit.states?.length===5;
+           console.log('BOUNDED_POSTDEPLOY_READ '+JSON.stringify({at:new Date().toISOString(),check,allocation:allocation.versions,build:native.buildSha,activeLease:native.activeLease,auditStarted:audit?.startedAt,auditFinished:audit?.finishedAt,auditAfterDeployment,matched}));
+           if(matched)break;
+           await new Promise(resolve=>setTimeout(resolve,50000));
+          }
+          console.log('POSTDEPLOY_NATURAL_AUDIT_GATE '+JSON.stringify({at:new Date().toISOString(),matched,build:lastNative?.buildSha,deployment:lastDeployment,lastAudit:lastNative?.state?.lastAudit}));
+
+          const report=await runWatchdog({url:base+'/api/freshness',token:process.env.SYNC_TOKEN,fetchImpl:safeFetch});
+          console.log('FINAL_STRICT_WATCHDOG '+JSON.stringify({at:new Date().toISOString(),...report}));
+          for(const path of ['/api/source-reliability?observe=1','/api/aesan/sync?observe=1','/api/rasff/sync?observe=1','/api/safety-gate/sync?observe=1','/api/oecd/sync?observe=1']){
+           const r=await safeFetch(base+path,{headers:{Authorization:'Bearer '+process.env.SYNC_TOKEN}}),p=await r.json();if(p.state)delete p.state.ownershipFingerprint;
+           console.log('FUNCTIONAL_NATIVE '+JSON.stringify({at:new Date().toISOString(),path,http:r.status,body:p}));if(!r.ok)throw Error('native read');
+          }
+          for(const sql of [
+            "SELECT owner_id,expires_at,epoch,state_json FROM source_reliability_control WHERE id=1",
+            "SELECT id,source,mode,kind,epoch,started_at,deadline,phase,write_intent_at,finished_at,receipt_json FROM source_reliability_jobs WHERE finished_at IS NULL OR started_at>='2026-10-08T19:45:00Z' ORDER BY started_at",
+            "SELECT * FROM source_sync_locks",
+            "SELECT source,mode,status,cursor,total_units,last_success_at,started_at,updated_at,lease_owner_id,lease_expires_at,last_error,records_observed,records_persisted,new_count,updated_count,detail_failures,page_errors,plan_version FROM source_sync_state",
+            "SELECT source,mode,cycle_id,completed_at,total_units,records_observed,coverage,audit_status,audit_checked_at,updated_at FROM source_revision_certifications",
+            "SELECT id,reference,content_hash,version_count,published_at,detected_at,updated_at FROM alerts WHERE source='AESAN' AND reference IN ('ES2026/604','ES2026/382')",
+            "SELECT COUNT(*) AS changes_after_attempt FROM alerts WHERE source='SAFETY GATE' AND (detected_at>='2026-10-08T13:41:39Z' OR updated_at>='2026-10-08T13:41:39Z')"
+          ]){
+           if(!sql.startsWith('SELECT '))throw Error('SELECT only');const r=await fetch(root+'/d1/database/55596003-1b90-4f66-aad8-decb21205f13/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql}),signal:AbortSignal.timeout(20000)}),p=await r.json();
+           if(!r.ok||!p.success||p.result.some(x=>!x.success||x.meta?.changes||x.meta?.rows_written))throw Error('D1 SELECT unconfirmed');for(const row of p.result.flatMap(x=>x.results))if(row.state_json){const s=JSON.parse(row.state_json);delete s.ownershipFingerprint;row.state_json=JSON.stringify(s);}
+           console.log('FUNCTIONAL_SELECT '+JSON.stringify({at:new Date().toISOString(),sql,data:p}));
+          }
+          for(const service of ['vigia-runtime','vigia-source-runner']){const r=await safeFetch(root+'/workers/scripts/'+service+'/deployments',{headers:{Authorization:'Bearer '+process.env.CF_TOKEN}}),p=await r.json();if(!r.ok||!p.success)throw Error('allocation read');console.log('FUNCTIONAL_ALLOCATION '+JSON.stringify({at:new Date().toISOString(),service,deployments:p.result.deployments.slice(0,2)}));}
+
+          for(const service of ['vigia-runtime','vigia-source-runner']){
+           async function cf(path){const r=await safeFetch(root+'/workers/scripts/'+service+path,{headers:{Authorization:'Bearer '+process.env.CF_TOKEN}}),p=await r.json();if(!r.ok||!p.success)throw Error('CF final metadata read');return p.result;}
+           const deployments=await cf('/deployments'),active=deployments.deployments[0],version=await cf('/versions/'+active.versions[0].version_id),settings=await cf('/settings'),schedule=await cf('/schedules');
+           console.log('POSTDEPLOY_VERIFIED_RUNTIME '+JSON.stringify({at:new Date().toISOString(),service,number:version.number,allocation:active,rollback:deployments.deployments.slice(1,3),schedule,flags:settings.bindings?.filter(x=>x.type==='plain_text'&&/MODE/.test(x.name)).map(x=>({name:x.name,text:x.text})),db:settings.bindings?.filter(x=>x.type==='d1').map(x=>({name:x.name,id:x.id})),services:settings.bindings?.filter(x=>x.type==='service').map(x=>({name:x.name,service:x.service}))}));
+          }
+          const br=await safeFetch(root+'/builds/workers/c16d1153847b48f7ba2245915cfd97ab/builds?per_page=4',{headers:{Authorization:'Bearer '+process.env.CF_TOKEN}}),bp=await br.json();
+          if(!br.ok||!bp.success)throw Error('CF build outcome read');
+          console.log('POSTDEPLOY_BUILD_OUTCOME '+JSON.stringify({at:new Date().toISOString(),builds:bp.result.map(b=>({uuid:b.build_uuid,status:b.status,outcome:b.build_outcome,branch:b.build_trigger_metadata?.branch,sha:b.build_trigger_metadata?.commit_hash,created:b.created_on,finished:b.finished_at,version:b.deployed_version_uuid,keys:Object.keys(b)}))}));
+
+          if(!report.allFresh)console.log('INTEGRAL_VERDICT HOLD; read collection completed successfully; no productive PASS claimed');
+          NODE
