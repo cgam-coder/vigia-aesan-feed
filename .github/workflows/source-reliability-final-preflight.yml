@@ -34,12 +34,13 @@ jobs:
           const control={at:new Date().toISOString(),active,rollback:a?.[1]??null,versionNumber:version.number,
             schedulerMode:flag("NAGAMEALERT_RECENT_SCHEDULER_MODE"),delta:flag("NAGAMEALERT_SAFETY_GATE_RECENT_MODE"),
             limits:settings.limits??null,usageModel:settings.usage_model??null,databases:db,schedules};
+          console.log("SR_ALLOCATION_ONLY "+JSON.stringify(control));
           const ownerResponse=await fetch("https://vigia-runtime.c-gamiz93.workers.dev/api/source-reliability?observe=1",{headers:{Authorization:"Bearer "+process.env.SYNC_TOKEN,"Cache-Control":"no-store"},signal:AbortSignal.timeout(25000)});
           let owner=null;try{owner=await ownerResponse.json();}catch{}
           console.log("SR_NATIVE_OWNER "+JSON.stringify({http:ownerResponse.status,body:owner}));
           const sourcePaths=["/api/freshness?observe=1&policy=1","/api/freshness?observe=1",...["aesan","rapna","rasff","safety-gate","oecd"].map(x=>"/api/"+x+"/sync?observe=1")];
           const states=[];
-          for(const path of sourcePaths)states.push({path,body:await request("https://vigia-runtime.c-gamiz93.workers.dev"+path,process.env.SYNC_TOKEN)});
+          for(const path of sourcePaths){try{states.push({path,body:await request("https://vigia-runtime.c-gamiz93.workers.dev"+path,process.env.SYNC_TOKEN)});}catch(error){states.push({path,outcome:"HOLD",reason:error instanceof Error?error.message:"read-unconfirmed"});}}
           const buildResponse=await fetch(root+"/builds/builds?version_ids="+active.versions[0].version_id,{headers:{Authorization:"Bearer "+process.env.CF_TOKEN},signal:AbortSignal.timeout(25000)});
           let buildMetadata={http:buildResponse.status};if(buildResponse.ok){const payload=await buildResponse.json();buildMetadata={http:buildResponse.status,success:payload.success,builds:(Array.isArray(payload.result?.builds)?payload.result.builds:Object.values(payload.result?.builds??{}).flatMap(v=>Array.isArray(v)?v:[v])).map(b=>({build_uuid:b.build_uuid,status:b.status,metadata:{branch:b.build_trigger_metadata?.branch,commit:b.build_trigger_metadata?.commit_hash}}))};}
           console.log("SR_BUILD_PROVENANCE "+JSON.stringify(buildMetadata));
