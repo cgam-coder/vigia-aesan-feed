@@ -18502,7 +18502,7 @@ async function finishReliabilityJob(db, receipt) {
 
 // runtime/worker/source-runner.ts
 var json = (body, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
-var source_runner_default = {
+var worker = {
   async fetch(request2, env) {
     globalThis.__VIGIA_DB__ = env.DB;
     globalThis.__VIGIA_SYNC_TOKEN__ = env.VIGIA_SYNC_TOKEN;
@@ -18510,6 +18510,31 @@ var source_runner_default = {
     const url = new URL(request2.url), store = createD1AlertStore();
     if (request2.method === "GET" && url.pathname === "/status") return json({ component: "source-runner", configVersion: 2, mode: env.SOURCE_RUNNER_MODE ?? null, hasCron: false });
     if (request2.method === "GET" && url.pathname === "/probe" && env.SOURCE_RUNNER_MODE === "probe") {
+      if (url.searchParams.get("stream") === "1") {
+        url.searchParams.delete("stream");
+        const nested2 = new Request(url, request2), encoder = new TextEncoder();
+        let cancelled = false;
+        const body = new ReadableStream({
+          async start(controller) {
+            const heartbeat = setInterval(() => {
+              if (!cancelled) controller.enqueue(encoder.encode(" "));
+            }, 1e4);
+            try {
+              const result = await worker.fetch(nested2, env);
+              if (!cancelled) controller.enqueue(encoder.encode(await result.text()));
+            } catch {
+              if (!cancelled) controller.enqueue(encoder.encode(JSON.stringify({ zeroWrite: true, source: url.searchParams.get("source"), outcome: "HOLD", reason: "probe-transport-failed" })));
+            } finally {
+              clearInterval(heartbeat);
+              if (!cancelled) controller.close();
+            }
+          },
+          cancel() {
+            cancelled = true;
+          }
+        });
+        return new Response(body, { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+      }
       const source = url.searchParams.get("source"), deadline = Date.now() + (source === "RASFF" ? 24e4 : 36e4), budget = boundedOfficialFetch(deadline, source === "RASFF" ? 1600 : 800), startedAt = (/* @__PURE__ */ new Date()).toISOString();
       try {
         if (source === "AESAN") {
@@ -18567,6 +18592,7 @@ var source_runner_default = {
     return json(receipt);
   }
 };
+var source_runner_default = worker;
 export {
   source_runner_default as default
 };

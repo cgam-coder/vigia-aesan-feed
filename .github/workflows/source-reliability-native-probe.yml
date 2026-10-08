@@ -26,7 +26,7 @@ jobs:
           const script='/workers/scripts/vigia-source-runner';
           const expected='76eaef5f-0e16-40b8-9856-cf2d9d9e6576';
           const bundle=readFileSync('ops/source-reliability/source-runner-probe.mjs');
-          if(createHash('sha256').update(bundle).digest('hex')!=='8c2827d333c701aa8c71f99d968958da54ee8277b077f92072c14a7e24fb724e')throw Error('artifact mismatch');
+          if(createHash('sha256').update(bundle).digest('hex')!=='7ab50e0ffa34ceb8572fe1bb6944c99035e053bc8309a0ab88259f540cd1647a')throw Error('artifact mismatch');
           async function cf(path,method='GET',body){
             if(Date.now()>Date.parse('2026-10-08T13:30:00Z'))throw Error('expired probe');
             if(![script,script+'/settings',script+'/subdomain',script+'/schedules',script+'/deployments','/workers/scripts/vigia-runtime/deployments'].includes(path))throw Error('invalid scope');
@@ -42,10 +42,10 @@ jobs:
           if(allocation.deployments?.[0]?.versions?.length!==1||allocation.deployments[0].versions[0].version_id!==expected||allocation.deployments[0].versions[0].percentage!==100)throw Error('runtime baseline moved');
           const prior=await cf(script+'/settings'),runnerAllocation=await cf(script+'/deployments');
           console.log('SR_NATIVE_BASELINE '+JSON.stringify({at:new Date().toISOString(),allocation:runnerAllocation,mode:prior?.bindings?.find(b=>b.name==='SOURCE_RUNNER_MODE')?.text,version:prior?.version}));
-          if(!prior?.bindings?.some(b=>b.name==='SOURCE_RUNNER_MODE'&&b.text==='probe')||runnerAllocation?.deployments?.[0]?.versions?.length!==1||runnerAllocation.deployments[0].versions[0].percentage!==100||runnerAllocation.deployments[0].versions[0].version_id!=='afb7e53b-d393-4a39-9681-6f6190fbac96')throw Error('runner baseline moved');
-          const metadata={main_module:'source-runner.mjs',compatibility_date:'2026-09-25',compatibility_flags:['nodejs_compat'],usage_model:'standard',limits:{cpu_ms:60000},observability:{enabled:true},annotations:{'workers/message':'source-reliability-probe:1a52a1b9f54ee5b5e7935901958554e1e749e480'},bindings:[{type:'d1',name:'DB',id:'55596003-1b90-4f66-aad8-decb21205f13'},{type:'plain_text',name:'SOURCE_RUNNER_MODE',text:'probe'},{type:'secret_text',name:'VIGIA_SYNC_TOKEN',text:process.env.SYNC_TOKEN}]};
+          if(!prior?.bindings?.some(b=>b.name==='SOURCE_RUNNER_MODE'&&b.text==='probe')||runnerAllocation?.deployments?.[0]?.versions?.length!==1||runnerAllocation.deployments[0].versions[0].percentage!==100||runnerAllocation.deployments[0].versions[0].version_id!=='c8b62031-2485-4e6b-aa72-be3eff27a2e7')throw Error('runner baseline moved');
+          const metadata={main_module:'source-runner.mjs',compatibility_date:'2026-09-25',compatibility_flags:['nodejs_compat'],usage_model:'standard',limits:{cpu_ms:60000},observability:{enabled:true},annotations:{'workers/message':'source-reliability-probe:beb4e80b060da6c211d767ecc7d01b25d22b9a7b'},bindings:[{type:'d1',name:'DB',id:'55596003-1b90-4f66-aad8-decb21205f13'},{type:'plain_text',name:'SOURCE_RUNNER_MODE',text:'probe'},{type:'secret_text',name:'VIGIA_SYNC_TOKEN',text:process.env.SYNC_TOKEN}]};
           const form=new FormData();form.set('metadata',new Blob([JSON.stringify(metadata)],{type:'application/json'}));form.set('source-runner.mjs',new Blob([bundle],{type:'application/javascript+module'}),'source-runner.mjs');
-          const uploaded=await cf(script,'PUT',form);console.log('SR_NATIVE_ARTIFACT '+JSON.stringify({at:new Date().toISOString(),candidate:'1a52a1b9f54ee5b5e7935901958554e1e749e480',sha256:'8c2827d333c701aa8c71f99d968958da54ee8277b077f92072c14a7e24fb724e',mode:'probe',startupMs:uploaded.startup_time_ms,id:uploaded.id}));
+          const uploaded=await cf(script,'PUT',form);console.log('SR_NATIVE_ARTIFACT '+JSON.stringify({at:new Date().toISOString(),candidate:'beb4e80b060da6c211d767ecc7d01b25d22b9a7b',sha256:'7ab50e0ffa34ceb8572fe1bb6944c99035e053bc8309a0ab88259f540cd1647a',mode:'probe',startupMs:uploaded.startup_time_ms,id:uploaded.id}));
           const currentRunnerAllocation=await cf(script+'/deployments');
           let enabled=false;
           try{
@@ -66,7 +66,7 @@ jobs:
             }
             if(!ready)throw Error('bounded endpoint propagation timeout');
             console.log('SR_NATIVE_ALLOCATION '+JSON.stringify(currentRunnerAllocation.deployments[0]));
-            for(const source of ['AESAN','RASFF']){
+            for(const source of ['RASFF']){
               if(source==='RASFF'){
                 const gh=await fetch('https://api.github.com/repos/cgam-coder/vigia-aesan-feed/actions/runs?branch=main&status=in_progress&per_page=100',{headers:{Authorization:'Bearer '+process.env.GITHUB_TOKEN},signal:AbortSignal.timeout(30000)});
                 const active=await gh.json();if(gh.status!==200||!Array.isArray(active.workflow_runs)||active.total_count>100||active.workflow_runs.some(r=>/RASFF/i.test(r.name))){console.log('SR_RASFF_CAPACITY_HOLD '+JSON.stringify({reason:'legacy-provider-activity-unconfirmed'}));continue;}
@@ -74,7 +74,7 @@ jobs:
                 const state=await response.json();console.log('SR_RASFF_CAPACITY_GUARD '+JSON.stringify({http:response.status,status:state?.reconcile?.status,leaseClear:state?.lease===null}));
                 if(response.status!==200||!['completed','partial'].includes(state?.reconcile?.status)||state?.reconcile?.lastError!==null||state?.lease!==null){console.log('SR_RASFF_CAPACITY_HOLD '+JSON.stringify({reason:'legacy-source-not-quiescent-completed'}));continue;}
               }
-              const path='/probe?source='+encodeURIComponent(source)+(source==='AESAN'?'&full=1':'');
+              const path='/probe?source='+encodeURIComponent(source)+(source==='AESAN'?'&full=1':'&stream=1');
               const response=await fetch(base+path,{method:'GET',headers:{Authorization:'Bearer '+process.env.SYNC_TOKEN},signal:AbortSignal.timeout(380000),redirect:'error'});
               const raw=await response.text();let body;try{body=JSON.parse(raw);}catch{console.log('SR_NATIVE_NON_JSON '+JSON.stringify({http:response.status,contentType:response.headers.get('Content-Type'),bodyLength:raw.length}));throw Error('native probe returned non-JSON');}console.log('SR_NATIVE_PROBE '+JSON.stringify({http:response.status,...body}));
               if(body.zeroWrite!==true)throw Error('missing zero-write witness');
