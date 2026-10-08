@@ -1,0 +1,49 @@
+# One-shot GET-only Cloudflare baseline for issue #271. Isolated feed branch, expires 2026-10-09.
+name: SR271 owner Worker production identity (GET-only)
+on:
+  push:
+    branches: [observations/sr271-cloudflare-20261008]
+permissions:
+  contents: read
+jobs:
+  preflight:
+    if: github.event.head_commit.message == 'SR271 GET-only production identity preflight' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Read stable Worker identity, schedules and non-secret recent-mode flags
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root="https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f";
+          const allow=/^\/workers\/scripts\/vigia-runtime\/(?:deployments|versions\/[a-f0-9-]{36}|schedules|settings)$/;
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          if(!token)throw Error("read-token-unavailable");
+          async function get(path){
+            if(Date.now()>Date.parse("2026-10-09T00:00:00Z"))throw Error("observer expired");
+            if(!allow.test(path))throw Error("GET not allowlisted");
+            const r=await fetch(root+path,{method:"GET",redirect:"error",
+              headers:{Authorization:"Bearer "+token,Accept:"application/json"},signal:AbortSignal.timeout(18000)});
+            if(!r.ok)throw Error("Cloudflare GET HTTP "+r.status);
+            const j=await r.json();
+            if(!j.success)throw Error("Cloudflare response success=false");
+            return j.result;
+          }
+          const first=(await get("/workers/scripts/vigia-runtime/deployments"))?.deployments?.[0];
+          if(!first || first.versions?.length!==1 || first.versions[0]?.percentage!==100)throw Error("ambiguous active allocation");
+          const id=first.versions[0].version_id;
+          if(!/^[a-f0-9-]{36}$/.test(id))throw Error("bad version ID");
+          const [v,s,c]=await Promise.all([get("/workers/scripts/vigia-runtime/versions/"+id),get("/workers/scripts/vigia-runtime/settings"),get("/workers/scripts/vigia-runtime/schedules")]);
+          const second=(await get("/workers/scripts/vigia-runtime/deployments"))?.deployments?.[0];
+          if(first.id!==second?.id||JSON.stringify(first.versions)!==JSON.stringify(second.versions))throw Error("allocation drift");
+          const bindings=s.bindings??[];
+          const flag=name=>{const b=bindings.find(x=>x.name===name);return b?.text??b?.value??null};
+          const crons=c.schedules??c;
+          const data={verdict:"PASS",at:new Date().toISOString(),worker:"vigia-runtime",deploymentId:first.id,
+            versionId:id,versionNumber:v.number,allocation:100,
+            previousDeploymentId:(await get("/workers/scripts/vigia-runtime/deployments"))?.deployments?.[1]?.id??null,
+            schedules:Array.isArray(crons)?crons.map(x=>x.cron):null,
+            safetyGateRecentMode:flag("NAGAMEALERT_SAFETY_GATE_RECENT_MODE")==="delta"?"delta":flag("NAGAMEALERT_SAFETY_GATE_RECENT_MODE")===null?"full-default":"unexpected"};
+          console.log("SR271_PREFLIGHT "+JSON.stringify(data));
+          NODE
