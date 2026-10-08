@@ -1,0 +1,84 @@
+# One-shot GET-only Cloudflare release observer. No runtime/feed writes, expires 2026-10-09.
+name: V17 social lightweight postflight (GET-only)
+on:
+  push:
+    branches:
+      - v17/social-lightweight-production-readonly
+permissions:
+  contents: read
+jobs:
+  certify:
+    if: github.event.head_commit.message == 'V17 social lightweight postflight GET-only' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Check Cloudflare production build and stable allocation
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root="https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f";
+          const expires=Date.parse("2026-10-09T00:00:00Z");
+          const baseline="d3e1b8b0-3f70-490e-9384-47d059f86927";
+          const expected="aa97419210d806f0ae406e5c35f8b26bec5f6e52";
+          const builds=["0189ad27-527b-4c18-aca0-11da20e8d209","a5709f51-69db-4373-83fb-6510b6ed317b"];
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          if(!token) throw Error("Missing Cloudflare token");
+          const allowed=/^\/(?:workers\/scripts\/vigia-runtime\/(?:deployments|versions\/[a-f0-9-]{36})|builds\/builds\/(?:0189ad27-527b-4c18-aca0-11da20e8d209|a5709f51-69db-4373-83fb-6510b6ed317b)(?:\/logs(?:\?cursor=[A-Za-z0-9_%.-]+)?)?)$/;
+          async function get(path) {
+            if(Date.now()>expires) throw Error("Observer expired");
+            if(!allowed.test(path)) throw Error("GET path not approved");
+            const response=await fetch(root+path,{method:"GET",redirect:"error",headers:{
+              Authorization:"Bearer "+token,Accept:"application/json"},signal:AbortSignal.timeout(18000)});
+            if(!response.ok)throw Error("Cloudflare GET "+response.status);
+            const j=await response.json();if(!j.success)throw Error("Cloudflare response success=false");
+            return j.result;
+          }
+          async function identity(){
+            const first=(await get("/workers/scripts/vigia-runtime/deployments"))?.deployments?.[0];
+            if(!first||first.versions?.length!==1||first.versions[0]?.percentage!==100)throw Error("Production allocation not 100% single");
+            const id=first.versions[0].version_id;
+            if(!/^[a-f0-9-]{36}$/.test(id))throw Error("Invalid worker version");
+            const v=await get("/workers/scripts/vigia-runtime/versions/"+id);
+            const last=(await get("/workers/scripts/vigia-runtime/deployments"))?.deployments?.[0];
+            if(first.id!==last?.id||JSON.stringify(first.versions)!==JSON.stringify(last.versions))throw Error("Allocation drift");
+            return {deploymentId:first.id,createdOn:first.created_on,versionId:id,number:v.number,allocation:100};
+          }
+          const lines=[];
+          function collect(x){if(typeof x==="string")lines.push(x);else if(Array.isArray(x))x.forEach(collect);else if(x&&typeof x==="object")Object.values(x).forEach(collect);}
+          let final;
+          for(let attempt=1;attempt<=17;attempt++){
+            const active=await identity();
+            const buildRows=[];
+            for(const id of builds){
+              const b=await get("/builds/builds/"+id);
+              buildRows.push({id,status:b.status,outcome:b.build_outcome,branch:b.build_trigger_metadata?.branch,
+                commit:b.build_trigger_metadata?.commit_hash,command:b.build_trigger_metadata?.deploy_command,createdOn:b.created_on});
+            }
+            const production=buildRows.filter(x=>x.status==="stopped"&&x.outcome==="success"&&x.branch==="main"&&x.commit===expected&&x.command==="npx wrangler deploy");
+            let buildVersion=null;
+            if(production.length===1&&active.versionId!==baseline){
+              lines.length=0;
+              let cursor="";
+              for(let n=0;n<10;n++){
+                const result=await get("/builds/builds/"+production[0].id+"/logs"+(cursor?"?cursor="+encodeURIComponent(cursor):""));
+                collect(result.lines);collect(result.events);
+                if(!result.truncated)break;
+                if(!result.cursor||result.cursor===cursor)throw Error("Truncated Cloudflare logs cursor stalled");
+                cursor=result.cursor;
+                if(n===9)throw Error("Cloudflare logs incomplete");
+              }
+              const all=lines.join("\n");
+              buildVersion=all.match(/(?:Current )?Version ID:\s*([a-f0-9-]{36})/i)?.[1]??null;
+            }
+            const verdict=production.length===1&&active.versionId!==baseline&&active.versionId===buildVersion?"PASS":"HOLD";
+            final={verdict,attempt,at:new Date().toISOString(),commit:expected,rollbackVersionId:baseline,active,
+              builds:buildRows,productionBuildMatches:production.length,versionFromBuildLogs:buildVersion};
+            console.log("LIGHTWEIGHT_POSTFLIGHT "+JSON.stringify(final));
+            if(verdict==="PASS")break;
+            if(attempt<17)await new Promise(r=>setTimeout(r,15000));
+          }
+          const fs=await import("node:fs");
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,"### Verified Cloudflare social image release\n\n"+JSON.stringify(final,null,2)+"\n");
+          if(final.verdict!=="PASS")process.exitCode=1;
+          NODE
