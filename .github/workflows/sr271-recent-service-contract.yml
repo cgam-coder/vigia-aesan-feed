@@ -1,0 +1,29 @@
+name: SR271 official carousel service endpoint
+on:
+  push:
+    branches: [diagnostics/safety-gate-portal-readonly-20261008]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: github.event.head_commit.message == 'SR271 locate official carousel service one-shot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Identify precise current carousel endpoint from official JS only
+        run: |
+          node --input-type=module <<'NODE'
+          const root="https://ec.europa.eu/safety-gate-alerts/";
+          const assets=["main-4Q37PFBH.js","chunk-AY6TDOII.js","chunk-AR65AS64.js","chunk-TSRGIXR5.js","chunk-54376XNM.js","chunk-LT65EEDW.js","chunk-GFB4V5U2.js"];
+          for(const name of assets){
+            const r=await fetch(root+name,{method:"GET",redirect:"error",signal:AbortSignal.timeout(13000)});
+            if(r.status!==200)throw Error(name+" HTTP "+r.status);
+            const js=await r.text();
+            const needle="getNotificationsForCarousel";
+            let idx=-1,found=[],ct=0;
+            while((idx=js.indexOf(needle,idx+1))!==-1&&found.length<9&&ct++<20){
+              found.push(js.slice(Math.max(0,idx-350),Math.min(js.length,idx+1450)).replace(/\s+/gu," ").slice(0,1750));
+            }
+            if(found.length)console.log("SR271_CAROUSEL "+JSON.stringify({asset:name,len:js.length,matches:found}));
+          }
+          NODE
