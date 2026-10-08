@@ -1790,7 +1790,7 @@ function uniqueIndex(name) {
   return new IndexBuilderOn(name, true);
 }
 
-// candidate-probe-v4-src/db/schema.ts
+// candidate-probe-v6-src/db/schema.ts
 var alerts = sqliteTable("alerts", {
   id: text("id").primaryKey(),
   reference: text("reference").notNull(),
@@ -2124,7 +2124,7 @@ var dimensionRebuildState = sqliteTable("dimension_rebuild_state", {
   index("dimension_rebuild_state_status_idx").on(table.status)
 ]);
 
-// candidate-probe-v4-src/db/index.ts
+// candidate-probe-v6-src/db/index.ts
 function getD1() {
   const database = globalThis.__VIGIA_DB__;
   if (!database) {
@@ -2135,7 +2135,7 @@ function getD1() {
   return database;
 }
 
-// candidate-probe-v4-src/lib/canonical-model.ts
+// candidate-probe-v6-src/lib/canonical-model.ts
 var provenance = (seed, sourceField) => [{ ...seed, sourceField }];
 function knownValue(published, normalized, seed, sourceField) {
   return { status: "known", published, normalized, provenance: provenance(seed, sourceField) };
@@ -2251,7 +2251,7 @@ function ensureCanonicalAlert(alert) {
   return { ...alert, canonical: canonicalFromLegacy(alert) };
 }
 
-// candidate-probe-v4-src/lib/geography/spain-territorial.ts
+// candidate-probe-v6-src/lib/geography/spain-territorial.ts
 var normalize = (value) => value.normalize("NFKD").replace(/[\u0300-\u036f]/gu, "").toLocaleLowerCase("es").replace(/[^a-z0-9]+/gu, " ").trim();
 var subdivisionDefinitions = [
   ["ES-AN", "Andaluc\xEDa", ["Andaluc\xEDa", "Junta de Andaluc\xEDa", "Junta Andaluc\xEDa"]],
@@ -2326,10 +2326,10 @@ function extractAesanNotifyingSubdivision(value) {
   return resolveSpainSubdivisionMention(sentence);
 }
 
-// candidate-probe-v4-src/lib/recurrence.ts
+// candidate-probe-v6-src/lib/recurrence.ts
 var normalizeEntityKey = (value = "") => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().replace(/\b(?:s\.?l\.?u?|s\.?a\.?u?|s\.?c\.?|sociedad limitada|sociedad anonima)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
 
-// candidate-probe-v4-src/lib/source-links.ts
+// candidate-probe-v6-src/lib/source-links.ts
 var AESAN_SEARCH_URL = "https://www.aesan.gob.es/alertas/buscador-alertas";
 function isOfficialAesanAlertUrl(value) {
   if (typeof value !== "string") return false;
@@ -2344,7 +2344,7 @@ function isOfficialAesanAlertUrl(value) {
   }
 }
 
-// candidate-probe-v4-src/lib/rapna.ts
+// candidate-probe-v6-src/lib/rapna.ts
 var RAPNA_PUBLIC_BASE = "https://servicios.consumo.gob.es/rapnaPublic/";
 var RAPNA_API_BASE = "https://servicios.consumo.gob.es/rapnaBEPublic/listadoPublico/";
 var RAPNA_CURRENT_ENDPOINT = `${RAPNA_API_BASE}notificacion`;
@@ -2922,7 +2922,7 @@ async function fetchRapnaBackfillUnit(unit, client = {}, detectedAt = (/* @__PUR
   return resultFromRecords(fetched.records, fetched.pagesScanned, detectedAt);
 }
 
-// candidate-probe-v4-src/lib/dimensions/canonical-dimensions.ts
+// candidate-probe-v6-src/lib/dimensions/canonical-dimensions.ts
 var DIMENSION_MAPPING_VERSION = "work19g-j-v4";
 var SAFETY_GATE_DIMENSION_MAPPING_VERSION = "work19g-ai-v6";
 var RASFF_DIMENSION_MAPPING_VERSION = "work20q-f1-v1";
@@ -3672,7 +3672,7 @@ function deriveCanonicalDimensions(alert) {
   };
 }
 
-// candidate-probe-v4-src/lib/operational-coverage.ts
+// candidate-probe-v6-src/lib/operational-coverage.ts
 var VIGIA_OPERATIONAL_HISTORY_FROM = "2020-01-01";
 var officialPublishedAtFields = {
   AESAN: ["publishedAt"],
@@ -3718,7 +3718,7 @@ var operationalClassExpressionSql = `CASE
   ELSE 'undetermined'
 END`;
 
-// candidate-probe-v4-src/lib/rapna-published.ts
+// candidate-probe-v6-src/lib/rapna-published.ts
 var exactText = (value) => typeof value === "string" && value.trim() ? value.trim() : null;
 var exactPositiveInteger = (value) => {
   if (value === null || value === void 0 || value === "") return null;
@@ -3861,7 +3861,7 @@ function rapnaPublishedRecord(canonical) {
   return null;
 }
 
-// candidate-probe-v4-src/lib/persistence/source-sync-lease.ts
+// candidate-probe-v6-src/lib/persistence/source-sync-lease.ts
 var DEFAULT_SYNC_LEASE_TTL_MS = 15 * 6e4;
 var SyncLeaseLostError = class extends Error {
   constructor() {
@@ -3913,7 +3913,7 @@ async function acquireSourceLease(store, source, mode, options = {}) {
   };
 }
 
-// candidate-probe-v4-src/lib/safety-gate-snapshot.ts
+// candidate-probe-v6-src/lib/safety-gate-snapshot.ts
 var stableValue = (value) => {
   if (Array.isArray(value)) return value.map(stableValue);
   if (value && typeof value === "object") {
@@ -3928,7 +3928,7 @@ async function sha256(value) {
   return [...new Uint8Array(digest2)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-// candidate-probe-v4-src/lib/rapna-snapshot.ts
+// candidate-probe-v6-src/lib/rapna-snapshot.ts
 var CURRENT_SNAPSHOT_FORMAT = 2;
 var DEFAULT_RAPNA_CURRENT_SNAPSHOT_BATCH_SIZE = 50;
 var currentSnapshotStore = (store) => {
@@ -3993,7 +3993,7 @@ async function rapnaCurrentLiveSourceDataChecksum(store) {
   };
 }
 
-// candidate-probe-v4-src/lib/oecd-published.ts
+// candidate-probe-v6-src/lib/oecd-published.ts
 var record2 = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : null;
 var stableValue2 = (value) => {
   if (Array.isArray(value)) return value.map(stableValue2).sort((left, right) => {
@@ -4057,7 +4057,7 @@ async function oecdContentHash(canonical) {
   return sha2562(JSON.stringify({ canonicalHash, official: oecdOfficialSourceProjection(canonical) }));
 }
 
-// candidate-probe-v4-src/lib/safety-gate-published.ts
+// candidate-probe-v6-src/lib/safety-gate-published.ts
 var record3 = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : null;
 var exactText2 = (value) => typeof value === "string" && value.trim() ? value.trim() : null;
 var stableValue3 = (value) => {
@@ -4107,7 +4107,7 @@ async function safetyGateContentHash(canonical) {
   return sha2563(JSON.stringify({ canonicalHash, official: safetyGateOfficialSourceProjection(canonical) }));
 }
 
-// candidate-probe-v4-src/lib/persistence/d1-dimensions.ts
+// candidate-probe-v6-src/lib/persistence/d1-dimensions.ts
 function dimensionReplacementStatements(db, alert, dimensions = deriveCanonicalDimensions(alert)) {
   const statements = [
     db.prepare("DELETE FROM alert_categories WHERE alert_id = ?").bind(alert.id),
@@ -4205,7 +4205,7 @@ async function replaceAlertDimensions(alert, db = getD1(), dimensions = deriveCa
   return dimensions;
 }
 
-// candidate-probe-v4-src/lib/persistence/d1-alert-store.ts
+// candidate-probe-v6-src/lib/persistence/d1-alert-store.ts
 var safetyGateOfficialNullPublicationSql = (canonical, source, publishedAt) => `
   ${source} = 'SAFETY GATE' AND ${publishedAt} IS NULL
   AND json_valid(${canonical}) = 1
@@ -6551,7 +6551,7 @@ async function auditOecdDatabase() {
   };
 }
 
-// candidate-probe-v4-src/lib/control-plane-auth.ts
+// candidate-probe-v6-src/lib/control-plane-auth.ts
 var bearerToken = (request2) => {
   const authorization = request2.headers.get("Authorization");
   if (!authorization) return null;
@@ -6580,7 +6580,7 @@ async function isAuthorizedControlPlane(request2) {
   return constantTimeTokenMatch(provided, configured);
 }
 
-// candidate-probe-v4-src/lib/reliability-budget.ts
+// candidate-probe-v6-src/lib/reliability-budget.ts
 var ReliabilityBudgetError = class extends Error {
   constructor() {
     super("RELIABILITY_BUDGET_EXHAUSTED");
@@ -6611,7 +6611,7 @@ function boundedOfficialFetch(deadline, maxRequests, fetchImpl = fetch, clock = 
   } };
 }
 
-// candidate-probe-v4-src/lib/aesan-published.ts
+// candidate-probe-v6-src/lib/aesan-published.ts
 var exactText3 = (value) => typeof value === "string" && value.trim() ? value.trim() : null;
 var exactOrder = (value) => Number.isInteger(value) && Number(value) >= 0 ? Number(value) : null;
 var officialUrl = (value) => {
@@ -6683,7 +6683,7 @@ function parseAesanPublishedRecord(value) {
 }
 var aesanPublishedRecord = (canonical) => canonical?.identity.source === "AESAN" ? parseAesanPublishedRecord(canonical.sourceRecord) : null;
 
-// candidate-probe-v4-src/lib/aesan-publications.ts
+// candidate-probe-v6-src/lib/aesan-publications.ts
 var UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 var HASH_PATTERN = /^[0-9a-f]{64}$/u;
 var MAX_HISTORY_STATES = 128;
@@ -7073,7 +7073,7 @@ function mergeAesanPublicationEvidence(preferred, additional) {
   return parseAesanPublicationEvidence(merged);
 }
 
-// candidate-probe-v4-src/lib/aesan-taxonomy.ts
+// candidate-probe-v6-src/lib/aesan-taxonomy.ts
 var AESAN_ALERT_TYPES = {
   general_population: { sourceTypeId: "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259", officialLabel: "Alertas alimentarias de inter\xE9s para toda la poblaci\xF3n" },
   allergy_intolerance_adverse: { sourceTypeId: "8c7503b4-b714-4c08-9d8e-0039a2d03624", officialLabel: "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias" },
@@ -7147,7 +7147,7 @@ function parseAesanAlertClassification(value, expected, evidence = null) {
   };
 }
 
-// candidate-probe-v4-src/lib/aesan.ts
+// candidate-probe-v6-src/lib/aesan.ts
 var AESAN_FEED_URL = process.env.AESAN_FEED_URL ?? "https://raw.githubusercontent.com/cgam-coder/vigia-aesan-feed/main/feed.json";
 var MAX_ARCHIVE_ALERTS = 5e3;
 var ALLOWED_PRIORITIES = /* @__PURE__ */ new Set(["Cr\xEDtica", "Alta", "Media"]);
@@ -7369,7 +7369,7 @@ async function fetchAesanAlerts() {
   return alerts2.sort((a, b) => (b.publishedAt ?? b.detectedAt).localeCompare(a.publishedAt ?? a.detectedAt));
 }
 
-// candidate-probe-v4-src/lib/aesan-producer/aesan.mjs
+// candidate-probe-v6-src/lib/aesan-producer/aesan.mjs
 import { createHash } from "node:crypto";
 var AESAN_ORIGIN = "https://www.aesan.gob.es";
 var AESAN_LIST_URL = `${AESAN_ORIGIN}/alertas/buscador-alertas`;
@@ -7989,7 +7989,7 @@ function previousForCard(alerts2, card, suppliedIdentity = null) {
   };
 }
 
-// candidate-probe-v4-src/lib/aesan-producer/aesan-publications.mjs
+// candidate-probe-v6-src/lib/aesan-producer/aesan-publications.mjs
 import { createHash as createHash2 } from "node:crypto";
 var hash = (value) => createHash2("sha256").update(JSON.stringify(value)).digest("hex");
 var fail3 = (code, reference) => {
@@ -8239,7 +8239,7 @@ function reconcilePublicationBatch(previousAlerts, observations, now) {
   return result;
 }
 
-// candidate-probe-v4-src/lib/aesan-producer/aesan-taxonomy.mjs
+// candidate-probe-v6-src/lib/aesan-producer/aesan-taxonomy.mjs
 import { createHash as createHash3 } from "node:crypto";
 var ALERT_TYPES = Object.freeze({
   general_population: Object.freeze({ code: "general_population", sourceTypeId: "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259", officialLabel: "Alertas alimentarias de inter\xE9s para toda la poblaci\xF3n" }),
@@ -8465,7 +8465,7 @@ function enrichFeedTaxonomy(feed, scan, { reviewed = [] } = {}) {
   return { feed: { ...feed, alerts: alerts2 }, diagnostics: { gaps, unknown, disappeared } };
 }
 
-// candidate-probe-v4-src/lib/aesan-producer/recent.mjs
+// candidate-probe-v6-src/lib/aesan-producer/recent.mjs
 async function produceAesanRecent({ previousAlerts, fetchHtml, now, reviewed, fullHistory = false }) {
   const cache = /* @__PURE__ */ new Map();
   const html = (url) => {
@@ -8480,7 +8480,7 @@ async function produceAesanRecent({ previousAlerts, fetchHtml, now, reviewed, fu
       const date = new Date(now);
       url.searchParams.set("filter-initDate", "01/01/2000");
       url.searchParams.set("filter-endDate", [String(date.getUTCDate()).padStart(2, "0"), String(date.getUTCMonth() + 1).padStart(2, "0"), date.getUTCFullYear()].join("/"));
-      url.searchParams.set("quantity", "40");
+      url.searchParams.set("quantity", "20");
     }
     return url.href;
   };
@@ -8498,7 +8498,7 @@ async function produceAesanRecent({ previousAlerts, fetchHtml, now, reviewed, fu
       if (!range) throw Error("AESAN_NATIVE archive range unavailable");
       const [begin, end, count] = range.slice(1).map(Number), cards2 = parseListCards(listing[i]);
       total ??= count;
-      if (count !== total || begin !== i * 40 + 1 || end !== Math.min((i + 1) * 40, total) || cards2.length !== end - begin + 1 || lastPage !== Math.ceil(total / 40)) throw Error("AESAN_NATIVE archive pagination incomplete");
+      if (count !== total || begin !== i * 20 + 1 || end !== Math.min((i + 1) * 20, total) || cards2.length !== end - begin + 1 || lastPage !== Math.ceil(total / 20)) throw Error("AESAN_NATIVE archive pagination incomplete");
       urls.push(...cards2.map((card) => card.url));
     }
     if (new Set(urls).size !== total) throw Error("AESAN_NATIVE duplicate or missing archive publication");
@@ -8541,7 +8541,7 @@ async function produceAesanRecent({ previousAlerts, fetchHtml, now, reviewed, fu
   return { alerts: feed.alerts.filter((x) => observedIds.has(x.id)), pagesScanned: listing.length, publicationsChecked: members.size };
 }
 
-// candidate-probe-v4-src/lib/aesan-producer/reviewed.json
+// candidate-probe-v6-src/lib/aesan-producer/reviewed.json
 var reviewed_default = {
   source: "https://github.com/cgam-coder/vigia-runtime/issues/88#issuecomment-5814229570",
   annexComments: [
@@ -9549,7 +9549,7 @@ var reviewed_default = {
   ]
 };
 
-// candidate-probe-v4-src/lib/aesan-native.ts
+// candidate-probe-v6-src/lib/aesan-native.ts
 function aesanProducerSeed(alert) {
   const record7 = alert.canonical.sourceRecord;
   const evidence = aesanPublicationEvidence(alert.canonical);
@@ -9597,7 +9597,7 @@ async function fetchNativeAesanAlerts(store, fetchImpl, fullHistory = false) {
   return alerts2;
 }
 
-// candidate-probe-v4-src/lib/aesan-sync.ts
+// candidate-probe-v6-src/lib/aesan-sync.ts
 var nowIso = (options) => (options.now?.() ?? /* @__PURE__ */ new Date()).toISOString();
 var emptyState = (at, mode = "recent") => ({
   source: "AESAN",
@@ -10002,7 +10002,7 @@ async function runAesanFeedSync(store, options = {}) {
   }
 }
 
-// candidate-probe-v4-src/lib/rapna-sync.ts
+// candidate-probe-v6-src/lib/rapna-sync.ts
 var nowIso2 = (options = {}) => (options.now?.() ?? /* @__PURE__ */ new Date()).toISOString();
 var errorMessage2 = (error) => error instanceof Error ? error.message : "Error de sincronizaci\xF3n RAPNA no identificado";
 var minDate2 = (current, candidate) => !candidate ? current : !current || candidate < current ? candidate : current;
@@ -10402,7 +10402,7 @@ async function runRapnaRecentSync(store, client = {}, options = {}) {
   }
 }
 
-// candidate-probe-v4-src/lib/rasff-published.ts
+// candidate-probe-v6-src/lib/rasff-published.ts
 var record5 = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : null;
 var stableValue5 = (value) => {
   if (Array.isArray(value)) return value.map(stableValue5).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
@@ -10427,7 +10427,7 @@ async function rasffContentHash(canonical) {
   return sha2565(JSON.stringify(official));
 }
 
-// candidate-probe-v4-src/lib/rasff.ts
+// candidate-probe-v6-src/lib/rasff.ts
 var RASFF_PUBLIC_BASE = "https://webgate.ec.europa.eu/rasff-window";
 var RASFF_SEARCH_ENDPOINT = `${RASFF_PUBLIC_BASE}/backend/public/notification/search/consolidated/en/`;
 var RASFF_DETAIL_ENDPOINT = `${RASFF_PUBLIC_BASE}/backend/public/notification/view/id`;
@@ -10997,7 +10997,7 @@ async function fetchRasffRecent(anchorReference = null, client = {}, detectedAt 
   };
 }
 
-// candidate-probe-v4-src/lib/rasff-reconcile.ts
+// candidate-probe-v6-src/lib/rasff-reconcile.ts
 var RASFF_RECONCILE_PLAN_VERSION = "rasff-reconcile-v1";
 var RASFF_RECONCILE_PAGE_SIZE = 100;
 var RASFF_RECONCILE_DEFAULT_BATCH_SIZE = 40;
@@ -11109,7 +11109,7 @@ async function fetchRasffReconcileBatch(cursor = 0, cursorKey = null, client = {
   };
 }
 
-// candidate-probe-v4-src/lib/rasff-sync.ts
+// candidate-probe-v6-src/lib/rasff-sync.ts
 var nowIso3 = (options = {}) => (options.now?.() ?? /* @__PURE__ */ new Date()).toISOString();
 var errorMessage3 = (error) => error instanceof Error ? error.message : "Error RASFF no identificado";
 var minDate3 = (a, b) => !b ? a : !a || b < a ? b : a;
@@ -11374,7 +11374,7 @@ async function runRotatingLane(store, mode, requestedBatchSize, client, restart,
 }
 var runRasffReconcileSync = (store, batchSize = 40, client = {}, options = {}) => runRotatingLane(store, "reconcile", batchSize, client, false, options);
 
-// candidate-probe-v4-src/lib/oecd-snapshot.ts
+// candidate-probe-v6-src/lib/oecd-snapshot.ts
 var sourceData = (payload) => {
   const records = {
     alerts: [...payload.alerts].sort((a, b) => a.id.localeCompare(b.id)),
@@ -15722,7 +15722,7 @@ var XMLParser = class {
   }
 };
 
-// candidate-probe-v4-src/lib/oecd.ts
+// candidate-probe-v6-src/lib/oecd.ts
 var OECD_PUBLIC_BASE = "https://globalrecalls.oecd.org/";
 var OECD_API_BASE = `${OECD_PUBLIC_BASE}ws`;
 var OECD_SEARCH_ENDPOINT = `${OECD_API_BASE}/search.xqy`;
@@ -16455,7 +16455,7 @@ async function fetchOecdRecent(cursorSeconds = 0, client = {}, detectedAt = (/* 
 }
 var oecdRecentWindowMilliseconds = () => RSS_WINDOW_MS;
 
-// candidate-probe-v4-src/lib/oecd-sync.ts
+// candidate-probe-v6-src/lib/oecd-sync.ts
 var OECD_HISTORICAL_RECONCILE_PLAN_VERSION = "oecd-historical-reconcile-v2";
 var nowIso4 = (options = {}) => (options.now?.() ?? /* @__PURE__ */ new Date()).toISOString();
 var errorMessage4 = (error) => error instanceof Error ? error.message : "Error OECD no identificado";
@@ -16702,7 +16702,7 @@ async function runOecdHistoricalReconcileBatch(store, batchSize = 12, client = {
   }
 }
 
-// candidate-probe-v4-src/lib/safety-gate.ts
+// candidate-probe-v6-src/lib/safety-gate.ts
 var SAFETY_GATE_BASE = "https://ec.europa.eu/safety-gate-alerts";
 var SAFETY_GATE_RECENT_ENDPOINT = `${SAFETY_GATE_BASE}/public/api/notification/mostRecent/?`;
 var SAFETY_GATE_CAROUSEL_ENDPOINT = `${SAFETY_GATE_BASE}/public/api/notification/carousel/?`;
@@ -17457,7 +17457,7 @@ async function fetchSafetyGateRecent(client = {}) {
   };
 }
 
-// candidate-probe-v4-src/lib/safety-gate-discovery.ts
+// candidate-probe-v6-src/lib/safety-gate-discovery.ts
 var SafetyGateDiscoveryError = class extends SafetyGateRequestError {
   constructor(discovery, reason) {
     super("Safety Gate recent discovery is not certifiable", "invalid-response", discovery.upstreamStatus);
@@ -17541,7 +17541,7 @@ async function fetchSafetyGateCertifiedRecentIndex(client = {}) {
   }
 }
 
-// candidate-probe-v4-src/lib/safety-gate-sync.ts
+// candidate-probe-v6-src/lib/safety-gate-sync.ts
 var configuredSafetyGateRecentStrategy = () => globalThis.__NAGAMEALERT_SAFETY_GATE_RECENT_MODE__ === "delta" ? "delta" : "full";
 var nowIso5 = (options = {}) => (options.now?.() ?? /* @__PURE__ */ new Date()).toISOString();
 var emptyState5 = (mode, now = nowIso5()) => ({
@@ -17869,7 +17869,7 @@ async function runSafetyGateRecentSync(store, client = {}, options = {}) {
   }
 }
 
-// candidate-probe-v4-src/lib/source-reliability-policy.ts
+// candidate-probe-v6-src/lib/source-reliability-policy.ts
 var policy = (value) => Object.freeze({
   ...value,
   recent: Object.freeze({ ...value.recent }),
@@ -17943,7 +17943,7 @@ var SOURCE_RELIABILITY_POLICIES = Object.freeze({
 });
 var sourceReliabilityPolicy = (source) => SOURCE_RELIABILITY_POLICIES[source];
 
-// candidate-probe-v4-src/lib/source-revision-certification.ts
+// candidate-probe-v6-src/lib/source-revision-certification.ts
 var REQUIRED_ZERO_INTEGRITY = Object.freeze({
   AESAN: [
     "duplicateReferenceGroups",
@@ -18105,13 +18105,13 @@ async function ensureSourceRevisionCertification(store, source, state, audit) {
   return certification;
 }
 
-// candidate-probe-v4-src/lib/oecd-revision-certification.ts
+// candidate-probe-v6-src/lib/oecd-revision-certification.ts
 var revisionAudit = (audit) => audit;
 async function ensureOecdRevisionCertification(store, state, audit) {
   return ensureSourceRevisionCertification(store, "OECD", state, async () => revisionAudit(await audit()));
 }
 
-// candidate-probe-v4-src/lib/rapna-legacy-certification.ts
+// candidate-probe-v6-src/lib/rapna-legacy-certification.ts
 var safeCount2 = (value, label) => {
   if (!Number.isSafeInteger(value) || Number(value) < 0) throw new Error(`${label} no es un entero seguro no negativo`);
   return Number(value);
@@ -18319,7 +18319,7 @@ async function ensureRapnaLegacyRevisionCertification(store, state, audit, offic
   return certification;
 }
 
-// candidate-probe-v4-src/lib/reliability-source-runner.ts
+// candidate-probe-v6-src/lib/reliability-source-runner.ts
 var SOURCE_RUNNER_LIMITS = Object.freeze({ recentMs: 6 * 6e4, revisionMs: 4 * 6e4, recentRequests: 800, revisionRequests: 1600, revisionBatches: 20, revisionReserveMs: 3e4 });
 var revisionJobKey = (source, mode) => source + ":" + mode;
 var readTime = (value) => value && Number.isFinite(Date.parse(value)) ? Date.parse(value) : null;
@@ -18452,7 +18452,7 @@ async function runFencedSourceJob(store, job, fetchImpl = fetch, clock = Date.no
   }
 }
 
-// candidate-probe-v4-src/lib/reliability-job-store.ts
+// candidate-probe-v6-src/lib/reliability-job-store.ts
 async function readReliabilityReceipt(db, id) {
   const row = await db.prepare("SELECT receipt_json AS receipt FROM source_reliability_jobs WHERE id=?").bind(id).first();
   return row?.receipt ? JSON.parse(row.receipt) : null;
@@ -18466,6 +18466,7 @@ async function claimReliabilityJob(db, job, at) {
   const path = "$." + (job.kind === "recent" ? "attempts" : "revisionAttempts") + "." + JSON.stringify(key) + ".id";
   const row = await db.prepare(`INSERT INTO source_reliability_jobs(id,source,mode,kind,epoch,started_at,deadline)
     SELECT ?,?,?,?,?,?,? FROM source_reliability_control WHERE id=1 AND owner_id=? AND epoch=? AND expires_at>?
+    AND json_extract(state_json,'$.ownershipVerifiedAt') IS NOT NULL
     AND json_extract(state_json,?)=? AND COALESCE(json_extract(state_json,?),'[]')=? ON CONFLICT(id) DO NOTHING RETURNING id`).bind(job.id, job.source, job.mode, job.kind, job.epoch, at, job.deadline, job.coordinatorOwner, job.epoch, at, path, job.id, path.replace(/\.id$/u, ".pendingDetails"), JSON.stringify(job.pendingDetails ?? [])).first();
   return Boolean(row);
 }
@@ -18475,7 +18476,7 @@ async function finishReliabilityJob(db, receipt) {
   if (result.meta.changes !== 1) throw Error("job receipt fence lost");
 }
 
-// candidate-probe-v4-src/worker/source-runner.ts
+// candidate-probe-v6-src/worker/source-runner.ts
 var json = (body, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 var source_runner_default = {
   async fetch(request2, env) {
@@ -18485,13 +18486,32 @@ var source_runner_default = {
     const url = new URL(request2.url), store = createD1AlertStore();
     if (request2.method === "GET" && url.pathname === "/status") return json({ component: "source-runner", configVersion: 2, mode: env.SOURCE_RUNNER_MODE ?? null, hasCron: false });
     if (request2.method === "GET" && url.pathname === "/probe" && env.SOURCE_RUNNER_MODE === "probe") {
-      const source = url.searchParams.get("source"), budget = boundedOfficialFetch(Date.now() + 36e4, 800), startedAt = (/* @__PURE__ */ new Date()).toISOString();
+      const source = url.searchParams.get("source"), deadline = Date.now() + (source === "RASFF" ? 24e4 : 36e4), budget = boundedOfficialFetch(deadline, source === "RASFF" ? 1600 : 800), startedAt = (/* @__PURE__ */ new Date()).toISOString();
       try {
         if (source === "AESAN") {
           const previous = await store.readAesanProducerSeed(), alerts2 = await fetchNativeAesanAlerts(store, budget.fetch, url.searchParams.get("full") === "1");
           const prior2 = new Map(previous.map((a) => [a.id, a])), changed = alerts2.filter((a) => prior2.has(a.id) && prior2.get(a.id).contentHash !== a.contentHash), newAlerts = alerts2.filter((a) => !prior2.has(a.id));
           const identityDrift = alerts2.filter((a) => prior2.has(a.id) && prior2.get(a.id).canonical.identity.sourceRecordId !== a.canonical.identity.sourceRecordId);
           return json({ zeroWrite: true, source, startedAt, finishedAt: (/* @__PURE__ */ new Date()).toISOString(), requests: budget.requests(), observed: alerts2.length, previous: previous.length, changedReferences: changed.map((a) => a.reference), newReferences: newAlerts.map((a) => a.reference), identityDrift: identityDrift.map((a) => a.reference), outcome: identityDrift.length ? "HOLD" : "observed" });
+        }
+        if (source === "RASFF") {
+          const [lease, state] = await Promise.all([store.readSyncLease("RASFF"), store.readSyncState("RASFF", "reconcile")]);
+          if (lease || !state || !Number.isSafeInteger(state.cursor) || state.cursor < 0) return json({ zeroWrite: true, source, outcome: "HOLD", reason: "capacity-probe-requires-clear-source-lease-and-cursor" }, 503);
+          let cursor = state.cursor, anchor = state.cursorKey ?? null, batches = 0, processed = 0, retained = 0, total = state.totalUnits, details = 0;
+          for (; batches < 20 && Date.now() + 3e4 < deadline; batches++) {
+            const result = await fetchRasffReconcileBatch(cursor, anchor, { fetch: budget.fetch, detailMaxAttempts: 1, detailConcurrency: 3 }, startedAt, 40);
+            processed += result.processedCount;
+            retained += result.retainedCount;
+            total = result.totalElements;
+            details += result.detailFailures;
+            cursor = result.nextCursor;
+            anchor = result.nextCursorKey;
+            if (result.detailFailures || result.completedSweep) {
+              batches++;
+              break;
+            }
+          }
+          return json({ zeroWrite: true, source, startedAt, finishedAt: (/* @__PURE__ */ new Date()).toISOString(), requests: budget.requests(), batches, processed, retained, total, detailFailures: details, outcome: details ? "HOLD" : "observed" });
         }
         if (source === "SAFETY GATE") {
           const result = await fetchSafetyGateRecent({ fetchImpl: budget.fetch, retries: 0 });

@@ -25,7 +25,7 @@ jobs:
           const script='/workers/scripts/vigia-source-runner';
           const expected='76eaef5f-0e16-40b8-9856-cf2d9d9e6576';
           const bundle=readFileSync('ops/source-reliability/source-runner-probe.mjs');
-          if(createHash('sha256').update(bundle).digest('hex')!=='d6dddfb17fbbaf574653514cbb366b78060d9eee6402eb1478dba10b5d9ab10a')throw Error('artifact mismatch');
+          if(createHash('sha256').update(bundle).digest('hex')!=='a9adc89c0e7365f2b8a82c1b74fbace5005fdf13f98228fc95d87d954487e04c')throw Error('artifact mismatch');
           async function cf(path,method='GET',body){
             if(Date.now()>Date.parse('2026-10-08T13:30:00Z'))throw Error('expired probe');
             if(![script,script+'/settings',script+'/subdomain',script+'/schedules',script+'/deployments','/workers/scripts/vigia-runtime/deployments'].includes(path))throw Error('invalid scope');
@@ -37,17 +37,15 @@ jobs:
             const result=await response.json();if(!response.ok||!result.success)throw Error('CF '+method+' HTTP '+response.status+' codes '+JSON.stringify(result.errors?.map(x=>x.code)));
             return result.result;
           }
-          const officialUrl='https://www.aesan.gob.es/alertas/buscador-alertas?filter-initDate=01%2F01%2F2000&filter-endDate=08%2F10%2F2026&quantity=40';
-          const witnessResponse=await fetch(officialUrl,{redirect:'manual',signal:AbortSignal.timeout(30000)});
-          const witnessHtml=await witnessResponse.text();
-          const {parseListCards,stripHtml}=await import('./scripts/aesan.mjs');
-          console.log('SR_AESAN_RANGE '+JSON.stringify({http:witnessResponse.status,range:stripHtml(witnessHtml.match(/<div\b[^>]*\bclass\s*=\s*["']result__info["'][^>]*>([\s\S]*?)<\/div>/i)?.[1]??''),cards:parseListCards(witnessHtml).length,pages:[...new Set([...witnessHtml.matchAll(/(?:href|action)\s*=\s*["'][^"']*\/buscador-alertas\/(\d+)(?:[?"'])/gi)].map(x=>Number(x[1])))]}));
           const allocation=await cf('/workers/scripts/vigia-runtime/deployments');
           if(allocation.deployments?.[0]?.versions?.length!==1||allocation.deployments[0].versions[0].version_id!==expected||allocation.deployments[0].versions[0].percentage!==100)throw Error('runtime baseline moved');
           const prior=await cf(script+'/settings'),runnerAllocation=await cf(script+'/deployments');
           console.log('SR_NATIVE_BASELINE '+JSON.stringify({at:new Date().toISOString(),allocation:runnerAllocation,mode:prior?.bindings?.find(b=>b.name==='SOURCE_RUNNER_MODE')?.text,version:prior?.version}));
           if(!prior?.bindings?.some(b=>b.name==='SOURCE_RUNNER_MODE'&&b.text==='probe')||runnerAllocation?.deployments?.[0]?.versions?.length!==1||runnerAllocation.deployments[0].versions[0].percentage!==100||runnerAllocation.deployments[0].versions[0].version_id!=='85e5aa1f-d093-4caa-8cd1-372e15e608c6')throw Error('runner baseline moved');
-          const currentRunnerAllocation=runnerAllocation;console.log('SR_NATIVE_EXISTING '+JSON.stringify({at:new Date().toISOString(),mode:'probe',allocation:runnerAllocation.deployments[0]}));
+          const metadata={main_module:'source-runner.mjs',compatibility_date:'2026-09-25',compatibility_flags:['nodejs_compat'],usage_model:'standard',limits:{cpu_ms:60000},observability:{enabled:true},annotations:{'workers/message':'source-reliability-probe:fb1dcb68698bf2e5db15bafb19ed6be4e76d1d33'},bindings:[{type:'d1',name:'DB',id:'55596003-1b90-4f66-aad8-decb21205f13'},{type:'plain_text',name:'SOURCE_RUNNER_MODE',text:'probe'},{type:'secret_text',name:'VIGIA_SYNC_TOKEN',text:process.env.SYNC_TOKEN}]};
+          const form=new FormData();form.set('metadata',new Blob([JSON.stringify(metadata)],{type:'application/json'}));form.set('source-runner.mjs',new Blob([bundle],{type:'application/javascript+module'}),'source-runner.mjs');
+          const uploaded=await cf(script,'PUT',form);console.log('SR_NATIVE_ARTIFACT '+JSON.stringify({at:new Date().toISOString(),candidate:'fb1dcb68698bf2e5db15bafb19ed6be4e76d1d33',sha256:'a9adc89c0e7365f2b8a82c1b74fbace5005fdf13f98228fc95d87d954487e04c',mode:'probe',startupMs:uploaded.startup_time_ms,id:uploaded.id}));
+          const currentRunnerAllocation=await cf(script+'/deployments');
           let enabled=false;
           try{
             const settings=await cf(script+'/settings');
@@ -62,11 +60,12 @@ jobs:
               const errorCode=raw.match(/error code:?\s*(\d+)/i)?.[1]??raw.match(/<title>[^<]*(1101|1102|1000|1016|404)[^<]*<\/title>/i)?.[1]??null;
               console.log('SR_NATIVE_READINESS '+JSON.stringify({attempt,unauthorized:unauthorized.status,authorized:response.status,contentType:response.headers.get('Content-Type'),errorCode,component:status?.component,mode:status?.mode}));
               if(unauthorized.status===401&&response.status===200&&status?.mode==='probe'&&status.configVersion===2&&status.hasCron===false){ready=true;break;}
-              if(errorCode==='1101'||errorCode==='1102'||![404,502,503,520,522,523].includes(response.status))throw Error('native authenticated status failed '+response.status+' code '+errorCode);
+              if(errorCode==='1101'||errorCode==='1102'||!([404,502,503,520,522,523].includes(response.status)||response.status===200&&status?.mode==='probe'&&status.configVersion===2&&status.hasCron===false&&unauthorized.status===404))throw Error('native authenticated status failed '+response.status+' code '+errorCode);
               await unauthorized.body?.cancel();await new Promise(resolve=>setTimeout(resolve,Math.min(10000,1000*2**attempt)));
             }
             if(!ready)throw Error('bounded endpoint propagation timeout');
-            for(const source of []){
+            console.log('SR_NATIVE_ALLOCATION '+JSON.stringify(currentRunnerAllocation.deployments[0]));
+            for(const source of ['AESAN','RASFF']){
               const path='/probe?source='+encodeURIComponent(source)+(source==='AESAN'?'&full=1':'');
               const response=await fetch(base+path,{method:'GET',headers:{Authorization:'Bearer '+process.env.SYNC_TOKEN},signal:AbortSignal.timeout(380000),redirect:'error'});
               const raw=await response.text();let body;try{body=JSON.parse(raw);}catch{console.log('SR_NATIVE_NON_JSON '+JSON.stringify({http:response.status,contentType:response.headers.get('Content-Type'),bodyLength:raw.length}));throw Error('native probe returned non-JSON');}console.log('SR_NATIVE_PROBE '+JSON.stringify({http:response.status,...body}));
