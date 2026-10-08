@@ -1,0 +1,22 @@
+name: Source reliability sealed exact native AESAN read
+on:
+  push:
+    branches: [source-reliability/final-sealed-read-20261008-1944]
+permissions:
+  contents: read
+jobs:
+  validate:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Verify sealed exact-main bundle and SELECT-only native read
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          base64 -d ops/source-reliability/aesan-native-read-main937.mjs.gz.b64 | gzip -d > /tmp/sr-read-exact.mjs
+          echo '52e89b807345c52195dc253c304d2aa0b7b4e6026b569c833d289c2cb0b1c411  /tmp/sr-read-exact.mjs' | sha256sum -c -
+          node /tmp/sr-read-exact.mjs
