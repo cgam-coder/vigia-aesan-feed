@@ -1,4 +1,5 @@
-# One-shot GET-only Cloudflare baseline for issue #271. Isolated feed branch, expires 2026-10-09.
+# One-shot GET-only Cloudflare baseline for issue #271.
+# Refresh immediately before merging CI-certified PR #272 b64c105c7f5641d320ab82c21a391443b95b0c15. Isolated feed branch, expires 2026-10-09.
 name: SR271 owner Worker production identity (GET-only)
 on:
   push:
