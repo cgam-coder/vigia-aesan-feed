@@ -1,0 +1,33 @@
+name: Source reliability payload natural checkpoints
+on:
+  push:
+    branches: [source-reliability/payload-checkpoints-20261008]
+permissions:
+  contents: read
+jobs:
+  read:
+    if: github.run_attempt == 1
+    strategy:
+      fail-fast: false
+      matrix:
+        checkpoint: ['2026-10-08T15:26:50Z','2026-10-08T15:31:50Z','2026-10-08T15:36:50Z']
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Read coordinator and receipts at fixed natural checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT: ${{ matrix.checkpoint }}
+        run: |
+          node --input-type=module <<'NODE'
+          const target=Date.parse(process.env.CHECKPOINT),root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          while(Date.now()<target)await new Promise(resolve=>setTimeout(resolve,Math.min(30000,target-Date.now())));
+          if(Date.now()>Date.parse('2026-10-08T15:42:00Z'))throw Error('expired checkpoint');
+          const r=await fetch('https://vigia-runtime.c-gamiz93.workers.dev/api/source-reliability?observe=1',{method:'GET',headers:{Authorization:'Bearer '+process.env.SYNC_TOKEN},signal:AbortSignal.timeout(30000)});
+          const owner=await r.json();console.log('SR_FIXED_NATIVE '+JSON.stringify({at:new Date().toISOString(),http:r.status,body:owner}));
+          for(const sql of ["SELECT id,source,mode,kind,epoch,phase,write_intent_at,started_at,finished_at,receipt_json FROM source_reliability_jobs WHERE finished_at IS NULL OR started_at>='2026-10-08T15:20:00Z' ORDER BY started_at","SELECT * FROM source_sync_locks"]){
+            const r=await fetch(root+'/d1/database/55596003-1b90-4f66-aad8-decb21205f13/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql}),signal:AbortSignal.timeout(30000)}),p=await r.json();
+            console.log('SR_FIXED_SELECT '+JSON.stringify({sql,http:r.status,data:p}));if(!r.ok||!p.success||p.result?.some(x=>!x.success||x.meta?.changes||x.meta?.rows_written))throw Error('read unconfirmed');
+          }
+          NODE
