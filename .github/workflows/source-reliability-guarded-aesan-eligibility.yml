@@ -1,0 +1,53 @@
+name: Source reliability one-shot guarded AESAN eligibility
+on:
+  push:
+    branches: [source-reliability/final-aesan-eligibility-20261008-1952]
+permissions:
+  contents: read
+jobs:
+  eligibility:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Compare-and-set AESAN eligibility after exact native read proof
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f',db='/d1/database/55596003-1b90-4f66-aad8-decb21205f13/query',base='https://vigia-runtime.c-gamiz93.workers.dev';
+          if(Date.now()>Date.parse('2026-10-08T20:00:00Z'))throw Error('one-shot eligibility window expired');
+          async function cf(path){const r=await fetch(root+path,{headers:{Authorization:'Bearer '+process.env.CF_TOKEN},signal:AbortSignal.timeout(20000)}),p=await r.json();if(!r.ok||!p.success)throw Error('CF GET rejected');return p.result;}
+          async function query(sql,params=[]){const r=await fetch(root+db,{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql,params}),signal:AbortSignal.timeout(20000)}),p=await r.json();if(!r.ok||!p.success||p.result.some(x=>!x.success))throw Error('D1 request outcome requires independent read');return p.result[0];}
+          async function read(sql,params=[]){if(!sql.startsWith('SELECT '))throw Error('read SQL');const p=await query(sql,params);if(p.meta?.rows_written||p.meta?.changes)throw Error('read wrote rows');return p.results;}
+          for(const [service,version] of [['vigia-runtime','08c77562-7b94-4313-8c3c-fc21d97fa36f'],['vigia-source-runner','c3092b8f-e233-4f43-9d5b-0c57b3a512d3']]){
+           const d=await cf('/workers/scripts/'+service+'/deployments'),v=d.deployments[0].versions;if(v.length!==1||v[0].version_id!==version||v[0].percentage!==100)throw Error('allocation changed');
+           const s=await cf('/workers/scripts/'+service+'/settings'),b=s.bindings??[];
+           if(!b.some(x=>x.type==='d1'&&x.id==='55596003-1b90-4f66-aad8-decb21205f13'))throw Error('DB changed');
+           if(service==='vigia-runtime'&&!b.some(x=>x.name==='NAGAMEALERT_RECENT_SCHEDULER_MODE'&&x.text==='five-source-coordinated'))throw Error('mode changed');
+           if(b.some(x=>x.name==='NAGAMEALERT_SAFETY_GATE_RECENT_MODE'&&x.text==='delta'))throw Error('delta enabled');
+           console.log('ELIGIBILITY_ALLOCATION '+JSON.stringify({service,version,deploy:d.deployments[0].id}));
+          }
+          const nativeResponse=await fetch(base+'/api/source-reliability?observe=1',{headers:{Authorization:'Bearer '+process.env.SYNC_TOKEN},signal:AbortSignal.timeout(20000)}),native=await nativeResponse.json();
+          if(!nativeResponse.ok||native.buildSha!=='937ee3bbb18b19eb7bb0b03654ca64dcd5faa832'||native.mode!=='five-source-coordinated'||native.activeLease)throw Error('native preflight fence');
+          const c=(await read('SELECT owner_id,expires_at,epoch,state_json FROM source_reliability_control WHERE id=1'))[0],state=JSON.parse(c.state_json),a=state.attempts.AESAN;
+          const recent=(await read("SELECT status,updated_at,last_error FROM source_sync_state WHERE source='AESAN' AND mode='recent'"))[0];
+          const receipt=(await read("SELECT phase,receipt_json FROM source_reliability_jobs WHERE id='a5c7c574-84ee-44e8-a33a-7882349e8d55'"))[0],rcpt=JSON.parse(receipt.receipt_json);
+          const locks=await read("SELECT owner_id FROM source_sync_locks WHERE source='AESAN'");
+          const unfinished=await read("SELECT id FROM source_reliability_jobs WHERE source='AESAN' AND finished_at IS NULL");
+          const member=(await read("SELECT id,content_hash,version_count FROM alerts WHERE source='AESAN' AND reference='ES2026/382'"))[0];
+          if(c.owner_id!==null||c.expires_at!==null||state.configVersion!==2||!state.ownershipVerifiedAt||a.id!=='a5c7c574-84ee-44e8-a33a-7882349e8d55'||a.outcome!=='failed'||a.nextEligibleAt!=='9999-01-01T00:00:00.000Z'||recent.status!=='failed'||recent.updated_at!=='2026-10-08T15:32:26.564Z'||receipt.phase!=='finished'||rcpt.outcome!=='failed'||locks.length||unfinished.length||member.id!=='aesan:ES2026/382'||member.content_hash!=='f5b1af6f0281cf5ceaa932470c543324823ad4101db7cf75e6d85b2ccfe60c3f')throw Error('AESAN evidence changed; no write');
+          console.log('ELIGIBILITY_BEFORE '+JSON.stringify({at:new Date().toISOString(),epoch:c.epoch,attempt:a,recent,receiptOutcome:rcpt.outcome,proofRun:37834392441,proofAt:'2026-10-08T19:46:30.261Z',member}));
+          const sql=`UPDATE source_reliability_control SET state_json=json_set(state_json,'$.attempts.AESAN.nextEligibleAt',NULL)
+          WHERE id=1 AND owner_id IS NULL AND expires_at IS NULL AND epoch=? AND state_json=?
+          AND EXISTS(SELECT 1 FROM source_sync_state WHERE source='AESAN' AND mode='recent' AND status='failed' AND updated_at='2026-10-08T15:32:26.564Z')
+          AND NOT EXISTS(SELECT 1 FROM source_sync_locks WHERE source='AESAN')
+          AND NOT EXISTS(SELECT 1 FROM source_reliability_jobs WHERE source='AESAN' AND finished_at IS NULL)
+          RETURNING epoch,json_extract(state_json,'$.attempts.AESAN') AS attempt`;
+          const updated=await query(sql,[c.epoch,c.state_json]);
+          console.log('ELIGIBILITY_CAS_RESULT '+JSON.stringify({at:new Date().toISOString(),rows:updated.results,meta:updated.meta,oneRequest:true,noSourceMutation:true,noReplay:true}));
+          if(updated.results.length!==1)throw Error('CAS lost; no retry');
+          const after=(await read('SELECT owner_id,expires_at,epoch,state_json FROM source_reliability_control WHERE id=1'))[0],afterState=JSON.parse(after.state_json);
+          console.log('ELIGIBILITY_AFTER '+JSON.stringify({at:new Date().toISOString(),epoch:after.epoch,owner:after.owner_id,attempt:afterState.attempts.AESAN,quarantine:{safetyGate:afterState.attempts['SAFETY GATE'],historical:afterState.revisionAttempts}}));
+          NODE
