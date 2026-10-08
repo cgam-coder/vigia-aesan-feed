@@ -40,11 +40,8 @@ jobs:
           const allocation=await cf('/workers/scripts/vigia-runtime/deployments');
           if(allocation.deployments?.[0]?.versions?.length!==1||allocation.deployments[0].versions[0].version_id!==expected||allocation.deployments[0].versions[0].percentage!==100)throw Error('runtime baseline moved');
           const prior=await cf(script+'/settings'),runnerAllocation=await cf(script+'/deployments');
-          if(!prior?.bindings?.some(b=>b.name==='SOURCE_RUNNER_MODE'&&b.text==='probe')||runnerAllocation?.deployments?.[0]?.versions?.length!==1||runnerAllocation.deployments[0].versions[0].version_id!=='4e757c99-0aed-4eb8-bb54-9ac76fde46d8'||runnerAllocation.deployments[0].versions[0].percentage!==100)throw Error('runner baseline moved');
-          const metadata={main_module:'source-runner.mjs',compatibility_date:'2026-09-25',compatibility_flags:['nodejs_compat'],usage_model:'standard',limits:{cpu_ms:60000},observability:{enabled:true},annotations:{'workers/message':'source-reliability-probe:637e895a6966aa14510c9463f753768e95e1519a'},bindings:[{type:'d1',name:'DB',id:'55596003-1b90-4f66-aad8-decb21205f13'},{type:'plain_text',name:'SOURCE_RUNNER_MODE',text:'probe'},{type:'secret_text',name:'VIGIA_SYNC_TOKEN',text:process.env.SYNC_TOKEN}]};
-          const form=new FormData();form.set('metadata',new Blob([JSON.stringify(metadata)],{type:'application/json'}));form.set('source-runner.mjs',new Blob([bundle],{type:'application/javascript+module'}),'source-runner.mjs');
-          const uploaded=await cf(script,'PUT',form);console.log('SR_NATIVE_ARTIFACT '+JSON.stringify({at:new Date().toISOString(),candidate:'637e895a6966aa14510c9463f753768e95e1519a',sha256:'d6dddfb17fbbaf574653514cbb366b78060d9eee6402eb1478dba10b5d9ab10a',mode:'probe',startupMs:uploaded.startup_time_ms,id:uploaded.id}));
-          const currentRunnerAllocation=await cf(script+'/deployments');
+          if(!prior?.bindings?.some(b=>b.name==='SOURCE_RUNNER_MODE'&&b.text==='probe')||runnerAllocation?.deployments?.[0]?.versions?.length!==1||runnerAllocation.deployments[0].versions[0].percentage!==100||runnerAllocation.deployments[0].annotations?.['workers/message']!=='source-reliability-probe:637e895a6966aa14510c9463f753768e95e1519a')throw Error('runner baseline moved');
+          const currentRunnerAllocation=runnerAllocation;console.log('SR_NATIVE_EXISTING '+JSON.stringify({at:new Date().toISOString(),mode:'probe',allocation:runnerAllocation.deployments[0]}));
           let enabled=false;
           try{
             const settings=await cf(script+'/settings');
@@ -53,19 +50,20 @@ jobs:
             const base='https://vigia-source-runner.c-gamiz93.workers.dev';
             let ready=false;
             for(let attempt=0;attempt<7;attempt++){
-              const unauthorized=await fetch(base+'/status',{signal:AbortSignal.timeout(15000)});
-              console.log('SR_NATIVE_READINESS '+JSON.stringify({attempt,http:unauthorized.status}));
-              if(unauthorized.status===401){ready=true;break;}
-              if(![404,502,503,520,522,523].includes(unauthorized.status))throw Error('probe authentication HTTP '+unauthorized.status);
+              const unauthorized=await fetch(base+'/status',{signal:AbortSignal.timeout(15000),headers:{'Cache-Control':'no-store'}});
+              const response=await fetch(base+'/status',{headers:{Authorization:'Bearer '+process.env.SYNC_TOKEN,'Cache-Control':'no-store'},signal:AbortSignal.timeout(15000)});
+              const raw=await response.text();let status=null;try{status=JSON.parse(raw);}catch{}
+              const errorCode=raw.match(/error code:?\s*(\d+)/i)?.[1]??raw.match(/<title>[^<]*(1101|1102|1000|1016|404)[^<]*<\/title>/i)?.[1]??null;
+              console.log('SR_NATIVE_READINESS '+JSON.stringify({attempt,unauthorized:unauthorized.status,authorized:response.status,contentType:response.headers.get('Content-Type'),errorCode,component:status?.component,mode:status?.mode}));
+              if(unauthorized.status===401&&response.status===200&&status?.mode==='probe'&&status.configVersion===2&&status.hasCron===false){ready=true;break;}
+              if(errorCode==='1101'||errorCode==='1102'||![404,502,503,520,522,523].includes(response.status))throw Error('native authenticated status failed '+response.status+' code '+errorCode);
               await unauthorized.body?.cancel();await new Promise(resolve=>setTimeout(resolve,Math.min(10000,1000*2**attempt)));
             }
             if(!ready)throw Error('bounded endpoint propagation timeout');
-            const statusResponse=await fetch(base+'/status',{headers:{Authorization:'Bearer '+process.env.SYNC_TOKEN},signal:AbortSignal.timeout(15000)});
-            const status=await statusResponse.json();if(statusResponse.status!==200||status.mode!=='probe'||status.configVersion!==2||status.hasCron!==false)throw Error('authenticated probe status failed');
             for(const source of ['AESAN']){
               const path='/probe?source='+encodeURIComponent(source)+(source==='AESAN'?'&full=1':'');
               const response=await fetch(base+path,{method:'GET',headers:{Authorization:'Bearer '+process.env.SYNC_TOKEN},signal:AbortSignal.timeout(380000),redirect:'error'});
-              const body=await response.json();console.log('SR_NATIVE_PROBE '+JSON.stringify({http:response.status,...body}));
+              const raw=await response.text();let body;try{body=JSON.parse(raw);}catch{console.log('SR_NATIVE_NON_JSON '+JSON.stringify({http:response.status,contentType:response.headers.get('Content-Type'),bodyLength:raw.length}));throw Error('native probe returned non-JSON');}console.log('SR_NATIVE_PROBE '+JSON.stringify({http:response.status,...body}));
               if(body.zeroWrite!==true)throw Error('missing zero-write witness');
             }
           }finally{
