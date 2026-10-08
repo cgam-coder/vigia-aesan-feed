@@ -40,8 +40,6 @@ export const recentDue = (recent, now = Date.now(), targetMs = RECENT_TARGET_MS)
 
 export const recoverableGlobalFailure = (state) => Boolean(state?.status === "failed" &&
   state.leaseOwnerId === null && state.leaseMode === null && state.leaseExpiresAt === null && (
-    state.lastError === "D1_ERROR: out of memory: SQLITE_NOMEM" ||
-    /^D1_ERROR: internal error; reference = [a-z0-9]+$/u.test(state.lastError || "") ||
     state.lastError === "RASFF agotó el timeout para " + SEARCH_URL ||
     state.lastError === "RASFF abortó la petición para " + SEARCH_URL ||
     state.lastError === "RASFF sufrió un fallo de red para " + SEARCH_URL ||
@@ -108,7 +106,7 @@ export async function runRecentControl({ transport, now = () => Date.now(), slee
     try {
       const result = await transport("/api/rasff/sync?mode=recent", "POST", deadline);
       const state = result.body?.state;
-      if (result.http === 200 && state?.source === "RASFF" && state.mode === "recent" && state.status === "completed" &&
+      if (result.http === 200 && state?.source === "RASFF" && state.mode === "recent" && state.status === "completed" && state.lastError === null && state.detailFailures === 0 &&
           state.leaseOwnerId === null && state.leaseMode === null && state.leaseExpiresAt === null) {
         return { status:"completed", state, originalError };
       }
@@ -121,7 +119,7 @@ export async function runRecentControl({ transport, now = () => Date.now(), slee
     }
     const persisted = await observe(transport, deadline);
     const persistedAt = iso(persisted.recent?.lastSuccessAt) ? Date.parse(persisted.recent.lastSuccessAt) : Number.NEGATIVE_INFINITY;
-    if (persistedAt > baseline) return { status:"recovered-after-response-loss", state:persisted.recent, originalError };
+    if (persistedAt > baseline && persisted.recent.status === "completed" && persisted.recent.lastError === null && persisted.recent.detailFailures === 0 && classifyLease(persisted.lease, now()).kind === "none") return { status:"recovered-after-response-loss", state:persisted.recent, originalError };
     const successor = classifyLease(persisted.lease, now());
     if (successor.kind === "malformed") throw new Error(successor.error);
     if (successor.kind === "live") {
@@ -130,6 +128,7 @@ export async function runRecentControl({ transport, now = () => Date.now(), slee
         return { status:"blocked", state:persisted.recent ?? null, originalError };
       continue;
     }
+    if (!recoverableGlobalFailure(persisted.recent)) throw new Error("HOLD: recent remote mutation outcome unconfirmed; retry forbidden", { cause:originalError });
     if (attempt < maxAttempts) await sleepWithin(sleep, attempt * 5_000, deadline, now);
   }
   throw new Error(`RASFF recent made no progress within its bounded recovery window; original=${String(originalError)}`,
@@ -152,11 +151,12 @@ async function reconcileBatch({ transport, prior, deadline, now, sleep, log, max
     log(`RASFF_RECONCILE_RESPONSE_UNCERTAIN ${JSON.stringify({ attempt, error:String(originalError) })}`);
     const persisted = await observe(transport, deadline);
     const progress = reconcileProgress(persisted.reconcile);
-    if (hasAdvanced(prior, progress)) return { kind:"recovered-after-response-loss",
+    if (hasAdvanced(prior, progress) && ["partial", "completed"].includes(persisted.reconcile?.status) && !persisted.reconcile.lastError && persisted.reconcile.detailFailures === 0 && classifyLease(persisted.lease, now()).kind === "none") return { kind:"recovered-after-response-loss",
       body:{ state:persisted.reconcile }, originalError };
     const lease = classifyLease(persisted.lease, now());
     if (lease.kind === "malformed") throw new Error(lease.error, { cause:originalError });
     if (lease.kind === "live") return { kind:"successor-active", body:{ state:persisted.reconcile }, originalError };
+    if (!recoverableGlobalFailure(persisted.reconcile)) throw new Error("HOLD: reconcile remote mutation outcome unconfirmed; retry forbidden", { cause:originalError });
     if (attempt < maxAttempts) await sleepWithin(sleep, attempt * 5_000, deadline, now);
   }
   throw new Error(`RASFF reconcile made no progress after bounded recovery; original=${String(originalError)}`,
@@ -227,3 +227,4 @@ async function main() {
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) await main();
+

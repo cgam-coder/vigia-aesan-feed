@@ -68,7 +68,7 @@ jobs:
               const {response,body,raw}=await readJson(recentUrl,{method:"POST",headers},840_000);
               const state=body?.state;
               if(response.status===200&&state?.source==="OECD"&&state.mode==="recent"&&
-                  ["partial","completed"].includes(state.status)&&state.lastError===null&&
+                  state.status==="completed"&&state.lastError===null&&state.detailFailures===0&&
                   state.leaseOwnerId===null&&state.leaseMode===null&&state.leaseExpiresAt===null) {
                 recentYields++;
                 const successMs=Date.parse(state.lastSuccessAt);
@@ -102,9 +102,9 @@ jobs:
                 if(response.status===200||response.status===202) return {response,body};
                 const persistedUpstreamFailure=response.status===503&&body?.state?.source==="OECD"&&body.state.mode==="historical-reconcile"&&/^OECD respondió con estado (?:429|5\d\d)$/u.test(body.state.lastError||"");
                 if(persistedUpstreamFailure&&attempt===5) return {response,body,recoverableUpstreamFailure:true};
-                if(![429,500,502,503,504].includes(response.status)||attempt===5) throw new Error("OECD reconcile failed HTTP "+response.status+": "+raw.slice(0,1000));
+                if(!persistedUpstreamFailure||attempt===5) throw new Error("OECD reconcile failed HTTP "+response.status+": "+raw.slice(0,1000));
               } catch(error) {
-                if(attempt===5||error instanceof Error&&error.message.startsWith("OECD reconcile failed HTTP")) throw error;
+                throw new Error("HOLD: OECD mutation response uncertain; replay forbidden without exact checkpoint reconciliation", {cause:error});
                 retries++; console.log("OECD_HISTORICAL_RECONCILE_RETRY "+JSON.stringify({attempt,error:String(error)}));
               }
               await sleep(attempt*5_000);
@@ -130,3 +130,4 @@ jobs:
           if(previous?.status!=="completed"&&!budgetExhausted) throw new Error("OECD historical reconcile did not complete: "+JSON.stringify({executed,skipped,state:previous}));
           console.log("OECD_HISTORICAL_RECONCILE_STAGE_COMPLETE "+JSON.stringify({executed,skipped,retries,upstreamFailures,recentYields,budgetExhausted,state:previous}));
           NODE
+
