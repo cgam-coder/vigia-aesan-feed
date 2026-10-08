@@ -1,0 +1,139 @@
+name: Source reliability exact candidate AESAN live SELECT parity
+on:
+  push:
+    branches: [source-reliability/final-candidate-aesan-parity-20261008-2002]
+permissions:
+  contents: read
+jobs:
+  read:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Exact candidate official audit and SELECT-only D1 parity
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const FRESHNESS_SAMPLE_SIZE = 20;
+          const decodeHtml = (value) => value.replace(/&nbsp;/giu, " ").replace(/&amp;/giu, "&").replace(/&quot;/giu, '"').replace(/&#39;|&apos;/giu, "'").replace(/<[^>]+>/gu, " ").replace(/\s+/gu, " ").trim();
+          const hasMaterialCorrigendum = (value) => typeof value === "string" && value.trim() !== "" && !/^(?:null|false|0|no|n\/?a|none|undefined)$/iu.test(value.trim());
+          const aesanDate = (value) => {
+            const months = {
+              enero: 0,
+              febrero: 1,
+              marzo: 2,
+              abril: 3,
+              mayo: 4,
+              junio: 5,
+              julio: 6,
+              agosto: 7,
+              septiembre: 8,
+              setiembre: 8,
+              octubre: 9,
+              noviembre: 10,
+              diciembre: 11
+            };
+            const clean = decodeHtml(value).normalize("NFD").replace(new RegExp("\\p{Diacritic}", "gu"), "").toLocaleLowerCase("es");
+            const match = clean.match(/\b(\d{1,2})\s+([a-z]+)\s+(20\d{2})\b/u);
+            const month = match ? months[match[2]] : void 0;
+            return match && month !== void 0 ? new Date(Date.UTC(Number(match[3]), month, Number(match[1]), 12)).toISOString() : null;
+          };
+          function parseAesanFreshnessAnchors(html, limit = FRESHNESS_SAMPLE_SIZE) {
+            const anchors = [];
+            const seen = /* @__PURE__ */ new Set();
+            const cards = html.matchAll(/<a\b([^>]*\bclass\s*=\s*(?:"[^"]*\bseeMoreCard\b[^"]*"|'[^']*\bseeMoreCard\b[^']*')[^>]*)>([\s\S]*?)<\/a>/giu);
+            for (const match of cards) {
+              const href = match[1].match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')/iu)?.slice(1).find(Boolean) ?? "";
+              const title = decodeHtml(match[2]);
+              const referenceMatch = title.match(/ES\s*(20\d{2})\s*[/.\-]\s*(\d+)/iu);
+              if (!referenceMatch) continue;
+              let officialUrl;
+              try {
+                officialUrl = new URL(href, "https://www.aesan.gob.es");
+              } catch {
+                continue;
+              }
+              if (!officialUrl.hostname.endsWith("aesan.gob.es") || !officialUrl.pathname.startsWith("/alertas/")) continue;
+              const identity = `ES${referenceMatch[1]}/${referenceMatch[2]}`;
+              if (seen.has(identity)) continue;
+              seen.add(identity);
+              const dateBlock = match[2].match(/\bseeMoreCard-heading__value\b[^>]*>([\s\S]*?)<\//iu)?.[1] ?? "";
+              anchors.push({ identity, publishedAt: aesanDate(dateBlock), updatedAt: null });
+              if (anchors.length >= limit) break;
+            }
+            return anchors.sort((left, right) => (right.publishedAt ?? "").localeCompare(left.publishedAt ?? ""));
+          }
+          async function fetchOfficialFreshness(source, fetchImpl = fetch) {
+            if (source === "AESAN") {
+              const urls = [1, 2, 3, 4].map((page2) => `https://www.aesan.gob.es/alertas/buscador-alertas${page2 === 1 ? "" : `/${page2}`}`);
+              urls.push("https://www.aesan.gob.es/alertas/alertas-alimentarias");
+              const observations = await Promise.all(urls.map(async (url) => {
+                const response = await fetchImpl(url, {
+                  headers: { Accept: "text/html,application/xhtml+xml", "User-Agent": "NagameAlert-Freshness/1.0" },
+                  cache: "no-store",
+                  signal: AbortSignal.timeout(3e4)
+                });
+                if (!response.ok) throw new Error(`AESAN devolvi\xF3 HTTP ${response.status}`);
+                const html = (await response.text()).replace(/\bseeMoreCardSlide\b/gu, "seeMoreCard seeMoreCardSlide");
+                const pageAnchors = parseAesanFreshnessAnchors(html, 100);
+                if (!pageAnchors.length) throw new Error("AESAN no devolvi\xF3 anclas oficiales verificables");
+                return pageAnchors;
+              }));
+              const byIdentity = /* @__PURE__ */ new Map();
+              for (const anchor of observations.flat()) {
+                const previous = byIdentity.get(anchor.identity);
+                if (!previous || (anchor.publishedAt ?? "") > (previous.publishedAt ?? "")) byIdentity.set(anchor.identity, anchor);
+              }
+              const anchors = [...byIdentity.values()].sort((a, b) => (b.publishedAt ?? "").localeCompare(a.publishedAt ?? "") || a.identity.localeCompare(b.identity)).slice(0, FRESHNESS_SAMPLE_SIZE);
+              return { source, anchors };
+            }
+            if (source === "RAPNA") {
+              const page2 = await fetchRapnaCurrentIndexPage({ fetchImpl, retries: 0 }, FRESHNESS_SAMPLE_SIZE);
+              return { source, anchors: page2.content.map((record) => ({
+                identity: record.reference,
+                publishedAt: iso(record.publicationDate || record.webPublishedDate),
+                updatedAt: iso(record.modificationDate)
+              })) };
+            }
+            if (source === "RASFF") {
+              const page2 = await fetchRasffIndexPage(1, FRESHNESS_SAMPLE_SIZE, { fetch: fetchImpl });
+              return { source, anchors: page2.notifications.map((record) => ({
+                identity: record.reference,
+                publishedAt: parseRasffOfficialDate(record.ecValidationDate),
+                updatedAt: null
+              })) };
+            }
+            if (source === "SAFETY GATE") {
+              const page2 = await fetchSafetyGateRecentPage({ fetchImpl, retries: 0 }, FRESHNESS_SAMPLE_SIZE);
+              return { source, anchors: page2.content.slice(0, FRESHNESS_SAMPLE_SIZE).map((record) => ({
+                identity: record.reference,
+                publishedAt: iso(record.publicationDate),
+                updatedAt: hasMaterialCorrigendum(record.corrigendum) ? iso(record.modificationDate) : null
+              })) };
+            }
+            const page = await fetchOecdSearchPage(0, "", { fetchImpl, retries: 0 });
+            return { source, anchors: page.results.map((record) => ({
+              identity: oecdReference(record.uri),
+              publishedAt: iso(record.publishedDate),
+              updatedAt: null
+            })) };
+          }
+          export {
+            fetchOfficialFreshness,
+            parseAesanFreshnessAnchors
+          };
+          
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f',base='https://vigia-runtime.c-gamiz93.workers.dev';
+          if(Date.now()>Date.parse('2026-10-08T20:10:00Z'))throw Error('candidate read expired');
+          const official=await fetchOfficialFreshness('AESAN');
+          const sql="SELECT id,reference,content_hash,version_count,published_at,updated_at FROM alerts WHERE source='AESAN' ORDER BY published_at DESC,updated_at DESC LIMIT 20";
+          const r=await fetch(root+'/d1/database/55596003-1b90-4f66-aad8-decb21205f13/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql}),signal:AbortSignal.timeout(20000)}),p=await r.json();
+          if(!r.ok||!p.success||p.result.some(x=>!x.success||x.meta?.changes||x.meta?.rows_written))throw Error('SELECT result unconfirmed');
+          const rows=p.result[0].results,ids=new Set(rows.map(x=>x.reference)),officialIds=new Set(official.anchors.map(x=>x.identity)),missing=official.anchors.filter(x=>!ids.has(x.identity)),unexpected=rows.filter(x=>!officialIds.has(x.reference));
+          const nr=await fetch(base+'/api/source-reliability?observe=1',{headers:{Authorization:'Bearer '+process.env.SYNC_TOKEN},signal:AbortSignal.timeout(20000)}),native=await nr.json();
+          console.log('EXACT_CANDIDATE_AESAN_PARITY '+JSON.stringify({at:new Date().toISOString(),zeroWrite:true,sourceBlob:'d6de659fd5a1eb1d2496be914b6e69122cf1714e',candidate:'99dcee7731075d66e09f62d48007603de028ce48',official,rows,missing,unexpected,latestParity:official.anchors[0]?.identity===rows[0]?.reference,nativeBuild:native.buildSha,activeLease:native.activeLease,aesanAttempt:native.state?.attempts?.AESAN,quarantined:native.state?.revisionAttempts}));
+          if(!nr.ok||native.mode!=='five-source-coordinated'||official.anchors.length!==20||rows.length!==20||missing.length||unexpected.length||official.anchors[0].identity!==rows[0].reference)throw Error('candidate parity not certified');
+          
+          NODE
