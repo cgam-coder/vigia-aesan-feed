@@ -1,0 +1,50 @@
+name: SR271 official carousel bounded read probe
+on:
+  push:
+    branches: [diagnostics/safety-gate-portal-readonly-20261008]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: github.event.head_commit.message == 'SR271 carousel official bounded read probe'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: POST official read-only carousel page 0-3 exactly as current portal
+        run: |
+          node --input-type=module <<'NODE'
+          const endpoint="https://ec.europa.eu/safety-gate-alerts/public/api/notification/carousel/?";
+          const items=[];const results=[];let totalPages=null,totalElements=null,pageSize=null;
+          for(let page=0;page<4;page++){
+            const payload={language:"es",page:String(page)};
+            let res,body;
+            try{
+              res=await fetch(endpoint,{method:"POST",redirect:"error",headers:{
+                Accept:"application/json","Content-Type":"application/json",language:"es"
+              },body:JSON.stringify(payload),signal:AbortSignal.timeout(15000)});
+              const text=await res.text();try{body=JSON.parse(text)}catch{body=null}
+              const content=Array.isArray(body?.content)?body.content:[];
+              const records=content.slice(0,30).map(x=>({id:x.id,reference:x.reference,
+                publicationDate:x.publicationDate,modificationDate:x.modificationDate,
+                fields:Object.keys(x).slice(0,16)}));
+              const row={page,http:res.status,validJson:Boolean(body),contentLen:content.length,
+                totalElements:body?.totalElements??null,totalPages:body?.totalPages??null,
+                size:body?.size??null,number:body?.number??null,last:body?.last??null,
+                records};
+              results.push(row);
+              console.log("SR271_CAROUSEL_PAGE "+JSON.stringify(row));
+              if(res.status!==200 || !body || !content.length)break;
+              if(page===0){totalPages=body.totalPages??null;totalElements=body.totalElements??null;pageSize=body.size??null;}
+              items.push(...content);
+              if(body.last===true)break;
+            }catch(e){results.push({page,error:e?.name||String(e)});break;}
+          }
+          const refs=items.map(x=>x?.reference).filter(Boolean);
+          const unique=new Set(refs);
+          const result={pages:results.length,records:items.length,uniqueReferences:unique.size,
+            allHaveReference:items.length>0&&refs.length===items.length,
+            totalPages,totalElements,pageSize,noDuplicates:unique.size===refs.length,
+            pageStatuses:results.map(x=>x.http??"error")};
+          console.log("SR271_CAROUSEL_SUMMARY "+JSON.stringify(result));
+          if(!results.length||results[0].http!==200)process.exitCode=1;
+          NODE
