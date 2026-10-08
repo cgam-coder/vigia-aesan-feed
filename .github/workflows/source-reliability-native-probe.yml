@@ -37,11 +37,16 @@ jobs:
             const result=await response.json();if(!response.ok||!result.success)throw Error('CF '+method+' HTTP '+response.status+' codes '+JSON.stringify(result.errors?.map(x=>x.code)));
             return result.result;
           }
+          const officialUrl='https://www.aesan.gob.es/alertas/buscador-alertas?filter-initDate=01%2F01%2F2000&filter-endDate=08%2F10%2F2026&quantity=40';
+          const witnessResponse=await fetch(officialUrl,{redirect:'manual',signal:AbortSignal.timeout(30000)});
+          const witnessHtml=await witnessResponse.text();
+          const {parseListCards,stripHtml}=await import('./scripts/aesan.mjs');
+          console.log('SR_AESAN_RANGE '+JSON.stringify({http:witnessResponse.status,range:stripHtml(witnessHtml.match(/<div\b[^>]*\bclass\s*=\s*["']result__info["'][^>]*>([\s\S]*?)<\/div>/i)?.[1]??''),cards:parseListCards(witnessHtml).length,pages:[...new Set([...witnessHtml.matchAll(/(?:href|action)\s*=\s*["'][^"']*\/buscador-alertas\/(\d+)(?:[?"'])/gi)].map(x=>Number(x[1])))]}));
           const allocation=await cf('/workers/scripts/vigia-runtime/deployments');
           if(allocation.deployments?.[0]?.versions?.length!==1||allocation.deployments[0].versions[0].version_id!==expected||allocation.deployments[0].versions[0].percentage!==100)throw Error('runtime baseline moved');
           const prior=await cf(script+'/settings'),runnerAllocation=await cf(script+'/deployments');
           console.log('SR_NATIVE_BASELINE '+JSON.stringify({at:new Date().toISOString(),allocation:runnerAllocation,mode:prior?.bindings?.find(b=>b.name==='SOURCE_RUNNER_MODE')?.text,version:prior?.version}));
-          if(!prior?.bindings?.some(b=>b.name==='SOURCE_RUNNER_MODE'&&b.text==='probe')||runnerAllocation?.deployments?.[0]?.versions?.length!==1||runnerAllocation.deployments[0].versions[0].percentage!==100||false)throw Error('runner baseline moved');
+          if(!prior?.bindings?.some(b=>b.name==='SOURCE_RUNNER_MODE'&&b.text==='probe')||runnerAllocation?.deployments?.[0]?.versions?.length!==1||runnerAllocation.deployments[0].versions[0].percentage!==100||runnerAllocation.deployments[0].versions[0].version_id!=='85e5aa1f-d093-4caa-8cd1-372e15e608c6')throw Error('runner baseline moved');
           const currentRunnerAllocation=runnerAllocation;console.log('SR_NATIVE_EXISTING '+JSON.stringify({at:new Date().toISOString(),mode:'probe',allocation:runnerAllocation.deployments[0]}));
           let enabled=false;
           try{
@@ -61,7 +66,7 @@ jobs:
               await unauthorized.body?.cancel();await new Promise(resolve=>setTimeout(resolve,Math.min(10000,1000*2**attempt)));
             }
             if(!ready)throw Error('bounded endpoint propagation timeout');
-            for(const source of ['AESAN']){
+            for(const source of []){
               const path='/probe?source='+encodeURIComponent(source)+(source==='AESAN'?'&full=1':'');
               const response=await fetch(base+path,{method:'GET',headers:{Authorization:'Bearer '+process.env.SYNC_TOKEN},signal:AbortSignal.timeout(380000),redirect:'error'});
               const raw=await response.text();let body;try{body=JSON.parse(raw);}catch{console.log('SR_NATIVE_NON_JSON '+JSON.stringify({http:response.status,contentType:response.headers.get('Content-Type'),bodyLength:raw.length}));throw Error('native probe returned non-JSON');}console.log('SR_NATIVE_PROBE '+JSON.stringify({http:response.status,...body}));
