@@ -34,11 +34,11 @@ jobs:
           const control={at:new Date().toISOString(),active,rollback:a?.[1]??null,versionNumber:version.number,
             schedulerMode:flag("NAGAMEALERT_RECENT_SCHEDULER_MODE"),delta:flag("NAGAMEALERT_SAFETY_GATE_RECENT_MODE"),
             limits:settings.limits??null,usageModel:settings.usage_model??null,databases:db,schedules};
-          const sourcePaths=["/api/freshness?observe=1&policy=1","/api/freshness?observe=1",...["aesan","rapna","rasff","safety-gate","oecd"].map(x=>"/api/"+x+"/sync?observe=1")];
+          const sourcePaths=["/api/source-reliability?observe=1","/api/freshness?observe=1&policy=1","/api/freshness?observe=1",...["aesan","rapna","rasff","safety-gate","oecd"].map(x=>"/api/"+x+"/sync?observe=1")];
           const states=[];
           for(const path of sourcePaths)states.push({path,body:await request("https://vigia-runtime.c-gamiz93.workers.dev"+path,process.env.SYNC_TOKEN)});
           const buildResponse=await fetch(root+"/builds/builds?version_ids="+active.versions[0].version_id,{headers:{Authorization:"Bearer "+process.env.CF_TOKEN},signal:AbortSignal.timeout(25000)});
-          let buildMetadata={http:buildResponse.status};if(buildResponse.ok){const payload=await buildResponse.json();buildMetadata={http:buildResponse.status,success:payload.success,builds:(Array.isArray(payload.result?.builds)?payload.result.builds:Object.values(payload.result?.builds??{}).flatMap(v=>Array.isArray(v)?v:[v])).map(b=>({build_uuid:b.build_uuid,status:b.status,metadata:b.build_trigger_metadata}))};}
+          let buildMetadata={http:buildResponse.status};if(buildResponse.ok){const payload=await buildResponse.json();buildMetadata={http:buildResponse.status,success:payload.success,builds:(Array.isArray(payload.result?.builds)?payload.result.builds:Object.values(payload.result?.builds??{}).flatMap(v=>Array.isArray(v)?v:[v])).map(b=>({build_uuid:b.build_uuid,status:b.status,metadata:{branch:b.build_trigger_metadata?.branch,commit:b.build_trigger_metadata?.commit_hash}}))};}
           console.log("SR_BUILD_PROVENANCE "+JSON.stringify(buildMetadata));
           const after=(await cf("/workers/scripts/vigia-runtime/deployments")).deployments?.[0];
           if(JSON.stringify(active)!==JSON.stringify(after))throw Error("allocation changed");
