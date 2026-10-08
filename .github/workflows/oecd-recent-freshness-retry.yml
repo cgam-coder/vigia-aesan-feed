@@ -5,8 +5,6 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/oecd-recent-freshness-retry.yml"
-  schedule:
-    - cron: "2,32 * * * *"
   workflow_dispatch:
 
 permissions:

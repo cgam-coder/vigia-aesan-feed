@@ -6,9 +6,6 @@ on:
     paths:
       - ".github/workflows/rasff-control.yml"
       - "scripts/rasff-control.mjs"
-  schedule:
-    - cron: "9,39 * * * *"
-    - cron: "17 * * * *"
   workflow_dispatch:
     inputs:
       lane:
