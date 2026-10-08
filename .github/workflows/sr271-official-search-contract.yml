@@ -1,0 +1,31 @@
+name: SR271 exact official search API contract
+on:
+  push:
+    branches: [diagnostics/safety-gate-portal-readonly-20261008]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: github.event.head_commit.message == 'SR271 exact official search contract one-shot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Inspect the latest official search bundle (GET only)
+        run: |
+          node --input-type=module <<'NODE'
+          const url="https://ec.europa.eu/safety-gate-alerts/chunk-LT65EEDW.js";
+          const res=await fetch(url,{method:"GET",redirect:"error",signal:AbortSignal.timeout(18000)});
+          if(res.status!==200)throw Error("Official bundle HTTP "+res.status);
+          const s=await res.text();if(s.length>1500000)throw Error("oversized");
+          const tokens=["baseUrl=\"public/api/\"","search(e){return this.http.post","getMostRecentAlert(){","getNotificationMostRecent","getNotification","notificationService.getNoti","mostRecent","PUBLICATION_DATE_DESC"];
+          const out={};
+          for(const token of tokens){
+            let at=0,loc=[],seen=0;
+            while((at=s.indexOf(token,at))!==-1&&loc.length<7&&seen++<100){
+              loc.push(s.slice(Math.max(0,at-200),Math.min(s.length,at+1150)).replace(/\s+/gu," ").slice(0,1100));
+              at+=token.length;
+            }
+            out[token]=loc;
+          }
+          console.log("SR271_EXACT "+JSON.stringify({bundle:url,length:s.length,results:out}));
+          NODE
