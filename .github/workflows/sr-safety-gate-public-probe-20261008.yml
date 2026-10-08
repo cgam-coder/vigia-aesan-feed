@@ -1,0 +1,39 @@
+# One-shot official public read-only search. Uses POST only because official search API requires it;
+# no NagameAlert endpoint, no secrets, no storage writes, no deployment.
+name: SR Safety Gate official public API read probe
+on:
+  push:
+    branches: [diagnostics/source-reliability-readonly-20261008]
+permissions:
+  contents: read
+jobs:
+  official-probe:
+    if: github.event.head_commit.message == 'SR official Safety Gate read-probe sizes 20 and 100' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Read official Safety Gate recent search with two page sizes
+        run: |
+          node --input-type=module <<'NODE'
+          const target="https://ec.europa.eu/safety-gate-alerts/public/api/notification/mostRecent/?";
+          const values=[20,100];
+          const outcomes=[];
+          for(const size of values){
+            const params={language:"es",page:"0",pageSize:String(size)};
+            try{
+              const response=await fetch(target,{method:"POST",redirect:"error",headers:{
+                Accept:"application/json","Content-Type":"application/json",language:"es"
+              },body:JSON.stringify(params),signal:AbortSignal.timeout(20_000)});
+              const body=await response.text();
+              let parsed=null;try{parsed=JSON.parse(body)}catch{}
+              const out={pageSize:size,http:response.status,contentType:response.headers.get("content-type"),
+                length:body.length,items:Array.isArray(parsed?.content)?parsed.content.length:null,
+                totalPages:parsed?.totalPages??null,totalElements:parsed?.totalElements??null,
+                responseType:parsed===null?"non-json":"json"};
+              outcomes.push(out);console.log("SG_OFFICIAL "+JSON.stringify(out));
+            }catch(e){const out={pageSize:size,reason:e?.name??"unknown",status:"request-error"};outcomes.push(out);console.log("SG_OFFICIAL "+JSON.stringify(out));}
+          }
+          // Diagnostic only: neither status is interpreted as parity certification.
+          console.log("SG_SUMMARY "+JSON.stringify({at:new Date().toISOString(),outcomes,
+            note:"Official read search only. No NagameAlert mutations, no identity/parity certification."}));
+          NODE
