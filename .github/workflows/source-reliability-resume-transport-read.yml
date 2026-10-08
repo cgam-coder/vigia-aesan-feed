@@ -1,0 +1,27 @@
+name: Source reliability bounded transport forensic read
+on:
+  push:
+    branches: [source-reliability/resume-transport-read-20261008]
+permissions:
+  contents: read
+jobs:
+  read:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Read response outcomes without headers or source writes
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          if(Date.now()>Date.parse('2026-10-08T15:15:00Z'))throw Error('expired forensic read');
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          for(const service of ['vigia-runtime','vigia-source-runner']){
+            const q={queryId:'source-reliability-http-outcome-read',dry:true,view:'events',limit:100,timeframe:{from:Date.parse('2026-10-08T15:00:00Z'),to:Date.now()},parameters:{filters:[{key:'$metadata.service',operation:'eq',type:'string',value:service}],filterCombination:'and'}};
+            const r=await fetch(root+'/workers/observability/telemetry/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(q),signal:AbortSignal.timeout(30000)}),p=await r.json(),events=Array.isArray(p.result?.events)?p.result.events:p.result?.events?.events??[];
+            const safe=events.filter(e=>e.$workers?.eventType==='fetch'||e.$workers?.eventType==='scheduled'||e.$workers?.eventType==='cron').map(e=>({metadata:e.$metadata,workerKeys:Object.keys(e.$workers??{}),eventKeys:Object.keys(e.$workers?.event??{}),worker:{outcome:e.$workers?.outcome,eventType:e.$workers?.eventType,scriptVersion:e.$workers?.scriptVersion,wallTimeMs:e.$workers?.wallTimeMs,cpuTimeMs:e.$workers?.cpuTimeMs,responseStatus:e.$workers?.event?.response?.status,httpStatus:e.$workers?.response?.status,eventStatus:e.$workers?.event?.status,eventHttpStatus:e.$workers?.event?.httpStatus},error:e.error}));
+            let output=JSON.stringify({at:new Date().toISOString(),service,http:r.status,success:p.success,errors:p.errors,events:safe});if(process.env.CF_TOKEN)output=output.replaceAll(process.env.CF_TOKEN,'***');console.log('SR_HTTP_FORENSIC '+output);
+            if(!r.ok||!p.success)throw Error('forensic read unavailable');
+          }
+          NODE
