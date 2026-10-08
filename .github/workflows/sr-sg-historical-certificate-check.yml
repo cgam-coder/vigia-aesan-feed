@@ -1,0 +1,62 @@
+# One-shot GET-only existing Safety Gate historical certificate and parity, no writes.
+name: SR F2B terminal certification read only
+on:
+  push:
+    branches: [diagnostics/source-reliability-readonly-20261008]
+permissions:
+  contents: read
+jobs:
+  read-certificate:
+    if: github.event.head_commit.message == 'SR F2B certificate GET-only verification' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Read published historical state and audit without mutation
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const base="https://vigia-runtime.c-gamiz93.workers.dev";
+          const allowed=new Set(["/api/safety-gate/sync?observe=1","/api/safety-gate/sync?audit=1"]);
+          const token=process.env.VIGIA_SYNC_TOKEN;
+          if(!token)throw Error("Missing token");
+          async function get(path) {
+            if(!allowed.has(path))throw Error("Non allowlisted GET");
+            const r=await fetch(base+path,{method:"GET",redirect:"error",headers:{Authorization:"Bearer "+token},
+              signal:AbortSignal.timeout(25000)});
+            const content=await r.text();let body=null;
+            try{body=JSON.parse(content)}catch{}
+            return {status:r.status,body};
+          }
+          const observation=await get("/api/safety-gate/sync?observe=1");
+          const audit=await get("/api/safety-gate/sync?audit=1");
+          const h=observation.body?.historicalReconcile;
+          const cert=observation.body?.revisionCertification;
+          const a=audit.body?.audit??audit.body;
+          const expectedPlan="safety-gate-weekly-detail-v1:d64a863503fafe96e91588761e24355c05f054245e2712017c1a65c53fb0894f";
+          const critical=["duplicateReferenceGroups","invalidIdentities","emptyCanonicalRows","invalidOfficialUrls"];
+          const integrity=Object.fromEntries(critical.map(k=>[k,a?.integrity?.[k]??null]));
+          const parityAlerts=a?.counts?.safetyGateAlerts===a?.counts?.safetyGateUniqueReferences;
+          const parityVersions=a?.counts?.safetyGateVersions===a?.counts?.safetyGateVersionCountSum;
+          const statePass=Boolean(h?.source==="SAFETY GATE"&&h?.mode==="historical-reconcile"&&
+            h?.status==="completed"&&h?.planVersion===expectedPlan&&h?.totalUnits===1118&&h?.cursor===1118&&
+            h?.pagesScanned===1118&&h?.coverage==="official-index-complete"&&h?.cursorKey===null&&
+            h?.completedAt&&h?.lastError===null&&h?.detailFailures===0&&h?.pageErrors===0);
+          const certPass=Boolean(cert&&cert.source==="SAFETY GATE"&&cert.mode==="historical-reconcile"&&
+            cert.status==="certified"&&cert.auditStatus==="passed");
+          const integrityPass=critical.every(k=>integrity[k]===0);
+          const result={at:new Date().toISOString(),getStatus:[observation.status,audit.status],
+            historical:{status:h?.status,cursor:h?.cursor,totalUnits:h?.totalUnits,pagesScanned:h?.pagesScanned,
+              recordsObserved:h?.recordsObserved,coverage:h?.coverage,completedAt:h?.completedAt,
+              lastErrorPresent:h?.lastError!=null,detailFailures:h?.detailFailures,pageErrors:h?.pageErrors,
+              cursorKeyPresent:h?.cursorKey!=null},certificate:cert?{
+              source:cert.source,mode:cert.mode,status:cert.status,auditStatus:cert.auditStatus,
+              coverage:cert.coverage,checkedAt:cert.checkedAt,completedAt:cert.completedAt
+            }:null,audit:{checkedAt:a?.checkedAt,integrity,
+              counts:{alerts:a?.counts?.safetyGateAlerts,uniqueReferences:a?.counts?.safetyGateUniqueReferences,
+                versions:a?.counts?.safetyGateVersions,versionCountSum:a?.counts?.safetyGateVersionCountSum}},
+            gates:{statePass,certPass,integrityPass,parityAlerts,parityVersions}};
+          result.verdict=observation.status===200&&audit.status===200&&Object.values(result.gates).every(Boolean)?"PASS":"HOLD";
+          console.log("SR_F2B_CERT "+JSON.stringify(result));
+          if(observation.status!==200||audit.status!==200)process.exitCode=1;
+          NODE
