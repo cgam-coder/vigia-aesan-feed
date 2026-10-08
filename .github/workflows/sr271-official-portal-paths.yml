@@ -1,0 +1,40 @@
+name: SR271 Safety Gate official frontend route inventory
+on:
+  push:
+    branches: [diagnostics/safety-gate-portal-readonly-20261008]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: github.event.head_commit.message == 'SR271 official API route inventory one-shot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Inventory public official routes from exact frontend bundle (GET-only)
+        run: |
+          node --input-type=module <<'NODE'
+          const url="https://ec.europa.eu/safety-gate-alerts/chunk-AR65AS64.js";
+          const res=await fetch(url,{method:"GET",redirect:"error",signal:AbortSignal.timeout(16000)});
+          if(res.status!==200)throw Error("bundle status "+res.status);
+          const text=await res.text();if(text.length>1800000)throw Error("unexpected length");
+          const candidates=[];
+          const regex=/["']([^"']{1,170})["']/gu;
+          for(const m of text.matchAll(regex)){
+            const v=m[1];
+            if(/(?:api\/|mostRecent|search\/|recent|notification)/iu.test(v) && /(?:api\/|mostRecent|URL_|SEARCH|RECENT|notification)/u.test(v)){
+              if(!candidates.includes(v))candidates.push(v);
+            }
+          }
+          const selected=candidates.filter(x=>/api\/|recent|mostRecent|notification|search/i.test(x)).slice(0,110);
+          const phrases=["GET_SEARCH_ALL_ID","apiBaseUrl","mostRecent/","MOST_RECENT","GET_NOTIFICATION","GET_SEARCH","search","query","notification"];
+          const samples={};
+          for(const key of phrases){
+            const locs=[];let p=-1,iterations=0;
+            while((p=text.indexOf(key,p+1))!==-1 && locs.length<6 && iterations++<100){
+              locs.push(text.slice(Math.max(0,p-130),Math.min(text.length,p+200)).replace(/\s+/gu," ").slice(0,320));
+            }
+            samples[key]=locs;
+          }
+          console.log("SR271_ROUTES "+JSON.stringify({bundle:url,length:text.length,candidates:selected}));
+          console.log("SR271_SAMPLES "+JSON.stringify(samples));
+          NODE
