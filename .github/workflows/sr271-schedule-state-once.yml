@@ -1,0 +1,56 @@
+# One-shot GitHub REST GET-only scheduler-state inspection.
+# Isolated branch, no main/D1/runtime/Cloudflare mutations. Expires 2026-10-09 UTC.
+name: SR271 scheduled-workflows state (GET-only)
+on:
+  push:
+    branches: [diagnostics/sr271-schedule-state-20261008]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  diagnose:
+    if: github.event.head_commit.message == 'SR271 one-shot schedule metadata GET-only' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Inspect workflow active states and actual schedule delivery with REST GET
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          node --input-type=module <<'NODE'
+          const expires=Date.parse("2026-10-09T00:00:00Z");
+          if(Date.now()>expires)throw Error("observer-expired");
+          const repo=process.env.GH_REPOSITORY,token=process.env.GH_TOKEN;
+          if(repo!=="cgam-coder/vigia-aesan-feed"||!token)throw Error("identity mismatch");
+          const base="https://api.github.com/repos/"+repo;
+          const targets=[
+            "safety-gate-sync.yml","freshness-watchdog.yml","update-feed.yml",
+            "rasff-control.yml","oecd-recent-freshness-retry.yml",
+            "safety-gate-f2b-resilient-controller.yml"
+          ];
+          const allow=/^\/actions\/workflows\/[a-z0-9._-]+\.yml(?:\/runs\?event=schedule&per_page=5)?$/u;
+          async function get(path){
+            if(!allow.test(path))throw Error("GET outside allowlist");
+            const r=await fetch(base+path,{method:"GET",redirect:"error",headers:{
+              Authorization:"Bearer "+token,Accept:"application/vnd.github+json",
+              "X-GitHub-Api-Version":"2022-11-28"
+            },signal:AbortSignal.timeout(20000)});
+            if(!r.ok)return {http:r.status};
+            return {http:r.status,data:await r.json()};
+          }
+          const results=[];
+          for(const name of targets){
+            const info=await get("/actions/workflows/"+name);
+            const runs=await get("/actions/workflows/"+name+"/runs?event=schedule&per_page=5");
+            results.push({
+              file:name,metadataHTTP:info.http,state:info.data?.state??null,workflowId:info.data?.id??null,
+              path:info.data?.path??null,defaultBranch:info.data?.path?.startsWith(".github/workflows/")??false,
+              runsHTTP:runs.http,recentScheduled:(runs.data?.workflow_runs??[]).map(x=>({
+                id:x.id,createdAt:x.created_at,status:x.status,conclusion:x.conclusion,branch:x.head_branch
+              }))
+            });
+          }
+          console.log("SR271_SCHEDULE_STATES "+JSON.stringify({checkedAt:new Date().toISOString(),repo,results}));
+          if(results.some(x=>x.metadataHTTP!==200||x.runsHTTP!==200))process.exitCode=1;
+          NODE
