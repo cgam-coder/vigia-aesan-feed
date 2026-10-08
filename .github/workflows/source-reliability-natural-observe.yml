@@ -1,0 +1,54 @@
+name: Bounded natural five-source production certification
+on:
+  push:
+    branches: [source-reliability/natural-observe-20261008]
+permissions: { contents: read }
+jobs:
+  observe:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - name: Read native natural cycles and exact allocations without invoking producers
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          const expected='f6da64ce47990c568052e8ba3286b26dbb4fa114',baseline='76eaef5f-0e16-40b8-9856-cf2d9d9e6576';
+          const runnerVersion='7b98c2da-bc85-4bca-816e-9542e5b93a71',end=Date.parse('2026-10-08T14:15:00Z');
+          async function read(url,token){const response=await fetch(url,{method:'GET',headers:{Authorization:'Bearer '+token,'Cache-Control':'no-store'},signal:AbortSignal.timeout(25000),redirect:'error'});let body=null;try{body=await response.json();}catch{}return {http:response.status,body};}
+          async function cf(path){if(!/^\/workers\/scripts\/(?:vigia-runtime|vigia-source-runner)\/(?:deployments|settings|schedules|subdomain|versions\/[a-f0-9-]{36})$/.test(path)&&!/^\/builds\/builds\?version_ids=[a-f0-9-]{36}$/.test(path))throw Error('invalid read scope');const result=await read(root+path,process.env.CF_TOKEN);if(result.http!==200||result.body?.success!==true)throw Error('CF read unconfirmed '+result.http);return result.body.result;}
+          const first=(await cf('/workers/scripts/vigia-runtime/deployments')).deployments[0];
+          const leaf=(await cf('/workers/scripts/vigia-source-runner/deployments')).deployments[0],leafSettings=await cf('/workers/scripts/vigia-source-runner/settings'),leafSchedules=await cf('/workers/scripts/vigia-source-runner/schedules'),leafPublic=await cf('/workers/scripts/vigia-source-runner/subdomain');
+          if(leaf.versions?.length!==1||leaf.versions[0].version_id!==runnerVersion||leaf.versions[0].percentage!==100||!leafSettings.bindings?.some(b=>b.name==='SOURCE_RUNNER_MODE'&&b.text==='active')||leafSchedules.schedules?.length!==0||leafPublic.enabled!==false||leafPublic.previews_enabled!==false)throw Error('runner allocation unconfirmed');
+          console.log('SR_NATURAL_START '+JSON.stringify({at:new Date().toISOString(),expected,zeroWrite:true,first,leaf,leafCron:false,leafPublic:false,end:new Date(end).toISOString()}));
+          let certified=false,productiveVersion=null;
+          for(let iteration=0;iteration<50&&Date.now()<end;iteration++){
+            const allocation=(await cf('/workers/scripts/vigia-runtime/deployments')).deployments[0];
+            if(allocation.versions?.length!==1||allocation.versions[0].percentage!==100)throw Error('mixed runtime allocation');
+            if(allocation.versions[0].version_id===baseline){console.log('SR_NATURAL_WAIT '+JSON.stringify({at:new Date().toISOString(),iteration,reason:'baseline-build-not-promoted'}));}
+            else{
+              const settings=await cf('/workers/scripts/vigia-runtime/settings'),schedules=await cf('/workers/scripts/vigia-runtime/schedules');
+              if(!settings.bindings?.some(b=>b.name==='NAGAMEALERT_RECENT_SCHEDULER_MODE'&&b.text==='five-source-coordinated')||!settings.bindings?.some(b=>b.name==='RELIABILITY_RUNNER'&&b.service==='vigia-source-runner')||settings.bindings?.some(b=>b.name==='NAGAMEALERT_SAFETY_GATE_RECENT_MODE'&&b.text==='delta')||schedules.schedules?.length!==1||schedules.schedules[0].cron!=='*/5 * * * *')throw Error('productive native configuration mismatch');
+              const versionId=allocation.versions[0].version_id;
+              if(productiveVersion&&productiveVersion!==versionId)throw Error('productive version changed during certification');
+              const control=await read('https://vigia-runtime.c-gamiz93.workers.dev/api/source-reliability?observe=1',process.env.SYNC_TOKEN);
+              if(control.body?.buildSha&&control.body.buildSha!==expected)throw Error('served checkout mismatch');
+              if(control.body?.buildSha===expected){
+                if(!productiveVersion){productiveVersion=versionId;const version=await cf('/workers/scripts/vigia-runtime/versions/'+versionId);const builds=await cf('/builds/builds?version_ids='+versionId);const entries=Array.isArray(builds.builds)?builds.builds:Object.values(builds.builds??{}).flatMap(v=>Array.isArray(v)?v:[v]);const provenance=entries.map(b=>({uuid:b.build_uuid,status:b.status,branch:b.build_trigger_metadata?.branch,commit:b.build_trigger_metadata?.commit_hash}));if(!provenance.some(b=>b.commit===expected&&b.branch==='main'))throw Error('deployed build mapping unconfirmed');console.log('SR_PRODUCTIVE_ALLOCATION '+JSON.stringify({at:new Date().toISOString(),allocation,number:version.number,provenance,rollback:baseline,runnerVersion,schedules:schedules.schedules}));}
+                const paths=['aesan','rapna','rasff','safety-gate','oecd'];
+                const sourceReads=await Promise.all(paths.map(x=>read('https://vigia-runtime.c-gamiz93.workers.dev/api/'+x+'/sync?observe=1',process.env.SYNC_TOKEN)));
+                const sources=sourceReads.map((r,i)=>{const b=r.body??{},recent=b.recent;const revisions=Object.entries(b).filter(([k,v])=>v&&typeof v==='object'&&(/Certification|Reconcile|Parity|^reconcile$/.test(k))).map(([k,v])=>({key:k,status:v.status,completedAt:v.completedAt,cursor:v.cursor,totalUnits:v.totalUnits,detailFailures:v.detailFailures,lastError:v.lastError,coverage:v.coverage,uniqueIdentityCount:v.uniqueIdentityCount,duplicateIdentityCount:v.duplicateIdentityCount,integrity:v.integrity}));return {source:paths[i],http:r.http,lease:b.lease??null,recent:recent?{status:recent.status,startedAt:recent.startedAt,lastSuccessAt:recent.lastSuccessAt,completedAt:recent.completedAt,recordsObserved:recent.recordsObserved,recordsPersisted:recent.recordsPersisted,newCount:recent.newCount,updatedCount:recent.updatedCount,detailFailures:recent.detailFailures,pageErrors:recent.pageErrors,lastError:recent.lastError}:null,revisions};});
+                const state=control.body.state,summary={at:new Date().toISOString(),iteration,http:control.http,mode:control.body.mode,buildSha:control.body.buildSha,ageMinutes:control.body.ageMinutes,activeLease:control.body.activeLease,officialParityCertified:control.body.officialParityCertified,state,sources};console.log('SR_NATURAL_SNAPSHOT '+JSON.stringify(summary));
+                if(control.body.officialParityCertified===true&&control.body.activeLease===false&&sources.every(s=>s.http===200&&s.lease===null&&s.recent?.status==='completed'&&s.recent.detailFailures===0&&s.recent.lastError===null)&&state?.configVersion===2&&state.ownershipVerifiedAt&&Object.values(state.attempts??{}).length===5&&Object.values(state.attempts).every(a=>a.outcome==='completed')&&sources.find(s=>s.source==='safety-gate')?.revisions.some(r=>r.key==='historicalReconcile'&&r.status==='completed'&&r.cursor===1118&&r.totalUnits===1118)){
+                  certified=true;console.log('SR_GLOBAL_PASS '+JSON.stringify({at:new Date().toISOString(),zeroWrite:true,buildSha:expected,version:productiveVersion,windowStart:state.lastAudit?.startedAt,windowEnd:state.lastAudit?.finishedAt,audit:state.lastAudit,sources,attempts:state.attempts,revisionAttempts:state.revisionAttempts,ownershipVerifiedAt:state.ownershipVerifiedAt}));break;
+                }
+              }else console.log('SR_NATURAL_WAIT '+JSON.stringify({at:new Date().toISOString(),iteration,reason:'served-provenance-not-yet-observed',http:control.http}));
+            }
+            if(Date.now()+50000>=end)break;await new Promise(resolve=>setTimeout(resolve,50000));
+          }
+          console.log('SR_NATURAL_END '+JSON.stringify({at:new Date().toISOString(),zeroWrite:true,certified,productiveVersion}));
+          if(!certified)process.exitCode=2;
+          NODE
