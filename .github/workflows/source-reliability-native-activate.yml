@@ -1,0 +1,59 @@
+name: Guarded source reliability runner activation
+on:
+  push:
+    branches: [source-reliability/native-activate-20261008]
+permissions:
+  contents: read
+jobs:
+  probe:
+    if: github.run_attempt == 1 && github.event.head_commit.message == 'Activate certified source runner once'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Activate internal cron-free runner after certified gates
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          const script='/workers/scripts/vigia-source-runner';
+          const expected='76eaef5f-0e16-40b8-9856-cf2d9d9e6576';
+          const bundle=readFileSync('ops/source-reliability/source-runner-probe.mjs');
+          if(createHash('sha256').update(bundle).digest('hex')!=='7ab50e0ffa34ceb8572fe1bb6944c99035e053bc8309a0ab88259f540cd1647a')throw Error('artifact mismatch');
+          async function cf(path,method='GET',body){
+            if(Date.now()>Date.parse('2026-10-08T14:00:00Z'))throw Error('expired activation');
+            if(![script,script+'/settings',script+'/subdomain',script+'/schedules',script+'/deployments','/workers/scripts/vigia-runtime/deployments','/workers/scripts/vigia-runtime/settings','/workers/scripts/vigia-runtime/schedules','/workers/scripts/vigia-runtime/versions/4c94d703-70c1-4430-9543-15df9d6b244e'].includes(path))throw Error('invalid scope');
+            if(method!=='GET'&&!path.startsWith(script))throw Error('production mutation forbidden');
+            const headers={Authorization:'Bearer '+process.env.CF_TOKEN};
+            if(body&&!(body instanceof FormData))headers['Content-Type']='application/json';
+            const response=await fetch(root+path,{method,headers,body:body instanceof FormData?body:body?JSON.stringify(body):undefined,redirect:'error',signal:AbortSignal.timeout(45000)});
+            if(response.status===404&&method==='GET')return null;
+            const result=await response.json();if(!response.ok||!result.success)throw Error('CF '+method+' HTTP '+response.status+' codes '+JSON.stringify(result.errors?.map(x=>x.code)));
+            return result.result;
+          }
+          const allocation=await cf('/workers/scripts/vigia-runtime/deployments');
+          if(allocation.deployments?.[0]?.versions?.length!==1||allocation.deployments[0].versions[0].version_id!==expected||allocation.deployments[0].versions[0].percentage!==100)throw Error('runtime baseline moved');
+          const prior=await cf(script+'/settings'),runnerAllocation=await cf(script+'/deployments');
+          console.log('SR_NATIVE_BASELINE '+JSON.stringify({at:new Date().toISOString(),allocation:runnerAllocation,mode:prior?.bindings?.find(b=>b.name==='SOURCE_RUNNER_MODE')?.text,version:prior?.version}));
+          if(!prior?.bindings?.some(b=>b.name==='SOURCE_RUNNER_MODE'&&b.text==='probe')||runnerAllocation?.deployments?.[0]?.versions?.length!==1||runnerAllocation.deployments[0].versions[0].percentage!==100||runnerAllocation.deployments[0].versions[0].version_id!=='da1ba459-7090-4a0f-b182-a6562cb61658')throw Error('runner baseline moved');
+          const runtimeSettings=await cf('/workers/scripts/vigia-runtime/settings'),runtimeSchedules=await cf('/workers/scripts/vigia-runtime/schedules');
+          if(!runtimeSettings.bindings?.some(b=>b.name==='NAGAMEALERT_RECENT_SCHEDULER_MODE'&&b.text==='rapna-rasff-oecd-pilot')||runtimeSettings.bindings?.some(b=>b.name==='NAGAMEALERT_SAFETY_GATE_RECENT_MODE'&&b.text==='delta')||!runtimeSettings.bindings?.some(b=>b.type==='d1'&&b.name==='DB'&&b.id==='55596003-1b90-4f66-aad8-decb21205f13')||runtimeSchedules?.schedules?.length!==1||runtimeSchedules.schedules[0].cron!=='*/5 * * * *')throw Error('runtime configuration moved');
+          const rollback=await cf('/workers/scripts/vigia-runtime/versions/4c94d703-70c1-4430-9543-15df9d6b244e');
+          if(rollback.id!=='4c94d703-70c1-4430-9543-15df9d6b244e'||rollback.number!==103)throw Error('rollback unavailable');
+          const publicState=await cf(script+'/subdomain');if(publicState.enabled!==false||publicState.previews_enabled!==false)throw Error('runner is publicly enabled');
+          console.log('SR_ACTIVATION_BASELINE '+JSON.stringify({at:new Date().toISOString(),allocation:allocation.deployments[0],rollback:{id:rollback.id,number:rollback.number},schedules:runtimeSchedules.schedules}));
+          const metadata={main_module:'source-runner.mjs',compatibility_date:'2026-09-25',compatibility_flags:['nodejs_compat'],usage_model:'standard',limits:{cpu_ms:60000,subrequests:5000},observability:{enabled:true},annotations:{'workers/message':'source-reliability-active:1f6a887c7e7b06eb4e096e63efbb681811b0fa04'},bindings:[{type:'d1',name:'DB',id:'55596003-1b90-4f66-aad8-decb21205f13'},{type:'plain_text',name:'SOURCE_RUNNER_MODE',text:'active'},{type:'secret_text',name:'VIGIA_SYNC_TOKEN',text:process.env.SYNC_TOKEN}]};
+          const form=new FormData();form.set('metadata',new Blob([JSON.stringify(metadata)],{type:'application/json'}));form.set('source-runner.mjs',new Blob([bundle],{type:'application/javascript+module'}),'source-runner.mjs');
+          const uploaded=await cf(script,'PUT',form);console.log('SR_NATIVE_ARTIFACT '+JSON.stringify({at:new Date().toISOString(),candidate:'1f6a887c7e7b06eb4e096e63efbb681811b0fa04',sha256:'7ab50e0ffa34ceb8572fe1bb6944c99035e053bc8309a0ab88259f540cd1647a',mode:'active',startupMs:uploaded.startup_time_ms,id:uploaded.id}));
+          const currentRunnerAllocation=await cf(script+'/deployments');
+          const settings=await cf(script+'/settings'),subdomain=await cf(script+'/subdomain'),schedules=await cf(script+'/schedules');
+          if(!settings.bindings?.some(b=>b.name==='SOURCE_RUNNER_MODE'&&b.text==='active')||schedules.schedules?.length!==0||subdomain.enabled!==false||subdomain.previews_enabled!==false||currentRunnerAllocation.deployments?.[0]?.versions?.length!==1||currentRunnerAllocation.deployments[0].versions[0].percentage!==100)throw Error('active internal-only allocation unconfirmed');
+          const after=await cf('/workers/scripts/vigia-runtime/deployments');if(JSON.stringify(allocation)!==JSON.stringify(after))throw Error('production allocation changed');
+          console.log('SR_RUNNER_ACTIVE '+JSON.stringify({at:new Date().toISOString(),candidate:'1f6a887c7e7b06eb4e096e63efbb681811b0fa04',sha256:'7ab50e0ffa34ceb8572fe1bb6944c99035e053bc8309a0ab88259f540cd1647a',allocation:currentRunnerAllocation.deployments[0],mode:'active',hasCron:false,publicEndpoint:false,productionUnchanged:true}));
+          NODE
