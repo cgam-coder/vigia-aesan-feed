@@ -1,4 +1,5 @@
 # GET-only Cloudflare Worker identity before authorized social image release.
+# Fresh allocation check after CI 871+117 PASS and asset-crawler 3/3 PASS.
 # Isolated from feed/main; expires 2026-10-09T00:00Z.
 name: V17 lightweight social release preflight (GET-only)
 on:
