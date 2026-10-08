@@ -44,14 +44,15 @@ jobs:
           const buildResponse=await fetch(root+"/builds/builds?version_ids="+active.versions[0].version_id,{headers:{Authorization:"Bearer "+process.env.CF_TOKEN},signal:AbortSignal.timeout(60000)});
           let buildMetadata={http:buildResponse.status};if(buildResponse.ok){const payload=await buildResponse.json();buildMetadata={http:buildResponse.status,success:payload.success,builds:(Array.isArray(payload.result?.builds)?payload.result.builds:Object.values(payload.result?.builds??{}).flatMap(v=>Array.isArray(v)?v:[v])).map(b=>({build_uuid:b.build_uuid,status:b.status,metadata:{branch:b.build_trigger_metadata?.branch,commit:b.build_trigger_metadata?.commit_hash}}))};}
           console.log("SR_BUILD_PROVENANCE "+JSON.stringify(buildMetadata));
-          const q='query GetWorkersAnalytics($accountTag: string, $datetimeStart: string, $datetimeEnd: string, $scriptName: string) {viewer {accounts(filter: {accountTag: $accountTag}) {workersInvocationsAdaptive(limit: 100, filter: {scriptName: $scriptName,datetime_geq: $datetimeStart,datetime_leq: $datetimeEnd}) {sum {subrequests requests errors} quantiles {cpuTimeP50 cpuTimeP99} dimensions {scriptName status}}}}}';
-          for(const scriptName of ["vigia-runtime","vigia-source-runner"]){
-            const r=await fetch("https://api.cloudflare.com/client/v4/graphql",{method:"POST",headers:{Authorization:"Bearer "+process.env.CF_TOKEN,"Content-Type":"application/json"},body:JSON.stringify({query:q,variables:{accountTag:"9c1807c68493f14259248b5f5782cc6f",datetimeStart:"2026-10-08T13:28:55Z",datetimeEnd:new Date().toISOString(),scriptName}}),signal:AbortSignal.timeout(30000)});
-            console.log("SR_PROVIDER_AGGREGATE "+JSON.stringify({scriptName,http:r.status,data:await r.json()}));
+          for(const service of ["vigia-runtime","vigia-source-runner"]){
+            const payload={queryId:"source-reliability-termination-read",dry:true,view:"events",limit:100,timeframe:{from:Date.parse("2026-10-08T13:41:00Z"),to:Date.parse("2026-10-08T13:46:00Z")},parameters:{filters:[{key:"$metadata.service",operation:"eq",type:"string",value:service}],filterCombination:"and"}};
+            try{const r=await fetch(root+"/workers/observability/telemetry/query",{method:"POST",headers:{Authorization:"Bearer "+process.env.CF_TOKEN,"Content-Type":"application/json"},body:JSON.stringify(payload),signal:AbortSignal.timeout(30000)});
+            const p=await r.json();const events=p.result?.events??[];
+            const safe=events.map(e=>({timestamp:e.timestamp??e.$metadata?.timestamp,metadata:e.$metadata,worker:{outcome:e.$workers?.outcome,eventType:e.$workers?.eventType,scriptName:e.$workers?.scriptName,scriptVersion:e.$workers?.scriptVersion,wallTimeMs:e.$workers?.wallTimeMs,cpuTimeMs:e.$workers?.cpuTimeMs},error:e.error,message:e.message})).filter(e=>e.metadata?.error||e.worker.eventType==="scheduled"||service==="vigia-source-runner");
+            let output=JSON.stringify({service,http:r.status,success:p.success,errors:p.errors,eventCount:events.length,events:safe});for(const secret of [process.env.CF_TOKEN,process.env.SYNC_TOKEN])if(secret)output=output.replaceAll(secret,"***");
+            console.log("SR_TERMINATION_LOG_READ "+output);
+            }catch{console.log("SR_TERMINATION_LOG_READ "+JSON.stringify({service,outcome:"HOLD",reason:"logs-read-unavailable"}));}
           }
-          const sql="SELECT source,COUNT(*) AS checks,MAX(checked_at) AS last_checked_at FROM source_checks WHERE source='SAFETY GATE' AND checked_at >= '2026-10-08T13:41:39.973Z' GROUP BY source";
-          const r=await fetch(root+"/d1/database/55596003-1b90-4f66-aad8-decb21205f13/query",{method:"POST",headers:{Authorization:"Bearer "+process.env.CF_TOKEN,"Content-Type":"application/json"},body:JSON.stringify({sql}),signal:AbortSignal.timeout(30000)});
-          console.log("SR_SG_WRITE_RECONCILIATION_READ "+JSON.stringify({sql,http:r.status,data:await r.json()}));
           const after=(await cf("/workers/scripts/vigia-runtime/deployments")).deployments?.[0];
           if(JSON.stringify(active)!==JSON.stringify(after))throw Error("allocation changed");
           console.log("SR_FINAL_PREFLIGHT "+JSON.stringify({zeroWrite:true,control,states}));
