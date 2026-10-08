@@ -18489,6 +18489,7 @@ async function claimReliabilityJob(db, job, at) {
   const path = "$." + (job.kind === "recent" ? "attempts" : "revisionAttempts") + "." + JSON.stringify(key) + ".id";
   const row = await db.prepare(`INSERT INTO source_reliability_jobs(id,source,mode,kind,epoch,started_at,deadline)
     SELECT ?,?,?,?,?,?,? FROM source_reliability_control WHERE id=1 AND owner_id=? AND epoch=? AND expires_at>?
+    AND json_extract(state_json,'$.schemaVersion')=1 AND json_extract(state_json,'$.configVersion')=2
     AND json_extract(state_json,'$.ownershipVerifiedAt') IS NOT NULL
     AND json_extract(state_json,?)=? AND COALESCE(json_extract(state_json,?),'[]')=? ON CONFLICT(id) DO NOTHING RETURNING id`).bind(job.id, job.source, job.mode, job.kind, job.epoch, at, job.deadline, job.coordinatorOwner, job.epoch, at, path, job.id, path.replace(/\.id$/u, ".pendingDetails"), JSON.stringify(job.pendingDetails ?? [])).first();
   return Boolean(row);
@@ -18512,15 +18513,17 @@ var source_runner_default = {
       const source = url.searchParams.get("source"), deadline = Date.now() + (source === "RASFF" ? 24e4 : 36e4), budget = boundedOfficialFetch(deadline, source === "RASFF" ? 1600 : 800), startedAt = (/* @__PURE__ */ new Date()).toISOString();
       try {
         if (source === "AESAN") {
-          const previous = await store.readAesanProducerSeed(), alerts2 = await fetchNativeAesanAlerts(store, budget.fetch, url.searchParams.get("full") === "1");
-          const prior2 = new Map(previous.map((a) => [a.id, a])), changed = alerts2.filter((a) => prior2.has(a.id) && prior2.get(a.id).contentHash !== a.contentHash), newAlerts = alerts2.filter((a) => !prior2.has(a.id));
+          const previous = await store.readAesanProducerSeed(), raw = await fetchNativeAesanAlerts(store, budget.fetch, url.searchParams.get("full") === "1");
+          const prior2 = new Map(previous.map((a) => [a.id, a]));
+          const alerts2 = await Promise.all(raw.map((a) => reconcileAesanRevisionIdentity(prior2.get(a.id) ?? null, a)));
+          const changed = alerts2.filter((a) => prior2.has(a.id) && prior2.get(a.id).contentHash !== a.contentHash), newAlerts = alerts2.filter((a) => !prior2.has(a.id));
           const identityDrift = alerts2.filter((a) => prior2.has(a.id) && prior2.get(a.id).canonical.identity.sourceRecordId !== a.canonical.identity.sourceRecordId);
           return json({ zeroWrite: true, source, startedAt, finishedAt: (/* @__PURE__ */ new Date()).toISOString(), requests: budget.requests(), observed: alerts2.length, previous: previous.length, changedReferences: changed.map((a) => a.reference), newReferences: newAlerts.map((a) => a.reference), identityDrift: identityDrift.map((a) => a.reference), outcome: identityDrift.length ? "HOLD" : "observed" });
         }
         if (source === "RASFF") {
           const [lease, state] = await Promise.all([store.readSyncLease("RASFF"), store.readSyncState("RASFF", "reconcile")]);
           if (lease || !state || !Number.isSafeInteger(state.cursor) || state.cursor < 0) return json({ zeroWrite: true, source, outcome: "HOLD", reason: "capacity-probe-requires-clear-source-lease-and-cursor" }, 503);
-          let cursor = state.cursor, anchor = state.cursorKey ?? null, batches = 0, processed = 0, retained = 0, total = state.totalUnits, details = 0;
+          let cursor = 0, anchor = null, batches = 0, processed = 0, retained = 0, total = state.totalUnits, details = 0;
           for (; batches < 20 && Date.now() + 3e4 < deadline; batches++) {
             const result = await fetchRasffReconcileBatch(cursor, anchor, { fetch: budget.fetch, detailMaxAttempts: 1, detailConcurrency: 3 }, startedAt, 40);
             processed += result.processedCount;
