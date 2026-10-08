@@ -47,8 +47,8 @@ jobs:
           for(const path of ['/alertas/buscador-alertas','/alertas/alertas-alimentarias','/alertas/buscador-alertas?type=649ce619-367b-4ad2-96cd-27b905fb6020']){
            const url='https://www.aesan.gob.es'+path,r=await safeFetch(url,{headers:{Accept:'text/html,application/xhtml+xml','User-Agent':'NagameAlert-Freshness/1.0'},cache:'no-store'}),html=await r.text();
            if(!r.ok)throw Error('official page unavailable');
-           const html2=html.replace(/\\bseeMoreCardSlide\\b/g,'seeMoreCard seeMoreCardSlide');
-           const cards=[...html2.matchAll(/<a\\b([^>]*\\bclass\\s*=\\s*(?:"[^"]*\\bseeMoreCard\\b[^"]*"|'[^']*\\bseeMoreCard\\b[^']*')[^>]*)>([\\s\\S]*?)<\\/a>/gi)].map(m=>({href:m[1].match(/\\bhref\\s*=\\s*"([^"]*)"/i)?.[1],attributeReference:m[1].match(/ES\\s*(20\\d{2})\\s*[/.-]\\s*(\\d+)/i)?.slice(1),bodyReference:m[2].replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').match(/ES\\s*(20\\d{2})\\s*[/.-]\\s*(\\d+)/i)?.slice(1),date:m[2].match(/seeMoreCard-heading__value[^>]*>([^<]*)</i)?.[1]}));
+           const html2=html.replace(/\bseeMoreCardSlide\b/g,'seeMoreCard seeMoreCardSlide');
+           const cards=[...html2.matchAll(/<a\b([^>]*\bclass\s*=\s*(?:"[^"]*\bseeMoreCard\b[^"]*"|'[^']*\bseeMoreCard\b[^']*')[^>]*)>([\s\S]*?)<\/a>/gi)].map(m=>({href:m[1].match(/\bhref\s*=\s*"([^"]*)"/i)?.[1],attributeReference:m[1].match(/ES\s*(20\d{2})\s*[/.-]\s*(\d+)/i)?.slice(1),bodyReference:m[2].replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').match(/ES\s*(20\d{2})\s*[/.-]\s*(\d+)/i)?.slice(1),date:m[2].match(/seeMoreCard-heading__value[^>]*>([^<]*)</i)?.[1]}));
            console.log('AESAN_OFFICIAL_DISCOVERY_READ '+JSON.stringify({at:new Date().toISOString(),url,cache:r.headers.get('cache-control'),age:r.headers.get('age'),cards}));
           }
 
