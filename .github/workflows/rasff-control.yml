@@ -27,9 +27,16 @@ jobs:
   runtime_target:
     uses: ./.github/workflows/runtime-writer-target.yml
 
+  native_owner:
+    needs: runtime_target
+    uses: ./.github/workflows/source-execution-owner.yml
+    with:
+      base_url: ${{ needs.runtime_target.outputs.base_url }}
+    secrets: inherit
+
   recent:
-    needs: [writer_gate, runtime_target]
-    if: needs.writer_gate.outputs.allowed == 'true' && (github.event_name == 'schedule' && github.event.schedule == '9,39 * * * *' || github.event_name == 'workflow_dispatch' && inputs.lane == 'recent')
+    needs: [writer_gate, runtime_target, native_owner]
+    if: needs.writer_gate.outputs.allowed == 'true' && needs.native_owner.outputs.legacy_allowed == 'true' && (github.event_name == 'schedule' && github.event.schedule == '9,39 * * * *' || github.event_name == 'workflow_dispatch' && inputs.lane == 'recent')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency:
@@ -49,8 +56,8 @@ jobs:
           node scripts/rasff-control.mjs recent
 
   reconcile:
-    needs: [writer_gate, runtime_target]
-    if: needs.writer_gate.outputs.allowed == 'true' && (github.event_name == 'push' || github.event_name == 'schedule' && github.event.schedule == '17 * * * *' || github.event_name == 'workflow_dispatch' && inputs.lane == 'reconcile')
+    needs: [writer_gate, runtime_target, native_owner]
+    if: needs.writer_gate.outputs.allowed == 'true' && needs.native_owner.outputs.legacy_allowed == 'true' && (github.event_name == 'push' || github.event_name == 'schedule' && github.event.schedule == '17 * * * *' || github.event_name == 'workflow_dispatch' && inputs.lane == 'reconcile')
     runs-on: ubuntu-latest
     timeout-minutes: 360
     concurrency:
@@ -68,3 +75,4 @@ jobs:
           set -euo pipefail
           test -n "$VIGIA_SYNC_TOKEN"
           node scripts/rasff-control.mjs reconcile
+

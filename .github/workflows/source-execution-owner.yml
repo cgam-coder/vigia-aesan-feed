@@ -1,0 +1,28 @@
+name: Source execution owner
+on:
+  workflow_call:
+    inputs:
+      base_url: { required: true, type: string }
+    secrets:
+      VIGIA_SYNC_TOKEN: { required: true }
+    outputs:
+      legacy_allowed:
+        value: ${{ jobs.observe.outputs.legacy_allowed }}
+      native_owned:
+        value: ${{ jobs.observe.outputs.native_owned }}
+permissions: { contents: read }
+jobs:
+  observe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      legacy_allowed: ${{ steps.owner.outputs.legacy_allowed }}
+      native_owned: ${{ steps.owner.outputs.native_owned }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: { persist-credentials: false }
+      - id: owner
+        env:
+          VIGIA_BASE_URL: ${{ inputs.base_url }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: node scripts/source-execution-owner.mjs
