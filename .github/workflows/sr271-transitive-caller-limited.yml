@@ -1,0 +1,37 @@
+name: SR271 bounded official frontend carousel dependency search
+on:
+  push:
+    branches: [diagnostics/safety-gate-portal-readonly-20261008]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: github.event.head_commit.message == 'SR271 bounded carousel import scan final'
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Resolve declared lazy imports only (GET-only, capped)
+        run: |
+          node --input-type=module <<'NODE'
+          const origin="https://ec.europa.eu/safety-gate-alerts/";
+          const queue=[{name:"chunk-LT65EEDW.js",depth:0},{name:"main-4Q37PFBH.js",depth:0},{name:"chunk-AR65AS64.js",depth:0}];
+          const visited=new Set(),found=[];let bytes=0;
+          while(queue.length&&visited.size<30&&bytes<14500000){
+            const {name,depth}=queue.shift();
+            if(visited.has(name)||!/^(?:chunk|main)-[A-Z0-9]{8}\.js$/u.test(name))continue;
+            visited.add(name);
+            let src;try{
+              const res=await fetch(origin+name,{method:"GET",redirect:"error",signal:AbortSignal.timeout(13000)});
+              if(res.status!==200)continue;
+              src=await res.text();if(src.length>2500000)continue;
+            }catch{continue}
+            bytes+=src.length;
+            const imports=[...new Set([...src.matchAll(/(?:from\s*["']|import\(["'])\.\/((?:chunk|main)-[A-Z0-9]{8}\.js)/gu)].map(m=>m[1]))];
+            for(const other of imports)if(!visited.has(other)&&depth<3&&queue.length<70)queue.push({name:other,depth:depth+1});
+            const key="getNotificationsForCarousel";
+            const matches=[...src.matchAll(/getNotificationsForCarousel/gu)].slice(0,5).map(m=>src.slice(Math.max(0,m.index-600),m.index+1300).replace(/\s+/gu," ").slice(0,1700));
+            if(matches.length)found.push({asset:name,depth,matches});
+            if(name==="chunk-LT65EEDW.js")console.log("SR271_IMPORTS "+JSON.stringify({asset:name,count:imports.length,imports:imports.slice(0,20),header:src.slice(0,950)}));
+          }
+          console.log("SR271_DEPENDENCY "+JSON.stringify({inspected:visited.size,bytes,remaining:queue.length,found}));
+          NODE
