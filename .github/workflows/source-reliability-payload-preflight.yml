@@ -1,0 +1,65 @@
+name: Source reliability resume final baseline (read only)
+on:
+  push:
+    branches: [source-reliability/payload-preflight-20261008]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Read stable allocation and all source states
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root="https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f";
+          const cfAllow=/^(?:\/workers\/scripts\/(?:vigia-runtime|vigia-source-runner)\/(?:deployments|versions\/[a-f0-9-]{36}|schedules|settings)|\/builds\/builds\?version_ids=[a-f0-9-]{36})$/;
+          async function request(url,token){
+            if(Date.now()>Date.parse("2026-10-08T15:35:00Z"))throw Error("expired preflight");
+            const r=await fetch(url,{method:"GET",redirect:"error",headers:{Authorization:"Bearer "+token,Accept:"application/json"},signal:AbortSignal.timeout(60000)});
+            if(!r.ok)throw Error("GET HTTP "+r.status);
+            return r.json();
+          }
+          async function cf(path){if(!cfAllow.test(path))throw Error("invalid CF path");const r=await request(root+path,process.env.CF_TOKEN);if(!r.success)throw Error("CF success=false");return r.result;}
+          const a=(await cf("/workers/scripts/vigia-runtime/deployments")).deployments;
+          const active=a?.[0];if(active?.versions?.length!==1||active.versions[0].percentage!==100)throw Error("ambiguous allocation");
+          const [version,settings,schedules]=await Promise.all([cf("/workers/scripts/vigia-runtime/versions/"+active.versions[0].version_id),cf("/workers/scripts/vigia-runtime/settings"),cf("/workers/scripts/vigia-runtime/schedules")]);
+          const db=(settings.bindings??[]).filter(x=>x.type==="d1").map(x=>({name:x.name,id:x.id}));
+          const flag=name=>(settings.bindings??[]).find(x=>x.name===name)?.text??null;
+          const control={at:new Date().toISOString(),active,rollback:a?.[1]??null,versionNumber:version.number,
+            schedulerMode:flag("NAGAMEALERT_RECENT_SCHEDULER_MODE"),delta:flag("NAGAMEALERT_SAFETY_GATE_RECENT_MODE"),
+            limits:settings.limits??null,usageModel:settings.usage_model??null,databases:db,schedules};
+          console.log("SR_ALLOCATION_ONLY "+JSON.stringify(control));
+          const ownerResponse=await fetch("https://vigia-runtime.c-gamiz93.workers.dev/api/source-reliability?observe=1",{headers:{Authorization:"Bearer "+process.env.SYNC_TOKEN,"Cache-Control":"no-store"},signal:AbortSignal.timeout(60000)});
+          let owner=null;try{owner=await ownerResponse.json();}catch{}
+          console.log("SR_NATIVE_OWNER "+JSON.stringify({http:ownerResponse.status,body:owner}));
+          const sourcePaths=["/api/freshness?observe=1&policy=1","/api/freshness?observe=1",...["aesan","rapna","rasff","safety-gate","oecd"].map(x=>"/api/"+x+"/sync?observe=1")];
+          const states=[];
+          for(const path of sourcePaths){try{states.push({path,body:await request("https://vigia-runtime.c-gamiz93.workers.dev"+path,process.env.SYNC_TOKEN)});}catch(error){states.push({path,outcome:"HOLD",reason:error instanceof Error?error.message:"read-unconfirmed"});}}
+          const buildResponse=await fetch(root+"/builds/builds?version_ids="+active.versions[0].version_id,{headers:{Authorization:"Bearer "+process.env.CF_TOKEN},signal:AbortSignal.timeout(60000)});
+          let buildMetadata={http:buildResponse.status};if(buildResponse.ok){const payload=await buildResponse.json();buildMetadata={http:buildResponse.status,success:payload.success,builds:(Array.isArray(payload.result?.builds)?payload.result.builds:Object.values(payload.result?.builds??{}).flatMap(v=>Array.isArray(v)?v:[v])).map(b=>({build_uuid:b.build_uuid,status:b.status,metadata:{branch:b.build_trigger_metadata?.branch,commit:b.build_trigger_metadata?.commit_hash}}))};}
+          console.log("SR_BUILD_PROVENANCE "+JSON.stringify(buildMetadata));
+          for(const service of ["vigia-runtime","vigia-source-runner"]){
+            const payload={queryId:"source-reliability-termination-read",dry:true,view:"events",limit:100,timeframe:{from:Date.parse("2026-10-08T13:40:00Z"),to:Date.now()},parameters:{filters:[{key:"$metadata.service",operation:"eq",type:"string",value:service}],filterCombination:"and"}};
+            try{const r=await fetch(root+"/workers/observability/telemetry/query",{method:"POST",headers:{Authorization:"Bearer "+process.env.CF_TOKEN,"Content-Type":"application/json"},body:JSON.stringify(payload),signal:AbortSignal.timeout(30000)});
+            const p=await r.json();const events=Array.isArray(p.result?.events)?p.result.events:p.result?.events?.events??[];
+            const safe=events.map(e=>({timestamp:e.timestamp??e.$metadata?.timestamp,metadata:e.$metadata,worker:{outcome:e.$workers?.outcome,eventType:e.$workers?.eventType,scriptName:e.$workers?.scriptName,scriptVersion:e.$workers?.scriptVersion,wallTimeMs:e.$workers?.wallTimeMs,cpuTimeMs:e.$workers?.cpuTimeMs},error:e.error,message:e.message})).filter(e=>e.metadata?.error||e.worker.eventType==="scheduled"||service==="vigia-source-runner");
+            let output=JSON.stringify({service,http:r.status,success:p.success,errors:p.errors,eventCount:events.length,events:safe});for(const secret of [process.env.CF_TOKEN,process.env.SYNC_TOKEN])if(secret)output=output.replaceAll(secret,"***");
+            console.log("SR_TERMINATION_LOG_READ "+output);
+            }catch{console.log("SR_TERMINATION_LOG_READ "+JSON.stringify({service,outcome:"HOLD",reason:"logs-read-unavailable"}));}
+          }
+          for(const sql of ["SELECT id,source,mode,kind,epoch,started_at,deadline,phase,write_intent_at,finished_at,receipt_json FROM source_reliability_jobs WHERE finished_at IS NULL OR started_at>='2026-10-08T14:30:00Z' ORDER BY started_at","SELECT * FROM source_sync_locks","SELECT * FROM source_sync_state WHERE source='AESAN' AND mode='recent'"]){
+            if(!sql.startsWith('SELECT '))throw Error('non-read SQL');
+            const r=await fetch(root+'/d1/database/55596003-1b90-4f66-aad8-decb21205f13/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql}),signal:AbortSignal.timeout(60000)});
+            const p=await r.json();console.log('SR_RECONCILE_SELECT '+JSON.stringify({sql,http:r.status,data:p}));if(!r.ok||!p.success||p.result?.some(x=>!x.success||x.meta?.changes||x.meta?.rows_written))throw Error('D1 read unconfirmed');
+          }
+          const runner=(await cf('/workers/scripts/vigia-source-runner/deployments')).deployments[0];console.log('SR_RUNNER_ALLOCATION '+JSON.stringify(runner));
+          const after=(await cf("/workers/scripts/vigia-runtime/deployments")).deployments?.[0];
+          if(JSON.stringify(active)!==JSON.stringify(after))throw Error("allocation changed");
+          console.log("SR_FINAL_PREFLIGHT "+JSON.stringify({zeroWrite:true,control,states}));
+          NODE
