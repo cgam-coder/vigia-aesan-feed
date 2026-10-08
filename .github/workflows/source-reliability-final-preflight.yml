@@ -1,4 +1,4 @@
-name: Source reliability final preflight (GET only)
+name: Source reliability checkpoint before native activation (GET only)
 on:
   push:
     branches: [source-reliability/final-preflight-20261008]
@@ -39,5 +39,5 @@ jobs:
           for(const path of sourcePaths)states.push({path,body:await request("https://vigia-runtime.c-gamiz93.workers.dev"+path,process.env.SYNC_TOKEN)});
           const after=(await cf("/workers/scripts/vigia-runtime/deployments")).deployments?.[0];
           if(JSON.stringify(active)!==JSON.stringify(after))throw Error("allocation changed");
-          console.log("SR_FINAL_PREFLIGHT "+JSON.stringify({zeroWrite:true,control,states}));
+          console.log("SR_FINAL_PREFLIGHT "+JSON.stringify({zeroWrite:true,phase:"native-capacity-checkpoint",control,states}));
           NODE
