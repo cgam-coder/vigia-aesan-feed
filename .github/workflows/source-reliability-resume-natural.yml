@@ -32,7 +32,7 @@ jobs:
             console.log('SR_NATURAL_RESUME '+JSON.stringify({at:new Date().toISOString(),http:owner.http,buildSha:final.buildSha,mode:final.mode,activeLease:final.activeLease,epoch:final.epoch,officialParityCertified:final.officialParityCertified,
               lastWakeAt:state?.lastWakeAt,lastOutcome:state?.lastOutcome,attempts:state?.attempts,revisionAttempts:state?.revisionAttempts,lastAuditAt:state?.lastAuditAt,lastAudit:state?.lastAudit&&{allFresh:state.lastAudit.allFresh,startedAt:state.lastAudit.startedAt,finishedAt:state.lastAudit.finishedAt,states:state.lastAudit.states?.map(x=>({source:x.source,status:x.status,lastSyncSuccessAt:x.lastSyncSuccessAt,latestIdentityParity:x.latestIdentityParity,missing:x.missingOfficialIdentities,revisionStatus:x.revisionStatus,error:x.error}))}}));
             if(seenNew&&final.officialParityCertified===true&&final.activeLease===false)break;
-            await new Promise(resolve=>setTimeout(resolve,Math.min(30000,Math.max(1,deadline-Date.now()))));
+            await new Promise(resolve=>setTimeout(resolve,Math.min(60000,Math.max(1,deadline-Date.now()))));
           }
           const allocations={runtime:await cf('/workers/scripts/vigia-runtime/deployments'),runner:await cf('/workers/scripts/vigia-source-runner/deployments')};
           console.log('SR_RESUME_FINAL_ALLOCATION '+JSON.stringify({runtime:allocations.runtime.deployments?.slice(0,3),runner:allocations.runner.deployments?.slice(0,2)}));
@@ -42,7 +42,7 @@ jobs:
           const settings=await cf('/workers/scripts/vigia-runtime/settings'),schedule=await cf('/workers/scripts/vigia-runtime/schedules'),rs=await cf('/workers/scripts/vigia-source-runner/settings'),rc=await cf('/workers/scripts/vigia-source-runner/schedules');
           const flag=(s,n)=>s.bindings?.find(b=>b.name===n)?.text??null;
           console.log('SR_RESUME_FINAL_CONFIGURATION '+JSON.stringify({schedulerMode:flag(settings,'NAGAMEALERT_RECENT_SCHEDULER_MODE'),delta:flag(settings,'NAGAMEALERT_SAFETY_GATE_RECENT_MODE'),schedules:schedule,runnerMode:flag(rs,'SOURCE_RUNNER_MODE'),runnerSchedules:rc}));
-          for(const sql of ["SELECT id,source,mode,kind,epoch,started_at,deadline,phase,write_intent_at,finished_at,receipt_json FROM source_reliability_jobs WHERE finished_at IS NULL OR started_at>='2026-10-08T14:45:00Z' ORDER BY started_at","SELECT * FROM source_sync_locks","SELECT source,mode,scope,status,completed_at,total_units,records_observed,records_persisted,evidence_json FROM source_revision_certifications WHERE source='SAFETY GATE'"]){
+          for(const sql of ["SELECT id,source,mode,kind,epoch,started_at,deadline,phase,write_intent_at,finished_at,receipt_json FROM source_reliability_jobs WHERE finished_at IS NULL OR started_at>='2026-10-08T14:45:00Z' ORDER BY started_at","SELECT * FROM source_sync_locks","SELECT source,mode,cycle_id,completed_at,total_units,records_observed,coverage,audit_status,audit_checked_at,evidence_json,updated_at FROM source_revision_certifications WHERE source='SAFETY GATE'"]){
             const r=await fetch(root+'/d1/database/55596003-1b90-4f66-aad8-decb21205f13/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql}),signal:AbortSignal.timeout(30000)}),p=await r.json();
             console.log('SR_RESUME_FINAL_SELECT '+JSON.stringify({sql,http:r.status,data:p}));if(!r.ok||!p.success||p.result?.some(x=>!x.success||x.meta?.changes||x.meta?.rows_written))throw Error('D1 read unconfirmed');
           }
