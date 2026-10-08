@@ -47,7 +47,7 @@ jobs:
           for(const service of ["vigia-runtime","vigia-source-runner"]){
             const payload={queryId:"source-reliability-termination-read",dry:true,view:"events",limit:100,timeframe:{from:Date.parse("2026-10-08T13:41:00Z"),to:Date.parse("2026-10-08T13:46:00Z")},parameters:{filters:[{key:"$metadata.service",operation:"eq",type:"string",value:service}],filterCombination:"and"}};
             try{const r=await fetch(root+"/workers/observability/telemetry/query",{method:"POST",headers:{Authorization:"Bearer "+process.env.CF_TOKEN,"Content-Type":"application/json"},body:JSON.stringify(payload),signal:AbortSignal.timeout(30000)});
-            const p=await r.json();const events=p.result?.events??[];
+            const p=await r.json();const events=Array.isArray(p.result?.events)?p.result.events:p.result?.events?.events??[];
             const safe=events.map(e=>({timestamp:e.timestamp??e.$metadata?.timestamp,metadata:e.$metadata,worker:{outcome:e.$workers?.outcome,eventType:e.$workers?.eventType,scriptName:e.$workers?.scriptName,scriptVersion:e.$workers?.scriptVersion,wallTimeMs:e.$workers?.wallTimeMs,cpuTimeMs:e.$workers?.cpuTimeMs},error:e.error,message:e.message})).filter(e=>e.metadata?.error||e.worker.eventType==="scheduled"||service==="vigia-source-runner");
             let output=JSON.stringify({service,http:r.status,success:p.success,errors:p.errors,eventCount:events.length,events:safe});for(const secret of [process.env.CF_TOKEN,process.env.SYNC_TOKEN])if(secret)output=output.replaceAll(secret,"***");
             console.log("SR_TERMINATION_LOG_READ "+output);
