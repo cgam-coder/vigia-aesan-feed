@@ -1,8 +1,9 @@
 name: Safety Gate F2B resilient historical controller
 
+# Historical cycle independently certified complete 2026-10-08.
+# Retire ONLY this obsolete schedule; do not change recent source schedulers.
+# A diagnostic branch trigger is retained for evidence and is not a production timer.
 on:
-  schedule:
-    - cron: "*/5 * * * *"
   push:
     branches:
       - work/safety-gate-f2b-resilient-controller
