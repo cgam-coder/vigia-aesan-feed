@@ -6611,6 +6611,9 @@ function boundedOfficialFetch(deadline, maxRequests, fetchImpl = fetch, clock = 
   } };
 }
 
+// runtime/lib/aesan-native.ts
+import { createHash as createHash4 } from "node:crypto";
+
 // runtime/lib/aesan-published.ts
 var exactText3 = (value) => typeof value === "string" && value.trim() ? value.trim() : null;
 var exactOrder = (value) => Number.isInteger(value) && Number(value) >= 0 ? Number(value) : null;
@@ -9550,10 +9553,23 @@ var reviewed_default = {
 };
 
 // runtime/lib/aesan-native.ts
+function aesanFeedMaterial(value) {
+  const parsed = parseAesanPublishedRecord(value);
+  if (!parsed) return {};
+  const material = {
+    officialTitle: parsed.officialTitle,
+    publishedFields: parsed.publishedFields.map(({ label, value: value2, sourceField, order, section, context }) => ({ label, value: value2, sourceField, order, section, context })),
+    materialParagraphs: parsed.materialParagraphs.map(({ value: value2, sourceField, order, section }) => ({ value: value2, sourceField, order, section })),
+    resources: parsed.resources.map(({ kind, url, label, sourceField, order }) => ({ kind, url, label, sourceField, order })),
+    officialDates: parsed.officialDates.map(({ label, value: value2, sourceField, order }) => ({ label, value: value2, sourceField, order }))
+  };
+  if (createHash4("sha256").update(JSON.stringify(material)).digest("hex") !== parsed.sourceRecordHash) throw Error("AESAN_NATIVE preserved material hash mismatch");
+  return material;
+}
 function aesanProducerSeed(alert) {
-  const record7 = alert.canonical.sourceRecord;
+  const record7 = { ...alert.canonical.sourceRecord, ...aesanFeedMaterial(alert.canonical.sourceRecord) };
   const evidence = aesanPublicationEvidence(alert.canonical);
-  const states = evidence?.publications.flatMap((x) => x.states) ?? [];
+  const states = evidence?.publications.flatMap((x) => x.states).map((state) => ({ ...state, ...aesanFeedMaterial(state) })) ?? [];
   const sourceRecordId = record7.revisionSourceRecordId ?? record7.sourceRecordId;
   return {
     ...alert,
