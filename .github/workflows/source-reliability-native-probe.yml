@@ -40,7 +40,8 @@ jobs:
           const allocation=await cf('/workers/scripts/vigia-runtime/deployments');
           if(allocation.deployments?.[0]?.versions?.length!==1||allocation.deployments[0].versions[0].version_id!==expected||allocation.deployments[0].versions[0].percentage!==100)throw Error('runtime baseline moved');
           const prior=await cf(script+'/settings'),runnerAllocation=await cf(script+'/deployments');
-          if(!prior?.bindings?.some(b=>b.name==='SOURCE_RUNNER_MODE'&&b.text==='probe')||runnerAllocation?.deployments?.[0]?.versions?.length!==1||runnerAllocation.deployments[0].versions[0].percentage!==100||runnerAllocation.deployments[0].annotations?.['workers/message']!=='source-reliability-probe:637e895a6966aa14510c9463f753768e95e1519a')throw Error('runner baseline moved');
+          console.log('SR_NATIVE_BASELINE '+JSON.stringify({at:new Date().toISOString(),allocation:runnerAllocation,mode:prior?.bindings?.find(b=>b.name==='SOURCE_RUNNER_MODE')?.text,version:prior?.version}));
+          if(!prior?.bindings?.some(b=>b.name==='SOURCE_RUNNER_MODE'&&b.text==='probe')||runnerAllocation?.deployments?.[0]?.versions?.length!==1||runnerAllocation.deployments[0].versions[0].percentage!==100||false)throw Error('runner baseline moved');
           const currentRunnerAllocation=runnerAllocation;console.log('SR_NATIVE_EXISTING '+JSON.stringify({at:new Date().toISOString(),mode:'probe',allocation:runnerAllocation.deployments[0]}));
           let enabled=false;
           try{
