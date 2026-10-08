@@ -8469,6 +8469,11 @@ function enrichFeedTaxonomy(feed, scan, { reviewed = [] } = {}) {
 }
 
 // runtime/lib/aesan-producer/recent.mjs
+function newUnknownAesanPublications(previousAlerts, nextAlerts) {
+  const key = (reference, p) => JSON.stringify([reference, p.url, p.sourceRecordId, p.sourceRecordIdType]);
+  const known = new Set(previousAlerts.flatMap((alert) => (alert.aesanAlertClassification?.publications ?? []).filter((p) => p.matches.length === 0).map((p) => key(alert.reference, p))));
+  return nextAlerts.flatMap((alert) => (alert.aesanAlertClassification?.publications ?? []).filter((p) => p.matches.length === 0 && !known.has(key(alert.reference, p))).map((p) => ({ reference: alert.reference, url: p.url })));
+}
 async function produceAesanRecent({ previousAlerts, fetchHtml, now, reviewed, fullHistory = false }) {
   const cache = /* @__PURE__ */ new Map();
   const html = (url) => {
@@ -8532,7 +8537,7 @@ async function produceAesanRecent({ previousAlerts, fetchHtml, now, reviewed, fu
   const alerts2 = reconcilePublicationBatch(previousAlerts, observations, now);
   const base = assembleFeed({ schemaVersion: 1, source: { name: "AESAN", url: AESAN_LIST_URL }, alerts: previousAlerts }, alerts2, now, { fullSync: fullHistory, pagesScanned: listing.length, legacyIndexesScanned: 0 });
   const { feed, diagnostics } = enrichFeedTaxonomy(base, taxonomy, { reviewed });
-  if (diagnostics.disappeared.length || diagnostics.unknown.length || fullHistory && diagnostics.gaps.length) throw Error("AESAN_NATIVE taxonomy membership requires review");
+  if (diagnostics.disappeared.length || newUnknownAesanPublications(previousAlerts, feed.alerts).length || fullHistory && diagnostics.gaps.length) throw Error("AESAN_NATIVE taxonomy membership requires review " + JSON.stringify({ gaps: diagnostics.gaps, unknown: diagnostics.unknown, disappeared: diagnostics.disappeared }));
   const members = new Map(feed.alerts.flatMap(publicationMembers).map((member) => [member.url, member]));
   if (members.size > 300) throw Error("AESAN_NATIVE publication identity budget exceeded");
   await mapLimit3([...members.values()], async (member) => {
