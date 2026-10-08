@@ -1,0 +1,63 @@
+name: Source reliability bounded exact-code read validation
+on:
+  push:
+    branches: [source-reliability/final-read-validation-20261008-1940]
+permissions:
+  contents: read
+jobs:
+  validate:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: cgam-coder/vigia-runtime
+          ref: 937ee3bbb18b19eb7bb0b03654ca64dcd5faa832
+          path: runtime
+          persist-credentials: false
+      - name: Install exact read interpreter dependencies
+        run: |
+          mkdir /tmp/sr-read-deps
+          npm install --prefix /tmp/sr-read-deps --ignore-scripts --no-audit --no-fund --package-lock=false tsx@4.22.1 drizzle-orm@0.45.2 fast-xml-parser@5.7.0
+          ln -s /tmp/sr-read-deps/node_modules runtime/node_modules
+      - name: Validate unchanged native AESAN parser with SELECT-only D1 adapter
+        working-directory: runtime
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          test "$(git rev-parse HEAD)" = 937ee3bbb18b19eb7bb0b03654ca64dcd5faa832
+          cat > sr-read-validation.ts <<'TS'
+          import {createD1AlertStore} from './lib/persistence/d1-alert-store.ts';
+          import {fetchNativeAesanAlerts} from './lib/aesan-native.ts';
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          if(Date.now()>Date.parse('2026-10-08T20:20:00Z'))throw Error('read validation expired');
+          const prepare=(sql:string)=>{let params:unknown[]=[];async function read(){if(!/^SELECT\\s/i.test(sql.trim()))throw Error('SELECT-only adapter');const r=await fetch(root+'/d1/database/55596003-1b90-4f66-aad8-decb21205f13/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql,params}),signal:AbortSignal.timeout(30000)});const p=await r.json();if(!r.ok||!p.success||p.result.some((x:any)=>!x.success||x.meta?.changes||x.meta?.rows_written))throw Error('D1 read unconfirmed');return p.result[0];}return {bind(...args:unknown[]){params=args;return this;},all:read,async first(){const r=await read();return r.results[0]??null;},run(){throw Error('write forbidden');}};};
+          (globalThis as any).__VIGIA_DB__={prepare,batch(){throw Error('batch forbidden');},exec(){throw Error('write forbidden');}};
+          const store=createD1AlertStore();
+          const before=await prepare("SELECT updated_at,status,last_error FROM source_sync_state WHERE source='AESAN' AND mode='recent'").first();
+          let requests=0;const deadline=Date.now()+180000;
+          const fetchImpl:typeof fetch=async(input,init)=>{if(++requests>300||Date.now()>deadline)throw Error('bounded read budget exceeded');return fetch(input,{...init,signal:AbortSignal.any([AbortSignal.timeout(30000),...(init?.signal?[init.signal]:[])])});};
+          const alerts=await fetchNativeAesanAlerts(store,fetchImpl);
+          const after=await prepare("SELECT updated_at,status,last_error FROM source_sync_state WHERE source='AESAN' AND mode='recent'").first();
+          if(JSON.stringify(before)!==JSON.stringify(after))throw Error('AESAN state changed concurrently');
+          console.log('AESAN_EXACT_NATIVE_READ '+JSON.stringify({zeroWrite:true,sha:'937ee3bbb18b19eb7bb0b03654ca64dcd5faa832',at:new Date().toISOString(),requests,alerts:alerts.length,targets:alerts.filter(a=>['ES2026/604','ES2026/382'].includes(a.reference)).map(a=>({id:a.id,reference:a.reference,contentHash:a.contentHash,classification:a.canonical.sourceRecord.aesanAlertClassification,sourceRecordId:a.canonical.sourceRecord.sourceRecordId,url:a.url})),before,after}));
+          
+          TS
+          node --import tsx sr-read-validation.ts
+      - name: Read exact cancellation traces
+        if: always()
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          if(Date.now()>Date.parse('2026-10-08T20:20:00Z'))throw Error('expired');
+          for(const trace of ['a9bbc4d9fda5dead7e66c4ce0541b64b','0aab038acab4550d2b1fbfa8d3dd7c94','ae028550eb41c28dfb1012409c878583']){
+           const q={queryId:'final-targeted-cancel-read',dry:true,view:'events',limit:100,timeframe:{from:Date.parse('2026-10-08T13:40:00Z'),to:Date.now()},parameters:{filters:[{key:'$metadata.traceId',operation:'eq',type:'string',value:trace}],filterCombination:'and'}};
+           const r=await fetch(root+'/workers/observability/telemetry/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(q),signal:AbortSignal.timeout(30000)}),p=await r.json();
+           const events=Array.isArray(p.result?.events)?p.result.events:p.result?.events?.events??[];
+           console.log('TARGETED_TRACE_READ '+JSON.stringify({trace,http:r.status,success:p.success,events:events.map(e=>({metadata:e.$metadata,worker:e.$workers,message:e.message,error:e.error,keys:Object.keys(e)}))}));if(!r.ok||!p.success)throw Error('trace read failed');
+          }
+          
+          NODE
