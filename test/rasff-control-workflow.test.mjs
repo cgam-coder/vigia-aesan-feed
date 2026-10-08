@@ -36,8 +36,6 @@ test("RASFF recognizes only supported transient global errors with a released le
   const searchUrl = "https://webgate.ec.europa.eu/rasff-window/backend/public/notification/search/consolidated/en/";
   const cleared = { status: "failed", leaseOwnerId: null, leaseMode: null, leaseExpiresAt: null };
   for (const lastError of [
-    "D1_ERROR: out of memory: SQLITE_NOMEM",
-    "D1_ERROR: internal error; reference = abc123",
     "RASFF agotó el timeout para " + searchUrl,
     "RASFF abortó la petición para " + searchUrl,
     "RASFF sufrió un fallo de red para " + searchUrl,
@@ -60,6 +58,7 @@ test("RASFF never recovers semantic errors or malformed D1 references as transie
   const cleared = { status: "failed", leaseOwnerId: null, leaseMode: null, leaseExpiresAt: null };
   for (const lastError of [
     "identity conflict", "version_count_desynced", "", null,
+    "D1_ERROR: out of memory: SQLITE_NOMEM", "D1_ERROR: internal error; reference = abc123",
     "D1_ERROR: internal error; reference = ",
     "D1_ERROR: internal error; reference = ABC123",
     "D1_ERROR: internal error; reference = abc123 trailing",
@@ -73,8 +72,9 @@ test("a workflow release activates one gated reconcile without restarting the co
   assert.match(workflow, /push:\n\s+branches: \[main\]\n\s+paths:\n\s+- "\.github\/workflows\/rasff-control\.yml"/u);
   assert.match(workflow, /writer_gate:\n\s+uses: \.\/\.github\/workflows\/runtime-writer-gate\.yml/u);
   assert.match(workflow, /runtime_target:\n\s+uses: \.\/\.github\/workflows\/runtime-writer-target\.yml/u);
-  assert.equal((workflow.match(/needs: \[writer_gate, runtime_target\]/gu) ?? []).length, 2);
-  assert.match(workflow, /if: needs\.writer_gate\.outputs\.allowed == 'true' && \(github\.event_name == 'push'/u);
+  assert.equal((workflow.match(/needs: \[writer_gate, runtime_target, native_owner\]/gu) ?? []).length, 2);
+  assert.match(workflow, /if: needs\.writer_gate\.outputs\.allowed == 'true' && needs\.native_owner\.outputs\.legacy_allowed == 'true' && \(github\.event_name == 'push'/u);
   assert.match(workflow, /node scripts\/rasff-control\.mjs reconcile/u);
   assert.doesNotMatch(workflow, /restart=1/u);
 });
+

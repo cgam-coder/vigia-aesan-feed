@@ -13,7 +13,7 @@ const reconcile = (cursor = 100, status = "partial") => ({ source:"RASFF", mode:
   detailFailures:0, pageErrors:0, coverage:status === "completed" ? "official-index-complete" : "partial",
   lastError:null, leaseOwnerId:null, leaseMode:null, leaseExpiresAt:null });
 const recent = (at = "2026-09-20T05:55:00.000Z") => ({ source:"RASFF", mode:"recent", status:"completed",
-  lastSuccessAt:at, leaseOwnerId:null, leaseMode:null, leaseExpiresAt:null });
+  lastSuccessAt:at, lastError:null, detailFailures:0, leaseOwnerId:null, leaseMode:null, leaseExpiresAt:null });
 const observed = ({ lease = null, current = reconcile(), latest = recent() } = {}) => ({ http:200,
   body:{ lease, backfill:{ coverage:"official-index-complete" }, reconcile:current, recent:latest }, raw:"{}" });
 
@@ -93,21 +93,11 @@ test("respuesta perdida tras persistir se recupera por checkpoint sin repetir la
   assert.equal(result.state.cursor, 120);
 });
 
-test("respuesta perdida antes de persistir solo reintenta tras observar ausencia de progreso", async () => {
-  let current = reconcile(100);
-  let posts = 0;
-  const transport = async (path) => {
-    if (path.includes("observe=1")) return observed({ current });
-    posts += 1;
-    if (posts === 1) throw new ResponseLostError("network before persist");
-    current = reconcile(120);
-    return { http:200, body:{ state:current }, raw:"{}" };
-  };
-  let time = NOW;
-  const result = await runReconcileControl({ transport, now:() => time++, sleep:async () => {}, log:() => {},
-    deadline:NOW + 60_000, maxBatches:1 });
-  assert.equal(posts, 2);
-  assert.equal(result.state.cursor, 120);
+test("respuesta perdida sin progreso inequívoco queda HOLD sin repetir la mutación", async () => {
+  let posts=0;
+  const transport=async path=>{if(path.includes("observe=1"))return observed();posts++;throw new ResponseLostError("lost before or after persist");};
+  await assert.rejects(()=>runReconcileControl({transport,now:()=>NOW,sleep:async()=>{},log:()=>{},deadline:NOW+60000,maxBatches:1}),/HOLD.*retry forbidden/u);
+  assert.equal(posts,1);
 });
 
 test("el umbral de recent se calcula por última finalización real", () => {
@@ -139,3 +129,4 @@ test("un checkpoint failed semántico sigue fallando cerrado", async () => {
   await assert.rejects(() => runReconcileControl({ transport:async () => observed({ current }),
     now:() => NOW, sleep:async () => {}, log:() => {} }), /semantically failed/u);
 });
+

@@ -91,7 +91,7 @@ export async function runWatchdog({ url, token, fetchImpl=fetch, clock=Date.now,
         signal:AbortSignal.any([globalSignal, AbortSignal.timeout(timeoutMs)]) });
       call.http = response.status;
       if ([401,403].includes(response.status)) { authBlocked = true; return { ok:false, reason:'auth' }; }
-      if (![200,503].includes(response.status)) return { ok:false, reason:'http' };
+      if (![200,503].includes(response.status)) return { ok:false, reason:'http', http:response.status };
       let body;
       try { body = await response.json(); } catch { return { ok:false, reason:'json' }; }
       return { ok:true, http:response.status, body };
@@ -100,6 +100,25 @@ export async function runWatchdog({ url, token, fetchImpl=fetch, clock=Date.now,
   }
   const freshnessUrl = params => { const target = new URL(endpoint); target.search = new URLSearchParams(params); return target; };
   const syncUrl = source => new URL(`/api/${ROUTES[SOURCES.indexOf(source)]}/sync?observe=1`, endpoint);
+  // This provider observes Cloudflare without invoking ingestion or its watchdog.
+  const native=await request(new URL('/api/source-reliability?observe=1',endpoint),'GET','native-heartbeat',null,BUDGET.read);
+  const nativeMode=native.ok&&native.body?.mode==='five-source-coordinated';
+  const legacyKnown=native.http===404||native.ok&&native.body?.outcome==='disabled';
+  if(nativeMode||!legacyKnown){
+    const policyResult=await request(freshnessUrl({observe:'1',policy:'1'}),'GET','policy',null,BUDGET.read);
+    const policies=policyResult.ok?parsePolicy(policyResult.body):null;
+    const audit=native.body?.state?.lastAudit,seen=new Set(),states=[];
+    const recentAudit=audit&&age(audit.finishedAt,clock())!==null&&age(audit.finishedAt,clock())<=15;
+    for(const source of SOURCES){
+      const matches=Array.isArray(audit?.states)?audit.states.filter(s=>s?.source===source):[];
+      const state=matches.length===1?matches[0]:null;
+      if(state)seen.add(source);
+      states.push(policies&&state?assess(state,source,policies.get(source),clock()):{source,verdict:'UNKNOWN',reason:'missing-native-official-evidence'});
+    }
+    const allFresh=Boolean(nativeMode&&native.http===200&&native.body.outcome==='observed'&&native.body.officialParityCertified===true&&native.body.activeLease===false&&recentAudit&&seen.size===5&&states.every(s=>s.verdict==='PASS'));
+    const report={states,policyVersion:policies?1:null,allFresh,zeroWrite:true,supervisor:'github-observes-cloudflare',recoveryOutcomeUncertain:false,auditOutcomeUncertain:false,authBlocked,elapsedMs:monotonic()-started,calls};
+    log({phase:'summary',...report});return report;
+  }
   const policyResult = await request(freshnessUrl({ observe:'1', policy:'1' }), 'GET', 'policy', null, BUDGET.read);
   const policies = policyResult.ok && policyResult.http === 200 ? parsePolicy(policyResult.body) : null;
   // Persisted evidence is read-only and explicitly historical, even when its label says fresh.
@@ -188,3 +207,4 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (!report.allFresh) process.exitCode = 1;
   } catch { console.error('Watchdog configuration or execution failed closed'); process.exitCode = 1; }
 }
+

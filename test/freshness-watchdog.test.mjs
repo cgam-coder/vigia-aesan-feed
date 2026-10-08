@@ -30,6 +30,7 @@ async function fixture({ overrides={}, recovery, before, after, advance=0, initi
       const source = url.searchParams.get('source');
       const recover = url.searchParams.get('recover');
       calls.push({ path:url.pathname, params:Object.fromEntries(url.searchParams), method:options.method });
+      if (url.pathname==='/api/source-reliability')return response(200,{mode:'rapna-rasff-oecd-pilot',outcome:'disabled'});
       if (url.searchParams.has('policy')) return response(200, policyBody);
       if (url.pathname === '/api/freshness' && options.method === 'GET') {
         if (initialFailure) throw new Error('fixture transport');
@@ -167,4 +168,23 @@ test('workflow retains writer gate, target, serialization and production secrets
   assert.match(workflow,/persist-credentials: false/); assert.match(workflow,/node-version: 22/);
   assert.match(workflow,/run: node scripts\/freshness-watchdog.mjs/);
   assert.match(workflow,/branches: \[main\]/); assert.equal((workflow.match(/secrets\.VIGIA_SYNC_TOKEN/g)||[]).length,1);
+});
+
+
+test('independent GitHub supervision uses GET only in native mode and rejects expired or uncertain certificates',async()=>{
+  for(const scenario of ['pass','stale','unknown','duplicate']){
+    const calls=[];const states=SOURCES.map(fresh);
+    if(scenario==='duplicate')states[4]=states[0];
+    const report=await runWatchdog({url:'https://local.invalid/api/freshness',token:'fixture-secret',clock:()=>NOW,monotonic:()=>0,log:()=>{},fetchImpl:async(url,options)=>{
+      calls.push(options.method);assert.equal(options.method,'GET');
+      if(new URL(url).searchParams.has('policy'))return response(200,policy);
+      return response(200,{mode:'five-source-coordinated',outcome:'observed',officialParityCertified:scenario!=='unknown',activeLease:false,state:{lastAudit:{finishedAt:stamp(scenario==='stale'?-16*60000:0),allFresh:true,states}}});
+    }});
+    assert.equal(report.allFresh,scenario==='pass',scenario);assert.equal(report.zeroWrite,true);assert.equal(calls.length,2);
+  }
+});
+
+test('unknown native ownership never falls through to legacy audit or ingestion POST',async()=>{
+  const calls=[];const report=await runWatchdog({url:'https://local.invalid/api/freshness',token:'fixture-secret',clock:()=>NOW,monotonic:()=>0,log:()=>{},fetchImpl:async(url,options)=>{calls.push(options.method);if(new URL(url).searchParams.has('policy'))return response(200,policy);throw Error('lost control read');}});
+  assert.equal(report.allFresh,false);assert.deepEqual(calls,['GET','GET']);
 });

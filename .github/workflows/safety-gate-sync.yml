@@ -21,9 +21,17 @@ jobs:
   runtime_target:
     uses: ./.github/workflows/runtime-writer-target.yml
 
+  native_owner:
+    needs: runtime_target
+    uses: ./.github/workflows/source-execution-owner.yml
+    with:
+      base_url: ${{ needs.runtime_target.outputs.base_url }}
+    secrets:
+      SOURCE_OWNER_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+
   safety_gate:
-    needs: [writer_gate, runtime_target]
-    if: needs.writer_gate.outputs.allowed == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.schedule == '7,37 * * * *')
+    needs: [writer_gate, runtime_target, native_owner]
+    if: needs.writer_gate.outputs.allowed == 'true' && needs.native_owner.outputs.legacy_allowed == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.schedule == '7,37 * * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
@@ -193,8 +201,8 @@ jobs:
           fi
 
   oecd:
-    needs: [writer_gate, runtime_target]
-    if: needs.writer_gate.outputs.allowed == 'true' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '22,52 * * * *')
+    needs: [writer_gate, runtime_target, native_owner]
+    if: needs.writer_gate.outputs.allowed == 'true' && needs.native_owner.outputs.legacy_allowed == 'true' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '22,52 * * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
@@ -367,4 +375,5 @@ jobs:
         # <= 780s network/backoff plus preflight/observe <= 90s within the 900s job.
         # A skipped response remains retryable, never successful.
         run: node scripts/oecd-normal-recent-retry.mjs
+
 

@@ -42,7 +42,7 @@ test("every production writer uses the reusable target and has no hardcoded Site
     const workflow = read(path);
     assert.match(workflow, /runtime_target:\n\s+uses: \.\/\.github\/workflows\/runtime-writer-target\.yml/u, path);
     assert.doesNotMatch(workflow, /https:\/\/vigia-alertas\.csar68\.chatgpt\.site/u, path);
-    const writerNeeds = workflow.match(/needs: \[writer_gate, runtime_target\]/gu) ?? [];
+    const writerNeeds = workflow.match(/needs: \[writer_gate, runtime_target(?:, native_owner)?\]/gu) ?? [];
     assert.ok(writerNeeds.length >= 1, `${path} has no target dependency`);
     assert.match(workflow, /needs\.runtime_target\.outputs\.base_url/u, `${path} does not consume target output`);
   }

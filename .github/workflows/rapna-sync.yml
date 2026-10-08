@@ -25,9 +25,17 @@ jobs:
   runtime_target:
     uses: ./.github/workflows/runtime-writer-target.yml
 
+  native_owner:
+    needs: runtime_target
+    uses: ./.github/workflows/source-execution-owner.yml
+    with:
+      base_url: ${{ needs.runtime_target.outputs.base_url }}
+    secrets:
+      SOURCE_OWNER_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+
   sync:
-    needs: [writer_gate, runtime_target]
-    if: needs.writer_gate.outputs.allowed == 'true' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '23 * * * *' || github.event.schedule == '53 * * * *')
+    needs: [writer_gate, runtime_target, native_owner]
+    if: needs.writer_gate.outputs.allowed == 'true' && needs.native_owner.outputs.legacy_allowed == 'true' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '23 * * * *' || github.event.schedule == '53 * * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -69,8 +77,8 @@ jobs:
           ' "${http_code}" "${response_file}"
 
   current_parity:
-    needs: [writer_gate, runtime_target]
-    if: needs.writer_gate.outputs.allowed == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.schedule == '41 4 * * *')
+    needs: [writer_gate, runtime_target, native_owner]
+    if: needs.writer_gate.outputs.allowed == 'true' && needs.native_owner.outputs.legacy_allowed == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.schedule == '41 4 * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -98,8 +106,8 @@ jobs:
 
 
   legacy_revision:
-    needs: [writer_gate, runtime_target, current_parity]
-    if: needs.writer_gate.outputs.allowed == 'true' && needs.current_parity.result == 'success' && github.event_name == 'schedule' && github.event.schedule == '41 4 * * *'
+    needs: [writer_gate, runtime_target, native_owner, current_parity]
+    if: needs.writer_gate.outputs.allowed == 'true' && needs.native_owner.outputs.legacy_allowed == 'true' && needs.current_parity.result == 'success' && github.event_name == 'schedule' && github.event.schedule == '41 4 * * *'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -167,3 +175,4 @@ jobs:
             esac
           done
           test "$completed" = "1"
+

@@ -17,9 +17,17 @@ jobs:
   runtime_target:
     uses: ./.github/workflows/runtime-writer-target.yml
 
+  native_owner:
+    needs: runtime_target
+    uses: ./.github/workflows/source-execution-owner.yml
+    with:
+      base_url: ${{ needs.runtime_target.outputs.base_url }}
+    secrets:
+      SOURCE_OWNER_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+
   reconcile:
-    needs: [writer_gate, runtime_target]
-    if: needs.writer_gate.outputs.allowed == 'true'
+    needs: [writer_gate, runtime_target, native_owner]
+    if: needs.writer_gate.outputs.allowed == 'true' && needs.native_owner.outputs.legacy_allowed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 225
     env:
@@ -68,7 +76,7 @@ jobs:
               const {response,body,raw}=await readJson(recentUrl,{method:"POST",headers},840_000);
               const state=body?.state;
               if(response.status===200&&state?.source==="OECD"&&state.mode==="recent"&&
-                  ["partial","completed"].includes(state.status)&&state.lastError===null&&
+                  state.status==="completed"&&state.lastError===null&&state.detailFailures===0&&
                   state.leaseOwnerId===null&&state.leaseMode===null&&state.leaseExpiresAt===null) {
                 recentYields++;
                 const successMs=Date.parse(state.lastSuccessAt);
@@ -100,12 +108,12 @@ jobs:
               try {
                 const {response,body,raw}=await readJson(historicalUrl,{method:"POST",headers},1_200_000);
                 if(response.status===200||response.status===202) return {response,body};
-                const persistedUpstreamFailure=response.status===503&&body?.state?.source==="OECD"&&body.state.mode==="historical-reconcile"&&/^OECD respondió con estado (?:429|5\d\d)$/u.test(body.state.lastError||"");
+                const persistedUpstreamFailure=response.status===503&&body?.state?.source==="OECD"&&body.state.mode==="historical-reconcile"&&body.state.status==="failed"&&body.state.leaseOwnerId===null&&body.state.leaseMode===null&&body.state.leaseExpiresAt===null&&/^OECD respondió con estado (?:429|5\d\d)$/u.test(body.state.lastError||"");
                 if(persistedUpstreamFailure&&attempt===5) return {response,body,recoverableUpstreamFailure:true};
-                if(![429,500,502,503,504].includes(response.status)||attempt===5) throw new Error("OECD reconcile failed HTTP "+response.status+": "+raw.slice(0,1000));
+                if(!persistedUpstreamFailure||attempt===5) throw new Error("HOLD: OECD reconcile failed HTTP "+response.status+"; mutation replay forbidden: "+raw.slice(0,1000));
               } catch(error) {
-                if(attempt===5||error instanceof Error&&error.message.startsWith("OECD reconcile failed HTTP")) throw error;
-                retries++; console.log("OECD_HISTORICAL_RECONCILE_RETRY "+JSON.stringify({attempt,error:String(error)}));
+                if(error instanceof Error&&error.message.startsWith("HOLD: OECD reconcile failed HTTP"))throw error;
+                throw new Error("HOLD: OECD mutation response uncertain; replay forbidden without exact checkpoint reconciliation", {cause:error});
               }
               await sleep(attempt*5_000);
             }
@@ -130,3 +138,4 @@ jobs:
           if(previous?.status!=="completed"&&!budgetExhausted) throw new Error("OECD historical reconcile did not complete: "+JSON.stringify({executed,skipped,state:previous}));
           console.log("OECD_HISTORICAL_RECONCILE_STAGE_COMPLETE "+JSON.stringify({executed,skipped,retries,upstreamFailures,recentYields,budgetExhausted,state:previous}));
           NODE
+
