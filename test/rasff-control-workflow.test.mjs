@@ -36,8 +36,6 @@ test("RASFF recognizes only supported transient global errors with a released le
   const searchUrl = "https://webgate.ec.europa.eu/rasff-window/backend/public/notification/search/consolidated/en/";
   const cleared = { status: "failed", leaseOwnerId: null, leaseMode: null, leaseExpiresAt: null };
   for (const lastError of [
-    "D1_ERROR: out of memory: SQLITE_NOMEM",
-    "D1_ERROR: internal error; reference = abc123",
     "RASFF agotó el timeout para " + searchUrl,
     "RASFF abortó la petición para " + searchUrl,
     "RASFF sufrió un fallo de red para " + searchUrl,
@@ -60,6 +58,7 @@ test("RASFF never recovers semantic errors or malformed D1 references as transie
   const cleared = { status: "failed", leaseOwnerId: null, leaseMode: null, leaseExpiresAt: null };
   for (const lastError of [
     "identity conflict", "version_count_desynced", "", null,
+    "D1_ERROR: out of memory: SQLITE_NOMEM", "D1_ERROR: internal error; reference = abc123",
     "D1_ERROR: internal error; reference = ",
     "D1_ERROR: internal error; reference = ABC123",
     "D1_ERROR: internal error; reference = abc123 trailing",
@@ -78,3 +77,4 @@ test("a workflow release activates one gated reconcile without restarting the co
   assert.match(workflow, /node scripts\/rasff-control\.mjs reconcile/u);
   assert.doesNotMatch(workflow, /restart=1/u);
 });
+

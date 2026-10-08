@@ -40,7 +40,7 @@ async function execute(responses, { advancePerRequest = 0, recentLastSuccessAt =
         latestRecentAt = new Date(now).toISOString();
         return { status: 200, text: async () => JSON.stringify({ state:{
           source:"OECD", mode:"recent", status:"completed", lastSuccessAt:latestRecentAt,
-          recordsObserved:159, newCount:0, updatedCount:0, lastError:null,
+          recordsObserved:159, newCount:0, updatedCount:0, lastError:null, detailFailures:0,
           leaseOwnerId:null, leaseMode:null, leaseExpiresAt:null,
         } }) };
       }
@@ -73,7 +73,7 @@ test("OECD keeps bounded checkpoint continuation independent of source formattin
   assert.ok(compact.includes("state.recordsPersisted<previous.recordsPersisted"));
   assert.ok(!compact.includes("state.recordsObserved<=previous.recordsObserved"));
   assert.ok(compact.includes("attempt<=5"));
-  assert.ok(compact.includes("[429,500,502,503,504]"));
+  assert.ok(compact.includes("if(!persistedUpstreamFailure||attempt===5)"));
   assert.ok(compact.includes('previous?.status!=="completed"&&!budgetExhausted'));
   assert.doesNotMatch(workflow, /restart/u);
 });
@@ -102,16 +102,15 @@ test("OECD advances the persisted cursor even when a batch contains no new recor
   assert.equal(result.final.budgetExhausted, false);
 });
 
-for (const status of [429, 500, 502, 503, 504]) {
-  test(`OECD retries transient HTTP ${status} without restarting the sweep`, async () => {
-    const result = await execute([
-      { status, body: {} }, reply(state({ status: "completed", cursor: 0 })),
-    ]);
-    assert.equal(result.calls.length, 2);
-    assert.deepEqual(result.sleeps, [5_000]);
-    assert.equal(result.final.state.status, "completed");
+for (const status of [429,500,502,503,504]) {
+  test(`OECD rejects ambiguous HTTP ${status} without replaying the mutation`,async()=>{
+    let calls=0;await assert.rejects(execute(()=>{calls++;return {status,body:{}};}),/HOLD.*replay forbidden/u);assert.equal(calls,1);
   });
 }
+
+test("OECD lost transport response is quarantined after one mutation",async()=>{
+  let calls=0;await assert.rejects(execute(()=>{calls++;return {error:new Error('response lost')};}),/HOLD.*replay forbidden/u);assert.equal(calls,1);
+});
 
 test("OECD preserves checkpoint through five persisted upstream failures and cooldown", async () => {
   const failure = reply(state({ status: "failed", lastError: "OECD respondió con estado 503" }), 503);
@@ -161,3 +160,4 @@ test("OECD does not certify a partial sweep when the time budget is exhausted", 
 test("OECD fails closed at the batch ceiling if the sweep never completes", async () => {
   await assert.rejects(execute((index) => reply(state({ cursor: index + 1 }))), /did not complete/u);
 });
+

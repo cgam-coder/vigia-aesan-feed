@@ -100,12 +100,12 @@ jobs:
               try {
                 const {response,body,raw}=await readJson(historicalUrl,{method:"POST",headers},1_200_000);
                 if(response.status===200||response.status===202) return {response,body};
-                const persistedUpstreamFailure=response.status===503&&body?.state?.source==="OECD"&&body.state.mode==="historical-reconcile"&&/^OECD respondió con estado (?:429|5\d\d)$/u.test(body.state.lastError||"");
+                const persistedUpstreamFailure=response.status===503&&body?.state?.source==="OECD"&&body.state.mode==="historical-reconcile"&&body.state.status==="failed"&&body.state.leaseOwnerId===null&&body.state.leaseMode===null&&body.state.leaseExpiresAt===null&&/^OECD respondió con estado (?:429|5\d\d)$/u.test(body.state.lastError||"");
                 if(persistedUpstreamFailure&&attempt===5) return {response,body,recoverableUpstreamFailure:true};
-                if(!persistedUpstreamFailure||attempt===5) throw new Error("OECD reconcile failed HTTP "+response.status+": "+raw.slice(0,1000));
+                if(!persistedUpstreamFailure||attempt===5) throw new Error("HOLD: OECD reconcile failed HTTP "+response.status+"; mutation replay forbidden: "+raw.slice(0,1000));
               } catch(error) {
+                if(error instanceof Error&&error.message.startsWith("HOLD: OECD reconcile failed HTTP"))throw error;
                 throw new Error("HOLD: OECD mutation response uncertain; replay forbidden without exact checkpoint reconciliation", {cause:error});
-                retries++; console.log("OECD_HISTORICAL_RECONCILE_RETRY "+JSON.stringify({attempt,error:String(error)}));
               }
               await sleep(attempt*5_000);
             }
