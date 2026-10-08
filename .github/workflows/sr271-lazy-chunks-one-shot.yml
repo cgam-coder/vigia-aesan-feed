@@ -1,0 +1,43 @@
+name: SR271 locate official search API in lazy route chunks
+on:
+  push:
+    branches: [diagnostics/safety-gate-portal-readonly-20261008]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: github.event.head_commit.message == 'SR271 limited official route chunk scan'
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Find concrete current frontend search endpoint (GET-only)
+        run: |
+          node --input-type=module <<'NODE'
+          const root="https://ec.europa.eu/safety-gate-alerts/";
+          const expires=Date.parse("2026-10-09T00:00:00Z");
+          const fetchJs=async name=>{
+            if(Date.now()>expires || !/^(main-[A-Z0-9]+|chunk-[A-Z0-9]+)\.js$/u.test(name))throw Error("not-allowlisted");
+            const response=await fetch(root+name,{method:"GET",redirect:"error",signal:AbortSignal.timeout(18000)});
+            if(response.status!==200)throw Error("source-get-"+response.status);
+            const body=await response.text();
+            if(body.length>2200000)throw Error("too-large");
+            return body;
+          };
+          const main=await fetchJs("main-4Q37PFBH.js");
+          const routes=[...main.matchAll(/(?:screen|search|webReport|notification|recent)/giu)]
+            .slice(0,24).map(x=>main.slice(Math.max(0,x.index-110),x.index+170));
+          const chunks=[...new Set([...main.matchAll(/chunk-[A-Z0-9]{8}\.js/gu)].map(m=>m[0]))].slice(0,32);
+          console.log("SR271_MAIN "+JSON.stringify({size:main.length,dynamicChunks:chunks,routeContexts:routes.slice(0,9)}));
+          const findings=[];
+          for(const name of chunks.slice(0,14)){
+            try{
+              const body=await fetchJs(name);
+              const candidates=[...new Set([...body.matchAll(/["']([^"']{1,150})["']/gu)]
+                .map(m=>m[1]).filter(x=>/(?:api\/notification|notification\/|mostRecent|search\/)/iu.test(x)))].slice(0,28);
+              const routeMatches=[...body.matchAll(/(?:mostRecent|GET_SEARCH|SEARCH_NOTIFICATION|notification\/|urlDynamicSystemSgrpStaticPages)/giu)]
+                .slice(0,6).map(m=>body.slice(Math.max(0,m.index-90),m.index+140));
+              if(candidates.length||routeMatches.length)findings.push({chunk:name,length:body.length,candidates,contexts:routeMatches});
+            }catch(e){findings.push({chunk:name,error:e?.name||"error"});}
+          }
+          console.log("SR271_FINDINGS "+JSON.stringify({inspected:Math.min(chunks.length,14),findings}));
+          NODE
