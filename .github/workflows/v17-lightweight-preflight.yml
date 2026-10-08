@@ -1,0 +1,47 @@
+# GET-only Cloudflare Worker identity before authorized social image release.
+# Isolated from feed/main; expires 2026-10-09T00:00Z.
+name: V17 lightweight social release preflight (GET-only)
+on:
+  push:
+    branches:
+      - v17/social-lightweight-production-readonly
+permissions:
+  contents: read
+jobs:
+  preflight:
+    if: github.event.head_commit.message == 'V17 lightweight social preflight GET-only' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Read current Worker allocation and rollback identity
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root="https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f";
+          const allow=/^\/workers\/scripts\/vigia-runtime\/(?:deployments|versions\/[a-f0-9-]{36})$/;
+          const expires=Date.parse("2026-10-09T00:00:00Z");
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          if(!token) throw Error("Cloudflare token unavailable");
+          async function get(path) {
+            if(Date.now()>expires) throw Error("Observer expired");
+            if(!allow.test(path)) throw Error("Path outside GET-only allowance");
+            const r=await fetch(root+path,{method:"GET",redirect:"error",
+              headers:{Authorization:"Bearer "+token,Accept:"application/json"},
+              signal:AbortSignal.timeout(15000)});
+            if(!r.ok) throw Error("Cloudflare HTTP "+r.status);
+            const j=await r.json();if(!j.success)throw Error("Cloudflare success=false");
+            return j.result;
+          }
+          const first=(await get("/workers/scripts/vigia-runtime/deployments"))?.deployments?.[0];
+          if(!first||first.versions?.length!==1||first.versions[0]?.percentage!==100)throw Error("Ambiguous production allocation");
+          const version=first.versions[0].version_id;
+          if(!/^[a-f0-9-]{36}$/.test(version))throw Error("Bad version ID");
+          const metadata=await get("/workers/scripts/vigia-runtime/versions/"+version);
+          const second=(await get("/workers/scripts/vigia-runtime/deployments"))?.deployments?.[0];
+          if(first.id!==second?.id||JSON.stringify(first.versions)!==JSON.stringify(second.versions))throw Error("Allocation drift");
+          const verdict={status:"PASS",worker:"vigia-runtime",at:new Date().toISOString(),
+            deployment:first.id,versionId:version,versionNumber:metadata.number,
+            createdOn:first.created_on,allocation:100};
+          console.log("LIGHTWEIGHT_PREFLIGHT "+JSON.stringify(verdict));
+          NODE
