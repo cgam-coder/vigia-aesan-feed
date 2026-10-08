@@ -1,0 +1,35 @@
+name: Source reliability FINAL strict productive 5-of-5 verdict
+on:
+  push:
+    branches: [source-reliability/final-strict-verdict-20261008-2014]
+permissions:
+  contents: read
+jobs:
+  strict:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Independent GET-only posterior natural audit and strict functional verdict
+        env:
+          SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {runWatchdog} from './scripts/freshness-watchdog.mjs';
+          const base='https://vigia-runtime.c-gamiz93.workers.dev';
+          if(Date.now()>Date.parse('2026-10-08T20:18:30Z'))throw Error('strict observation window expired');
+          const safeFetch=(u,i={})=>{if((i.method??'GET')!=='GET')throw Error('strict GET-only observer');return fetch(u,{...i,signal:AbortSignal.any([AbortSignal.timeout(20000),...(i.signal?[i.signal]:[])])});};
+          let matched=false,last=null;
+          for(let check=0;check<11&&Date.now()<Date.parse('2026-10-08T20:18:00Z');check++){
+           const r=await safeFetch(base+'/api/source-reliability?observe=1',{headers:{Authorization:'Bearer '+process.env.SYNC_TOKEN}}),p=await r.json();if(!r.ok||p.mode!=='five-source-coordinated')throw Error('strict native read not confirmed');
+           last=p;matched=p.buildSha==='91c6b8d7e3b5f5fa4ceb73ee3668d1a89e51fadd'&&!p.activeLease&&Date.parse(p.state?.lastAudit?.startedAt)>=Date.parse('2026-10-08T20:07:29.482605Z')&&p.state.lastAudit.states.length===5;
+           console.log('STRICT_POSTDEPLOY_READ '+JSON.stringify({at:new Date().toISOString(),check,build:p.buildSha,auditAt:p.state?.lastAudit?.finishedAt,activeLease:p.activeLease,matched}));
+           if(matched)break;await new Promise(resolve=>setTimeout(resolve,30000));
+          }
+          const report=await runWatchdog({url:base+'/api/freshness',token:process.env.SYNC_TOKEN,fetchImpl:safeFetch});
+          console.log('FINAL_FUNCTIONAL_STRICT_VERDICT '+JSON.stringify({at:new Date().toISOString(),postDeploymentAuditConfirmed:matched,build:last?.buildSha,audit:last?.state?.lastAudit,attempts:last?.state?.attempts,revisions:last?.state?.revisionAttempts,passCount:report.states.filter(s=>s.verdict==='PASS').length,...report}));
+          if(!matched||!report.allFresh)throw Error('Functional HOLD: five-source productive certification gates are not all PASS');
+          NODE
