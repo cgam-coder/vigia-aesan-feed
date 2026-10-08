@@ -1,0 +1,89 @@
+# One-shot read-only production release certification for SR271 PR #272.
+# No deploy, D1, feed/main writes or token output. Expires on 2026-10-09.
+name: SR271 Cloudflare production release postflight (GET-only)
+on:
+  push:
+    branches: [observations/sr271-cloudflare-20261008]
+permissions:
+  contents: read
+jobs:
+  verify:
+    if: github.event.head_commit.message == 'SR271 Cloudflare postflight GET-only' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - name: Check exact build-to-version identity and allocation
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root="https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f";
+          const expected="47a56649d113d39fd759af26b19ff95eff387245";
+          const previous="4c94d703-70c1-4430-9543-15df9d6b244e";
+          const buildIds=["87b5c8a5-a584-4975-be12-d3ec6d7a40bb","37cb57a6-d36b-4b5b-98d8-d24e503d68fa"];
+          const allow=/^\/(?:workers\/scripts\/vigia-runtime\/(?:deployments|versions\/[a-f0-9-]{36})|builds\/builds\/(?:87b5c8a5-a584-4975-be12-d3ec6d7a40bb|37cb57a6-d36b-4b5b-98d8-d24e503d68fa)(?:\/logs(?:\?cursor=[A-Za-z0-9_%.-]+)?)?)$/;
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          if(!token)throw Error("Token missing");
+          async function get(path) {
+            if(Date.now()>Date.parse("2026-10-09T00:00:00Z"))throw Error("expired");
+            if(!allow.test(path))throw Error("GET outside allowed paths");
+            const response=await fetch(root+path,{method:"GET",redirect:"error",
+              headers:{Authorization:"Bearer "+token,Accept:"application/json"},
+              signal:AbortSignal.timeout(18000)});
+            if(!response.ok)throw Error("Cloudflare GET HTTP "+response.status);
+            const data=await response.json();
+            if(!data.success)throw Error("Cloudflare unsuccessful");
+            return data.result;
+          }
+          async function identity(){
+            const a=(await get("/workers/scripts/vigia-runtime/deployments"))?.deployments?.[0];
+            if(!a||a.versions?.length!==1||a.versions[0]?.percentage!==100)throw Error("allocation ambiguous");
+            const id=a.versions[0].version_id;
+            if(!/^[a-f0-9-]{36}$/.test(id))throw Error("invalid version ID");
+            const v=await get("/workers/scripts/vigia-runtime/versions/"+id);
+            const b=(await get("/workers/scripts/vigia-runtime/deployments"))?.deployments?.[0];
+            if(a.id!==b?.id||JSON.stringify(a.versions)!==JSON.stringify(b.versions))throw Error("drifting allocation");
+            return {deploymentId:a.id,versionId:id,number:v.number,percent:100,createdOn:a.created_on};
+          }
+          let last;
+          for(let attempt=1;attempt<=21;attempt++){
+            const active=await identity();
+            const builds=[];
+            for(const id of buildIds){
+              const r=await get("/builds/builds/"+id);
+              builds.push({id,status:r.status,outcome:r.build_outcome,commit:r.build_trigger_metadata?.commit_hash,
+                branch:r.build_trigger_metadata?.branch,deployCommand:r.build_trigger_metadata?.deploy_command});
+            }
+            const candidates=builds.filter(x=>x.commit===expected&&x.branch==="main"&&x.deployCommand==="npx wrangler deploy");
+            if(candidates.some(x=>x.status==="stopped"&&x.outcome==="fail"))throw Error("production build failed");
+            let versionFromLog=null,logsComplete=false;
+            if(candidates.length===1&&candidates[0].status==="stopped"&&candidates[0].outcome==="success"){
+              const chunks=[];
+              function collect(v){
+                if(typeof v==="string")chunks.push(v);
+                else if(Array.isArray(v))v.forEach(collect);
+                else if(v&&typeof v==="object")Object.values(v).forEach(collect);
+              }
+              let cursor="";
+              for(let i=0;i<10;i++){
+                const logs=await get("/builds/builds/"+candidates[0].id+"/logs"+(cursor?"?cursor="+encodeURIComponent(cursor):""));
+                collect(logs.lines);collect(logs.events);
+                if(!logs.truncated){logsComplete=true;break;}
+                if(!logs.cursor||logs.cursor===cursor)throw Error("log cursor missing");
+                cursor=logs.cursor;
+              }
+              versionFromLog=chunks.join("\n").match(/(?:Current )?Version ID:\s*([a-f0-9-]{36})/iu)?.[1]??null;
+            }
+            const verdict=candidates.length===1&&candidates[0].status==="stopped"&&
+              candidates[0].outcome==="success"&&logsComplete&&active.versionId!==previous&&
+              versionFromLog===active.versionId?"PASS":"HOLD";
+            last={verdict,attempt,at:new Date().toISOString(),expectedCommit:expected,
+              active,previousVersionId:previous,builds,versionFromLog,logsComplete};
+            console.log("SR271_RELEASE "+JSON.stringify(last));
+            if(verdict==="PASS")break;
+            if(attempt<21)await new Promise(resolve=>setTimeout(resolve,15000));
+          }
+          const fs=await import("node:fs");
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,"### SR271 production release\n\n"+JSON.stringify(last,null,2)+"\n");
+          if(last.verdict!=="PASS")process.exitCode=1;
+          NODE
