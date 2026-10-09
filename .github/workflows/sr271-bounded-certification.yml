@@ -1,0 +1,710 @@
+name: SR271 bounded final natural certification observer until 14_45 UTC
+on:
+  push:
+    branches: [source-reliability/recovery-snapshot-20261009]
+    paths: [.github/workflows/sr271-bounded-certification.yml, ops/sr271-bounded-observer.mjs]
+permissions:
+  contents: read
+concurrency:
+  group: sr271-bounded-final-observer-20261009
+  cancel-in-progress: false
+jobs:
+  checkpoint_01:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T09:02:00Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_02:
+    needs: [checkpoint_01]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_01.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T09:16:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_03:
+    needs: [checkpoint_02]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_02.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T09:26:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_04:
+    needs: [checkpoint_03]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_03.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T09:36:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_05:
+    needs: [checkpoint_04]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_04.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T09:46:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_06:
+    needs: [checkpoint_05]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_05.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T09:56:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_07:
+    needs: [checkpoint_06]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_06.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T10:06:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_08:
+    needs: [checkpoint_07]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_07.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T10:16:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_09:
+    needs: [checkpoint_08]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_08.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T10:26:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_10:
+    needs: [checkpoint_09]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_09.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T10:36:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_11:
+    needs: [checkpoint_10]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_10.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T10:46:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_12:
+    needs: [checkpoint_11]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_11.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T10:56:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_13:
+    needs: [checkpoint_12]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_12.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T11:06:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_14:
+    needs: [checkpoint_13]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_13.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T11:16:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_15:
+    needs: [checkpoint_14]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_14.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T11:26:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_16:
+    needs: [checkpoint_15]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_15.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T11:36:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_17:
+    needs: [checkpoint_16]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_16.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T11:46:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_18:
+    needs: [checkpoint_17]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_17.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T11:56:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_19:
+    needs: [checkpoint_18]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_18.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T12:06:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_20:
+    needs: [checkpoint_19]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_19.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T12:16:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_21:
+    needs: [checkpoint_20]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_20.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T12:26:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_22:
+    needs: [checkpoint_21]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_21.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T12:36:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_23:
+    needs: [checkpoint_22]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_22.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T12:46:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_24:
+    needs: [checkpoint_23]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_23.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T12:56:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_25:
+    needs: [checkpoint_24]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_24.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T13:06:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_26:
+    needs: [checkpoint_25]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_25.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T13:16:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_27:
+    needs: [checkpoint_26]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_26.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T13:26:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_28:
+    needs: [checkpoint_27]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_27.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T13:36:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_29:
+    needs: [checkpoint_28]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_28.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T13:46:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_30:
+    needs: [checkpoint_29]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_29.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T13:56:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_31:
+    needs: [checkpoint_30]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_30.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T14:06:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_32:
+    needs: [checkpoint_31]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_31.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T14:16:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_33:
+    needs: [checkpoint_32]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_32.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T14:26:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_34:
+    needs: [checkpoint_33]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_33.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T14:36:55.000Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'false'
+        run: node ops/sr271-bounded-observer.mjs
+  checkpoint_35:
+    needs: [checkpoint_34]
+    if: success() && github.run_attempt == 1 && needs.checkpoint_34.outputs.complete != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      complete: ${{ steps.observe.outputs.complete }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: observe
+        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CHECKPOINT_AT: 2026-10-09T14:44:55Z
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINAL_CHECKPOINT: 'true'
+        run: node ops/sr271-bounded-observer.mjs
