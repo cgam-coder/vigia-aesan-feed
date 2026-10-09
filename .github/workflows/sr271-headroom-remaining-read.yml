@@ -1,0 +1,32 @@
+name: SR271 historical remaining headroom primary SELECT only
+on:
+  push:
+    branches: [source-reliability/recovery-snapshot-20261009]
+    paths: [.github/workflows/sr271-headroom-remaining-read.yml]
+permissions:
+  contents: read
+jobs:
+  read:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Read completed OECD receipt deadline and committed effects without mutation
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          node --input-type=module <<'NODE'
+          if(Number(process.env.RUN_ATTEMPT)!==1||Date.now()>Date.parse('2026-10-09T10:30:00Z'))throw Error('GET/SELECT checkpoint expired');
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f',database='55596003-1b90-4f66-aad8-decb21205f13';
+          const statements=[
+          {sql:"SELECT id,source,mode,kind,phase,started_at,deadline,finished_at,receipt_json FROM source_reliability_jobs WHERE id IN ('18769588-98bf-4910-845c-1b326ab48750','d2a13e41-34ea-4979-9012-7cc5aa9ae1e4')"},
+          {sql:"SELECT job_id,COUNT(*) AS markers,SUM(committed_at IS NULL) AS pending,MAX(ordinal) AS head FROM source_reliability_effects WHERE job_id='18769588-98bf-4910-845c-1b326ab48750' GROUP BY job_id"},
+          {sql:"SELECT source,mode,status,cursor,total_units,lease_owner_id,last_success_at,last_error,detail_failures,completed_at FROM source_sync_state WHERE source IN ('OECD','RASFF')"},
+          {sql:"SELECT owner_id,epoch,expires_at,state_json FROM source_reliability_control WHERE id=1"}
+          ];
+          const r=await fetch(root+'/d1/database/'+database+'/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({batch:statements}),signal:AbortSignal.timeout(25000)}),p=await r.json();
+          if(!r.ok||!p.success||p.result.length!==statements.length||p.result.some(x=>!x.success||x.meta?.changes||x.meta?.rows_written||x.meta?.served_by_primary!==true))throw Error('Primary SELECT unconfirmed');
+          const rows=p.result.map(x=>x.results),control=rows[3][0],state=JSON.parse(control.state_json);delete control.state_json;
+          console.log('SR271_HEADROOM_PRIMARY_READ '+JSON.stringify({at:new Date().toISOString(),zeroWrite:true,primary:true,jobs:rows[0].map(j=>({...j,receipt_json:undefined,receipt:j.receipt_json?JSON.parse(j.receipt_json):null})),markers:rows[1],sources:rows[2],control,revisionAttempts:state.revisionAttempts,lastRevision:state.lastRevisionSelection,lastWake:state.lastWakeAt}));
+          NODE
