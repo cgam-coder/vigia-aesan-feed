@@ -25,7 +25,7 @@ jobs:
           node --input-type=module <<'NODE'
           import fs from 'node:fs';import zlib from 'node:zlib';import crypto from 'node:crypto';
           const code=zlib.gunzipSync(Buffer.from(fs.readFileSync('ops/sr271-recovery-api.b64','utf8'),'base64'));
-          if(crypto.createHash('sha256').update(code).digest('hex')!=='70209cd84d5cd3520deb3c854fb4777b2ce43794960ddc101d57bfe2c339336f')throw Error('Artifact hash changed');
+          if(crypto.createHash('sha256').update(code).digest('hex')!=='e467eb9c5cc7dcc157cd1d496f43a3547f4c13796c43a67992916f11fbc4d6c1')throw Error('Artifact hash changed');
           fs.writeFileSync('ops/sr271-recovery-api.mjs',code);
           const runner=zlib.gunzipSync(Buffer.from(fs.readFileSync('ops/sr271-source-runner.b64','utf8'),'base64'));
           if(crypto.createHash('sha256').update(runner).digest('hex')!=='5521bbeed6f6ca7b2eb494c2bd752e83916c8567f6203386106bd7425c3abe67')throw Error('Runner artifact changed');
