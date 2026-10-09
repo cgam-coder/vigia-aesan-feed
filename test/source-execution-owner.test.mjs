@@ -10,3 +10,12 @@ test('all recent and revision legacy jobs share native ownership arbitration whi
   for(const file of ['safety-gate-sync.yml','rapna-sync.yml','rasff-control.yml','oecd-historical-reconcile.yml','oecd-recent-freshness-retry.yml']){const yaml=readFileSync(new URL('../.github/workflows/'+file,import.meta.url),'utf8');const jobs=(yaml.match(/needs: \[writer_gate, runtime_target, native_owner(?:, current_parity)?\]/g)||[]).length;assert.ok(jobs>=1,file);assert.equal((yaml.match(/needs\.native_owner\.outputs\.legacy_allowed == 'true'/g)||[]).length,jobs,file);assert.match(yaml,/uses: \.\/\.github\/workflows\/source-execution-owner.yml/);}
   for(const file of ['update-feed.yml','update-full-feed.yml','freshness-watchdog.yml'])assert.doesNotMatch(readFileSync(new URL('../.github/workflows/'+file,import.meta.url),'utf8'),/needs\.native_owner/);
 });
+
+test('certified native execution retires redundant provider schedules but keeps publication and independent supervision',()=>{
+  for(const file of ['safety-gate-sync.yml','rapna-sync.yml','rasff-control.yml','oecd-historical-reconcile.yml','oecd-recent-freshness-retry.yml']){
+    const yaml=readFileSync(new URL('../.github/workflows/'+file,import.meta.url),'utf8');
+    assert.doesNotMatch(yaml,/\bschedule:|\bcron:/u,file);assert.match(yaml,/workflow_dispatch:/u,file);
+    assert.match(yaml,/source-execution-owner.yml/u,file);
+  }
+  for(const file of ['update-feed.yml','update-full-feed.yml','freshness-watchdog.yml'])assert.match(readFileSync(new URL('../.github/workflows/'+file,import.meta.url),'utf8'),/\bschedule:/u,file);
+});

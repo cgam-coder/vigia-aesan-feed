@@ -14,7 +14,8 @@ test("RASFF recent and reconcile lanes are independently serialized", () => {
 });
 
 test("RASFF reconcile cadence and budget can cover the measured 32k corpus with scheduling margin", () => {
-  assert.match(workflow, /cron: "17 \* \* \* \*"/u);
+  assert.doesNotMatch(workflow, /\bschedule:|\bcron:/u);
+  assert.match(workflow, /workflow_dispatch:/u);
   assert.match(workflow, /timeout-minutes: 360/u);
   assert.match(controller, /batchSize=20/u);
   assert.match(controller, /maxBatches = 2_000/u);

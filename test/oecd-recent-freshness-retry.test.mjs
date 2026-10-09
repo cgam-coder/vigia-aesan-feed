@@ -4,8 +4,9 @@ import test from "node:test";
 
 const workflow = readFileSync(new URL("../.github/workflows/oecd-recent-freshness-retry.yml", import.meta.url), "utf8");
 
-test("OECD freshness retry runs offset from the normal recent schedule", () => {
-  assert.match(workflow, /cron: "2,32 \* \* \* \*"/u);
+test("OECD freshness retry remains manual under certified native scheduling", () => {
+  assert.doesNotMatch(workflow, /\bschedule:|\bcron:/u);
+  assert.match(workflow, /workflow_dispatch:/u);
   assert.match(workflow, /group: vigia-oecd-recent/u);
   assert.match(workflow, /cancel-in-progress: false/u);
 });

@@ -61,8 +61,9 @@ process.exit(transport);
   } finally { rmSync(dir, { recursive:true, force:true }); }
 }
 
-test('scheduled serialization, bounded preflight, shell syntax and single mutation', () => {
-  assert.match(workflow, /schedule:\n\s+- cron: "7,37 \* \* \* \*"/);
+test('manual serialization, bounded preflight, shell syntax and single mutation', () => {
+  assert.doesNotMatch(workflow, /\bschedule:|\bcron:/u);
+  assert.match(workflow, /workflow_dispatch:/u);
   assert.match(workflow, /group: vigia-safety-gate-recent\n\s+cancel-in-progress: false/);
   assert.match(workflow, /timeout-minutes: 10/);
   assert.match(workflow, /name: Bounded read-plane and authorization preflight\n\s+timeout-minutes: 2/);
