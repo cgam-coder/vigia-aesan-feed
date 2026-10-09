@@ -1,55 +1,13 @@
-name: SR271 verified Runner14 and one durable known failed AESAN eligibility CAS no upload
+name: SR271 reviewed AESAN activation archived disarmed
 on:
   push:
     branches: [source-reliability/durable-recovery-20261009]
     paths: [.github/workflows/sr271-aesan-reviewed-activation.yml]
 permissions:
   contents: read
-concurrency:
-  group: sr271-aesan-reviewed-activation-20261009
-  cancel-in-progress: false
 jobs:
-  rearm_known_failure:
-    if: github.run_attempt == 1
+  archived:
     runs-on: ubuntu-24.04
-    timeout-minutes: 3
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - name: GET SELECT verify then one atomic CAS with preimages and unique commit marker no source sync
-        env:
-          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          RUN_ATTEMPT: ${{ github.run_attempt }}
-        run: |
-          node --input-type=module <<'NODE'
-          import {rearmReviewedAesanFailure} from './ops/sr271-reviewed-failure-rearm.mjs';
-          import crypto from 'node:crypto';
-          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f',database='55596003-1b90-4f66-aad8-decb21205f13',script='/workers/scripts/vigia-source-runner';
-          if(Date.now()>Date.parse('2026-10-09T09:34:00Z')||Number(process.env.RUN_ATTEMPT)!==1)throw Error('Runner preflight expired');
-          const report=(tag,value)=>console.log(tag+' '+JSON.stringify(value));
-          async function cf(path){const r=await fetch(root+path,{headers:{Authorization:'Bearer '+process.env.CF_TOKEN},signal:AbortSignal.timeout(25000)}),p=await r.json();if(!r.ok||!p.success)throw Error('Cloudflare GET failed '+path);return p.result;}
-          
-          import {gunzipSync} from 'node:zlib';
-          const expectedOld='835d6608-4b46-4d0c-bafc-318333b4653f',expectedHash='576b6daa14eaf0e6c71493340e8b4f207573075ca143be9761cc6ddc3b2d5d68',owner='sr271-aesan-reviewed-606-20261009',epoch=229;
-          async function query(sql,params=[]){const r=await fetch(root+'/d1/database/'+database+'/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql,params}),signal:AbortSignal.timeout(25000)}),p=await r.json();if(!r.ok||!p.success)throw Error('D1 statement unconfirmed');if(sql.startsWith('SELECT')&&p.result.some(x=>x.meta?.rows_written||x.meta?.changes))throw Error('SELECT wrote');return p.result[0];}
-          async function moduleHash(){const r=await fetch(root+script+'/content/v2',{headers:{Authorization:'Bearer '+process.env.CF_TOKEN},signal:AbortSignal.timeout(25000)});if(!r.ok)throw Error('Module GET failed');const form=await r.formData(),file=form.get('source-runner.mjs');if(!file||typeof file==='string')throw Error('Module missing');return crypto.createHash('sha256').update(new Uint8Array(await file.arrayBuffer())).digest('hex');}
-          
-          const after=await cf(script+'/deployments'),version=await cf(script+'/versions/'+after.deployments[0].versions[0].version_id),afterHash=await moduleHash();
-          if(after.deployments[0].versions.length!==1||after.deployments[0].versions[0].percentage!==100||version.number!==14||version.id!=='4aab2cc9-ea89-46e0-bfeb-ddecb8478a32'||afterHash!==expectedHash)throw Error('Runner14 drift; no rearm');
-          const control=(await query('SELECT owner_id,epoch,expires_at FROM source_reliability_control WHERE id=1')).results[0];
-          if(control.owner_id!==owner||control.epoch!==epoch||Date.parse(control.expires_at)<Date.now()+60000)throw Error('Owned fence expired; no rearm');
-          const rows=(await query("SELECT ordinal,manifest_json,committed_at FROM source_reliability_effects WHERE job_id='7eca0f35-ab72-417e-947e-3a0cd9add999' ORDER BY ordinal")).results;
-          const known=(await query("SELECT receipt_json FROM source_reliability_jobs WHERE id='7eca0f35-ab72-417e-947e-3a0cd9add999'")).results[0],receipt=JSON.parse(known.receipt_json);
-          const expectedCheck="INSERT INTO source_checks (source, checked_at, status, found_count, changed_count, error) VALUES (?, ?, 'degraded', 0, 0, ?)";
-          const noDomain=(write)=>{const sql=write.sql.replace(/\s+/gu,' ').trim();return sql.startsWith('INSERT INTO source_sync_state (')||sql.startsWith('SELECT CASE WHEN EXISTS (SELECT 1 FROM source_sync_locks ')||sql===expectedCheck&&write.params.length===3&&write.params[0]==='AESAN'&&write.params[2]===receipt.reason;};
-          if(rows.length!==3||rows.some(e=>!e.committed_at||JSON.parse(e.manifest_json).writes.some(w=>!noDomain(w))))throw Error('Confirmed state/check-only effects required; no domain replay');
-          report('R13_REARM_PREFLIGHT',{at:new Date().toISOString(),version:version.id,hash:afterHash,control,oldEffectCount:rows.length,knownOutcome:receipt.outcome,noDomainEffects:true,zeroWrite:true});
-          const db={prepare(sql){return{sql,params:[],bind(...params){this.params=params;return this;},async first(){return(await query(this.sql,this.params)).results[0]??null;}};},async batch(ss){const r=await fetch(root+'/d1/database/'+database+'/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({batch:ss.map(s=>({sql:s.sql,params:s.params}))}),signal:AbortSignal.timeout(25000)}),p=await r.json();if(!r.ok||!p.success||p.result.some(x=>!x.success||x.meta?.served_by_primary!==true))throw Error('Review transaction outcome unconfirmed');return p.result;}};
-          const review=await rearmReviewedAesanFailure(db,{owner,epoch},new Date().toISOString(),'e0bc9bd68a8436e9b8effc8ed6911bd222df7f49',expectedHash);
-          report('R13_REARM_VERIFIED',review);
-          try{await query('UPDATE source_reliability_control SET owner_id=NULL,expires_at=NULL WHERE id=1 AND owner_id=? AND epoch=?',[owner,epoch]);}catch(e){report('R13_RELEASE_UNCONFIRMED',{name:e.name});}
-          const released=(await query('SELECT owner_id,epoch,expires_at,state_json FROM source_reliability_control WHERE id=1')).results[0],attempt=JSON.parse(released.state_json).attempts.AESAN;delete released.state_json;
-          if(released.owner_id===owner||attempt.id!=='7eca0f35-ab72-417e-947e-3a0cd9add999'||attempt.outcome!=='failed'||attempt.nextEligibleAt!==null)throw Error('Review release not confirmed; do not repeat upload');
-          report('R13_UPLOAD_COMPLETE',{at:new Date().toISOString(),released,attempt,sourceEffectsNotReplayed:true,naturalJobRequired:true});
-          NODE
+      - name: Completed operations cannot be replayed
+        run: echo "Runner14 upload completed once. AESAN known failure CAS committed once and fence released. Archived; no credentials or mutations."
