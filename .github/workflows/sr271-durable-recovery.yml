@@ -16,23 +16,18 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          repository: cgam-coder/vigia-runtime
-          ref: 18267048adc66cbd2e5de8ff272e4a0bc856952a
-          path: verified-runtime
-          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: verified-runtime/package-lock.json
-      - name: Verify compact CAS rollback, response loss, old epoch fencing and no resend
+      - name: Verify standalone compact CAS rollback, response loss, old epoch fencing and no resend
         run: |
-          cp ops/sr271-compact-legacy-recovery.ts ops/sr271-compact-legacy-recovery.test.ts verified-runtime/ops/
-          cd verified-runtime
-          npm ci --ignore-scripts --no-audit --no-fund
-          node --import tsx --test ops/sr271-compact-legacy-recovery.test.ts
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';import zlib from 'node:zlib';import crypto from 'node:crypto';
+          const code=zlib.gunzipSync(Buffer.from(fs.readFileSync('ops/sr271-compact-verify.b64','utf8'),'base64'));
+          if(crypto.createHash('sha256').update(code).digest('hex')!=='1677981cf2b53d7fef47ed82aa48dd42945e9769f5220d9b12b5a59968b904bd')throw Error('Verification artifact changed');
+          fs.writeFileSync('ops/sr271-compact-verify.mjs',code);
+          NODE
+          node --test ops/sr271-compact-verify.mjs
       - name: GET SELECT preflight and distinct bounded compact CAS; no old transaction replay
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

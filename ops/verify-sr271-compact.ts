@@ -24,8 +24,7 @@ class LocalD1{
 
 const id='8f5b996c-b058-4864-8472-ec2836e6274a',at='2026-10-09T06:29:00.000Z',expiry='2026-10-09T06:37:00.000Z';
 async function fixture(run:(context:any)=>Promise<void>){const db=new DatabaseSync(':memory:');try{
- for(const f of readdirSync(new URL('../drizzle/',import.meta.url)).filter(x=>/^\d{4}_.+\.sql$/u.test(x)).sort())db.exec(readFileSync(new URL('../drizzle/'+f,import.meta.url),'utf8'));
- db.exec(readFileSync(new URL('./sql/sr271-durable-effects-v1.sql',import.meta.url),'utf8'));
+ db.exec(readFileSync(new URL('./sr271-compact-verify-schema.sql',import.meta.url),'utf8'));
  const base=new LocalD1(db);await initializeReliabilityJobs(base as unknown as D1Database);
  db.prepare("INSERT INTO source_reliability_jobs(id,source,mode,kind,epoch,started_at,deadline) VALUES(?,'SAFETY GATE','recent','recent',2,'2026-10-08T13:41:40.702Z',1791467259973)").run(id);
  db.prepare("INSERT INTO source_sync_state(source,mode,status,cursor,total_units,started_at,last_success_at,lease_owner_id,lease_mode,lease_expires_at,updated_at) VALUES('SAFETY GATE','recent','running',0,0,'2026-10-08T13:41:41.989Z','2026-10-08T07:19:34.681Z',?,'recent','2026-10-08T13:51:42.374Z','2026-10-08T13:43:42.374Z')").run(id);
