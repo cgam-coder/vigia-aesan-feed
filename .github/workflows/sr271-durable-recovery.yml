@@ -16,16 +16,16 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Fresh complete coverage, legacy metadata reconciliation and one runner update
+      - name: Verify completed recoveries and activate the journaled runner without repeating legacy writes
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
-          RECOVERY_PHASE: legacy
+          RECOVERY_PHASE: activate
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';import zlib from 'node:zlib';import crypto from 'node:crypto';
           const code=zlib.gunzipSync(Buffer.from(fs.readFileSync('ops/sr271-recovery-api.b64','utf8'),'base64'));
-          if(crypto.createHash('sha256').update(code).digest('hex')!=='24d99651f845e3a0cc829930380ec6351dfed7413f8ed7ff189b71adf25d11d9')throw Error('Artifact hash changed');
+          if(crypto.createHash('sha256').update(code).digest('hex')!=='2c49d90efac171a3919563735094dfab0aa2e4194dbe0743163f793d38857117')throw Error('Artifact hash changed');
           fs.writeFileSync('ops/sr271-recovery-api.mjs',code);
           const runner=zlib.gunzipSync(Buffer.from(fs.readFileSync('ops/sr271-source-runner.b64','utf8'),'base64'));
           if(crypto.createHash('sha256').update(runner).digest('hex')!=='5521bbeed6f6ca7b2eb494c2bd752e83916c8567f6203386106bd7425c3abe67')throw Error('Runner artifact changed');
