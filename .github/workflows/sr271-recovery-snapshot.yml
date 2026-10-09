@@ -1,4 +1,4 @@
-name: SR271 journal recovery preflight authenticated read only
+name: SR271 journal recovery deployment and natural receipt check
 on:
   push:
     branches: [source-reliability/recovery-snapshot-20261009]
