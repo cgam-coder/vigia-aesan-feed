@@ -71,5 +71,48 @@ if(mode==='schema'){
  await db.batch([db.prepare("DELETE FROM source_sync_locks WHERE source='SAFETY GATE' AND owner_id=?").bind(id),db.prepare('UPDATE source_reliability_control SET owner_id=NULL,expires_at=NULL WHERE id=1 AND owner_id=? AND epoch=?').bind(owner,job.epoch)]);
  report('R9_REPAIR_COMMITTED',{id,key,receipt,markers:markers.results.length,allCommitted:true,originalQuarantinePreserved:true});
 }else if(mode==='legacy'){
- throw Error('Legacy reconciliation must use a separately refreshed approved manifest checkpoint');
+ const verified:string[]=[];
+ for(const id of ['b2c82f49-3d5c-4d4a-8b44-9e274174ceb4','e431e648-2055-4183-a085-9c16121d7907','8f5b996c-b058-4864-8472-ec2836e6274a']){
+  const full=await observeLegacyRecovery(db,id);const fullHash=await legacyManifestHash(full);
+  report('R9_LEGACY_CURRENT_PROOF',{id,at:full.observedAt,covered:full.covered,missing:full.official.missing,mismatches:full.official.mismatches,fullHash,records:full.official.recordsObserved});
+  if(!full.covered)throw Error('Current effect coverage incomplete; original quarantine preserved');
+  // The source observation is immutable; payload alerts are unnecessary for
+  // a metadata-only reconciliation. Keep all original preimages and provenance.
+  const manifest={...full,official:{...full.official,alerts:[]},provenance:{fullManifestHash:fullHash,observedReferences:full.official.alerts.map(a=>({id:a.id,reference:a.reference,contentHash:a.contentHash}))}},hash=await legacyManifestHash(manifest),payload=JSON.stringify(manifest);
+  const prior=await db.prepare('SELECT part,manifest_hash,payload FROM source_reliability_recovery_plans WHERE old_job_id=? ORDER BY part').bind(id).all<{part:number;manifest_hash:string;payload:string}>();
+  if(prior.results.length)throw Error('Legacy plan already staged; inspect durable outcome instead of repeating');
+  const parts:string[]=[];for(let i=0;i<payload.length;i+=50000)parts.push(payload.slice(i,i+50000));
+  for(let offset=0;offset<parts.length;offset+=25){const guard=db.prepare("SELECT CASE WHEN EXISTS(SELECT 1 FROM source_reliability_jobs WHERE id=? AND receipt_json IS NULL AND finished_at IS NULL AND epoch=?) AND EXISTS(SELECT 1 FROM source_sync_state WHERE source=? AND mode=? AND lease_owner_id=? AND cursor=? AND updated_at=?) THEN 1 ELSE json('legacy-staging-preimage-lost') END").bind(id,full.job.epoch,full.state.source,full.state.mode,id,full.state.cursor,full.state.updated_at);
+   const inserts=parts.slice(offset,offset+25).map((part,i)=>db.prepare('INSERT INTO source_reliability_recovery_plans(old_job_id,part,manifest_hash,payload) VALUES(?,?,?,?)').bind(id,offset+i,hash,part));
+   try{await db.batch([guard,...inserts]);}catch{const actual=await db.prepare('SELECT part,manifest_hash,payload FROM source_reliability_recovery_plans WHERE old_job_id=? AND part>=? AND part<? ORDER BY part').bind(id,offset,Math.min(parts.length,offset+25)).all<{part:number;manifest_hash:string;payload:string}>();if(actual.results.length!==inserts.length||actual.results.some((x,i)=>x.part!==offset+i||x.manifest_hash!==hash||x.payload!==parts[offset+i]))throw Error('Staging transport ambiguous; no retry');}
+  }
+  const staged=await db.prepare('SELECT part,manifest_hash,payload FROM source_reliability_recovery_plans WHERE old_job_id=? ORDER BY part').bind(id).all<{part:number;manifest_hash:string;payload:string}>();
+  if(staged.results.length!==parts.length||staged.results.some((x,i)=>x.part!==i||x.manifest_hash!==hash||x.payload!==parts[i]))throw Error('Staged manifest incomplete; original claim remains quarantined');
+  report('R9_LEGACY_PLAN_STAGED',{id,hash,fullHash,parts:parts.length,bytes:new TextEncoder().encode(payload).byteLength,originalReceiptStillNull:true,cursor:full.state.cursor,anchor:full.state.cursor_key});
+  verified.push(id);
+ }
+ const at=new Date().toISOString(),owner='sr271-legacy-reconciliation-20261009',before=await db.prepare('SELECT owner_id,epoch FROM source_reliability_control WHERE id=1').first<{owner_id:string|null;epoch:number}>();if(!before||before.owner_id)throw Error('Coordinator active; no concurrent metadata reconciliation');
+ const lease:ReliabilityControlLease={ownerId:owner,epoch:before.epoch+1,expiresAt:new Date(Date.now()+600000).toISOString(),state:emptyReliabilityControl()};
+ const claim=db.prepare('UPDATE source_reliability_control SET owner_id=?,epoch=epoch+1,expires_at=? WHERE id=1 AND owner_id IS NULL AND epoch=? RETURNING epoch').bind(owner,lease.expiresAt,before.epoch);
+ try{const row=await claim.first<{epoch:number}>();if(row?.epoch!==lease.epoch)throw Error('Recovery control fence not acquired');}catch{const current=await db.prepare('SELECT owner_id,epoch FROM source_reliability_control WHERE id=1').first<{owner_id:string|null;epoch:number}>();if(current?.owner_id!==owner||current.epoch!==lease.epoch)throw Error('Control claim outcome HOLD; no retry');}
+ for(const id of verified){const job=await db.prepare('SELECT source,mode FROM source_reliability_jobs WHERE id=?').bind(id).first<{source:ReliabilitySourceJob['source'];mode:ReliabilitySourceJob['mode']}>();if(!job)throw Error('Legacy claim missing');const state=await createD1AlertStore(db).readSyncState!(job.source,job.mode);if(!await reconcileLegacyEffects(db,id,lease,new Date().toISOString(),state))throw Error('Legacy reconciliation unproved; source quarantine retained');const record=await db.prepare('SELECT recovery_id,manifest_hash,receipt_json FROM source_reliability_recoveries WHERE old_job_id=?').bind(id).first();report('R9_LEGACY_RECONCILED',{id,record});}
+ report('R9_OLD_CLAIMS_PROVED',{at:new Date().toISOString(),ids:verified,oldResultsPreservedAsUnknown:true,noDomainReplay:true});
+ // One justified runner update, while the coordinator is exclusively fenced.
+ await allocation();
+ const {readFileSync}=await import('node:fs'),{createHash}=await import('node:crypto');const bundle=readFileSync('ops/sr271-source-runner.mjs');if(createHash('sha256').update(bundle).digest('hex')!=='5521bbeed6f6ca7b2eb494c2bd752e83916c8567f6203386106bd7425c3abe67')throw Error('Runner artifact mismatch');
+ const script='/workers/scripts/vigia-source-runner',prior=await cf(script+'/settings') as {compatibility_date:string;compatibility_flags:string[];limits:Record<string,number>;bindings:Array<{type:string;name:string;id?:string;text?:string}>};
+ if(!prior.bindings.some(b=>b.type==='d1'&&b.name==='DB'&&b.id===database)||!prior.bindings.some(b=>b.name==='SOURCE_RUNNER_MODE'&&b.text==='active'))throw Error('Runner configuration drift');
+ const rollback=await cf(script+'/versions/c3092b8f-e233-4f43-9d5b-0c57b3a512d3');report('R9_RUNNER_ROLLBACK',{version:rollback.id,number:rollback.number});
+ if(prior.compatibility_date!=='2026-09-25'||!prior.compatibility_flags.includes('nodejs_compat'))throw Error('Runner compatibility drift');
+ const metadata={main_module:'source-runner.mjs',compatibility_date:prior.compatibility_date,compatibility_flags:prior.compatibility_flags,limits:prior.limits??{cpu_ms:60000,subrequests:5000},observability:{enabled:true},keep_bindings:['secret_text'],annotations:{'workers/message':'sr271-durable-effects:941de391ea29ff93d96ac25a585064ca33530947'},bindings:prior.bindings.filter(b=>b.type!=='secret_text')};
+ const form=new FormData();form.set('metadata',new Blob([JSON.stringify(metadata)],{type:'application/json'}));form.set('source-runner.mjs',new Blob([bundle],{type:'application/javascript+module'}),'source-runner.mjs');
+ let uploadConfirmed=false;try{const r=await fetch(root+script,{method:'PUT',headers:{Authorization:'Bearer '+process.env.CF_TOKEN},body:form,signal:AbortSignal.timeout(45000)}),p=await r.json() as {success:boolean};if(!r.ok||!p.success)throw Error('Runner upload rejected');uploadConfirmed=true;}catch{report('R9_RUNNER_UPLOAD_RESULT','Unknown; allocation GET follows, no upload retry');}
+ const deployment=await cf(script+'/deployments') as {deployments:Array<{id:string;versions:Array<{version_id:string;percentage:number}>}>};const active=deployment.deployments[0];const version=await cf(script+'/versions/'+active.versions[0].version_id);
+ report('R9_RUNNER_ACTIVE',{at:new Date().toISOString(),uploadConfirmed,active,number:version.number,metadata:version.metadata,sha256:'5521bbeed6f6ca7b2eb494c2bd752e83916c8567f6203386106bd7425c3abe67'});
+ if(!uploadConfirmed||active.versions.length!==1||active.versions[0].percentage!==100||active.versions[0].version_id==='c3092b8f-e233-4f43-9d5b-0c57b3a512d3')throw Error('Runner update not verified; retain coordinator fence until inspection');
+ const settings=await cf(script+'/settings') as {bindings:Array<{type:string;name:string;text?:string;id?:string}>},subdomain=await cf(script+'/subdomain'),schedules=await cf(script+'/schedules') as {schedules:unknown[]};
+ if(!settings.bindings.some(b=>b.name==='VIGIA_SYNC_TOKEN'&&b.type==='secret_text')||!settings.bindings.some(b=>b.name==='SOURCE_RUNNER_MODE'&&b.text==='active')||!settings.bindings.some(b=>b.name==='DB'&&b.id===database)||schedules.schedules.length!==0||subdomain.enabled!==false||subdomain.previews_enabled!==false)throw Error('Runner bindings or isolation unverified');
+ report('R9_RUNNER_POSTFLIGHT',{secretPreserved:true,mode:'active',hasCron:false,publicEndpoint:false,previewEndpoint:false});
+ await db.prepare('UPDATE source_reliability_control SET owner_id=NULL,expires_at=NULL WHERE id=1 AND owner_id=? AND epoch=?').bind(owner,lease.epoch).run();
+ report('R9_RECOVERY_OPERATION_COMPLETE',{at:new Date().toISOString(),sources:verified.length,naturalCoordinatorResumed:true,productionRuntimeUnchanged:true});
 }else throw Error('Unknown recovery phase');

@@ -1,4 +1,4 @@
-name: SR271 distinct absent Safety Gate effects recovery
+name: SR271 proved legacy reconciliation and durable runner activation
 on:
   push:
     branches: [source-reliability/durable-recovery-20261009]
@@ -16,19 +16,19 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: New fenced CAS effects with immutable preimages and durable commit receipts
+      - name: Fresh complete coverage, legacy metadata reconciliation and one runner update
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
-          RECOVERY_PHASE: effects
-          RECOVERY_OWNER: sr271-effects-recovery-20261009
-          REPAIR_JOB_ID: 6eaf629f-e7f9-476f-bd6a-7a2c6d302165
+          RECOVERY_PHASE: legacy
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';import zlib from 'node:zlib';import crypto from 'node:crypto';
           const code=zlib.gunzipSync(Buffer.from(fs.readFileSync('ops/sr271-recovery-api.b64','utf8'),'base64'));
-          if(crypto.createHash('sha256').update(code).digest('hex')!=='814c6049cfeb73d8b21b20a22a203a0ef37701fd431754e45e661e33c5bb4e59')throw Error('Artifact hash changed');
+          if(crypto.createHash('sha256').update(code).digest('hex')!=='70209cd84d5cd3520deb3c854fb4777b2ce43794960ddc101d57bfe2c339336f')throw Error('Artifact hash changed');
           fs.writeFileSync('ops/sr271-recovery-api.mjs',code);
-          process.env.SCHEMA_SQL=fs.readFileSync('ops/sr271-durable-effects-v1.sql','utf8');
+          const runner=zlib.gunzipSync(Buffer.from(fs.readFileSync('ops/sr271-source-runner.b64','utf8'),'base64'));
+          if(crypto.createHash('sha256').update(runner).digest('hex')!=='5521bbeed6f6ca7b2eb494c2bd752e83916c8567f6203386106bd7425c3abe67')throw Error('Runner artifact changed');
+          fs.writeFileSync('ops/sr271-source-runner.mjs',runner);
           await import('./ops/sr271-recovery-api.mjs');
           NODE
