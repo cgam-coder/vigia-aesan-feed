@@ -41,3 +41,21 @@ jobs:
           }
           console.log('R9_COMPLETE '+JSON.stringify({at:new Date().toISOString(),zeroWrite:true}));
           NODE
+      - name: Diagnose immutable Safety Gate preimage guards in SELECT-only batches
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/d1/database/55596003-1b90-4f66-aad8-decb21205f13/query',id='8f5b996c-b058-4864-8472-ec2836e6274a';
+          import crypto from 'node:crypto';
+          if(Date.now()>Date.parse('2026-10-09T06:45:00Z'))throw Error('Diagnostic expired');
+          async function read(body){const statements=body.batch??[body];if(statements.some(s=>!s.sql.startsWith('SELECT ')))throw Error('READ only');const r=await fetch(root,{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(25000)}),p=await r.json();if(!r.ok||!p.success||!p.result||p.result.some(x=>!x.success))throw Error(JSON.stringify({http:r.status,errors:p.errors??[],resultErrors:p.result?.filter(x=>!x.success).map(x=>x.error)}));if(p.result.some(x=>x.meta?.changes||x.meta?.rows_written))throw Error('READ unexpectedly wrote');return p.result;}
+          const parts=[];for(let offset=0;offset<600;offset+=75){const r=(await read({sql:'SELECT part,manifest_hash,payload FROM source_reliability_recovery_plans WHERE old_job_id=? ORDER BY part LIMIT 75 OFFSET ?',params:[id,offset]}))[0].results;parts.push(...r);if(r.length<75)break;}
+          const raw=parts.map(x=>x.payload).join(''),hash=crypto.createHash('sha256').update(raw).digest('hex');if(hash!=='33292ff68a80d837d9b98803d37414cb90352fa1571a33e561d7bd28d8520074'||parts.some((p,i)=>p.part!==i||p.manifest_hash!==hash))throw Error('Immutable plan differs');
+          const m=JSON.parse(raw),guards=[];
+          for(const p of m.preimages){const names=Object.keys(p.rows[0]??{});let sql,params;if(!names.length){sql='SELECT NOT EXISTS('+p.sql+') AS matches';params=p.params;}else{const q=x=>'"'+x.replaceAll('"','""')+'"',arrays=[];for(let i=0;i<names.length;i+=16)arrays.push('json_array('+names.slice(i,i+16).map(q).join(',')+')');const expected=JSON.stringify(p.rows.map(r=>{const c=[];for(let i=0;i<names.length;i+=16)c.push(names.slice(i,i+16).map(k=>r[k]));return c;}));sql='SELECT (SELECT json_group_array(json_array('+arrays.join(',')+')) FROM ('+p.sql+')) IS ? AS matches';params=[...p.params,expected];}guards.push({sql,params});}
+          console.log('R9_SG_DIAGNOSTIC_PLAN '+JSON.stringify({at:new Date().toISOString(),hash,preimages:guards.length,bytes:Buffer.byteLength(JSON.stringify({batch:guards}))}));
+          const failures=[];for(let offset=0;offset<guards.length;offset+=8){const results=await read({batch:guards.slice(offset,offset+8)});results.forEach((r,i)=>{if(r.results[0]?.matches!==1)failures.push({index:offset+i,sql:m.preimages[offset+i].sql,rows:m.preimages[offset+i].rows.length});});}
+          console.log('R9_SG_DIAGNOSTIC_PREIMAGES '+JSON.stringify({at:new Date().toISOString(),failures,allMatch:!failures.length,zeroWrite:true}));
+          try{const results=await read({batch:guards});console.log('R9_SG_DIAGNOSTIC_LARGE_BATCH '+JSON.stringify({accepted:true,count:results.length,allMatch:results.every(r=>r.results[0]?.matches===1),zeroWrite:true}));}catch(error){console.log('R9_SG_DIAGNOSTIC_LARGE_BATCH '+JSON.stringify({accepted:false,reason:error.message,zeroWrite:true}));}
+                    NODE
