@@ -1,0 +1,55 @@
+name: SR271 recovery authenticated GET SELECT snapshot
+on:
+  push:
+    branches: [source-reliability/recovery-snapshot-20261009]
+permissions:
+  contents: read
+concurrency:
+  group: sr271-recovery-snapshot-20261009
+  cancel-in-progress: false
+jobs:
+  snapshot:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Authenticated Cloudflare GET and D1 SELECT only
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f',db='55596003-1b90-4f66-aad8-decb21205f13',base='https://vigia-runtime.c-gamiz93.workers.dev';
+          if(Date.now()>Date.parse('2026-10-09T06:10:00Z'))throw Error('snapshot expired');
+          async function cf(path){const r=await fetch(root+path,{headers:{Authorization:'Bearer '+process.env.CF_TOKEN},signal:AbortSignal.timeout(25000)});const p=await r.json();if(!r.ok||!p.success)throw Error('CF read failed '+path+' '+r.status);return p.result;}
+          for(const service of ['vigia-runtime','vigia-source-runner']){
+           const deployments=await cf('/workers/scripts/'+service+'/deployments'),active=deployments.deployments[0],versions=[];
+           for(const v of active.versions)versions.push({allocation:v,metadata:await cf('/workers/scripts/'+service+'/versions/'+v.version_id)});
+           const settings=await cf('/workers/scripts/'+service+'/settings'),schedule=await cf('/workers/scripts/'+service+'/schedules');
+           console.log('R9_ALLOCATION '+JSON.stringify({at:new Date().toISOString(),service,active,versions:versions.map(x=>({allocation:x.allocation,number:x.metadata.number,metadata:x.metadata.metadata})),rollback:deployments.deployments.slice(1,3),schedule,bindings:settings.bindings?.filter(x=>['d1','service','plain_text'].includes(x.type)).filter(x=>x.type!=='plain_text'||/MODE|GATE|DELTA/.test(x.name))}));
+          }
+          for(const path of ['/api/source-reliability?observe=1','/api/freshness?observe=1','/api/safety-gate/sync?observe=1','/api/rasff/sync?observe=1','/api/oecd/sync?observe=1']){
+           const r=await fetch(base+path,{headers:{Authorization:'Bearer '+process.env.SYNC_TOKEN},signal:AbortSignal.timeout(25000)}),p=await r.json();if(!r.ok)throw Error('native GET '+r.status);if(p.state)delete p.state.ownershipFingerprint;console.log('R9_NATIVE '+JSON.stringify({at:new Date().toISOString(),path,body:p}));
+          }
+          const sqls=[
+          "SELECT name,sql FROM sqlite_master WHERE type='table' AND (name LIKE '%reliab%' OR name LIKE '%sync%' OR name LIKE '%revision%' OR name LIKE '%migration%' OR name IN ('alerts','alert_versions','source_checks','alert_source_identities','alert_aliases','alert_dimensions','alert_countries','alert_risk_types')) ORDER BY name",
+          "SELECT owner_id,expires_at,epoch,state_json FROM source_reliability_control WHERE id=1",
+          "SELECT * FROM source_reliability_jobs WHERE finished_at IS NULL OR started_at>='2026-10-09T00:00:00Z' ORDER BY started_at",
+          "SELECT * FROM source_sync_locks",
+          "SELECT * FROM source_sync_state",
+          "SELECT * FROM source_revision_certifications",
+          "SELECT source,COUNT(*) AS total,MAX(updated_at) AS last_updated,MAX(detected_at) AS last_detected FROM alerts GROUP BY source",
+          "SELECT id,reference,content_hash,version_count,published_at,detected_at,updated_at FROM alerts WHERE source='OECD' AND reference='EN/US/27022'",
+          "SELECT source,COUNT(*) AS total,MIN(checked_at) AS earliest,MAX(checked_at) AS latest,SUM(changed_count) AS changed FROM source_checks WHERE (source='SAFETY GATE' AND checked_at>='2026-10-08T13:41:39Z') OR (source='OECD' AND checked_at>='2026-10-08T15:41:29Z') OR (source='RASFF' AND checked_at>='2026-10-08T16:16:40Z') GROUP BY source",
+          "SELECT a.source,COUNT(*) AS versions_after FROM alert_versions v JOIN alerts a ON a.id=v.alert_id WHERE (a.source='SAFETY GATE' AND v.detected_at>='2026-10-08T13:41:39Z') OR (a.source='OECD' AND v.detected_at>='2026-10-08T15:41:29Z') OR (a.source='RASFF' AND v.detected_at>='2026-10-08T16:16:40Z') GROUP BY a.source",
+          "SELECT id,reference,content_hash,version_count,published_at,detected_at,updated_at FROM alerts WHERE source='SAFETY GATE' AND (detected_at>='2026-10-08T13:41:39Z' OR updated_at>='2026-10-08T13:41:39Z') ORDER BY id"
+          ];
+          for(const sql of sqls){
+           if(!sql.startsWith('SELECT '))throw Error('SELECT only');
+           const r=await fetch(root+'/d1/database/'+db+'/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql}),signal:AbortSignal.timeout(25000)}),p=await r.json();
+           if(!r.ok||!p.success||p.result.some(x=>!x.success||x.meta?.changes||x.meta?.rows_written))throw Error('SELECT evidence unconfirmed');
+           for(const row of p.result.flatMap(x=>x.results))if(row.state_json){const s=JSON.parse(row.state_json);delete s.ownershipFingerprint;row.state_json=JSON.stringify(s);}
+           console.log('R9_SELECT '+JSON.stringify({at:new Date().toISOString(),sql,data:p}));
+          }
+          console.log('R9_COMPLETE '+JSON.stringify({at:new Date().toISOString(),zeroWrite:true}));
+                    NODE
