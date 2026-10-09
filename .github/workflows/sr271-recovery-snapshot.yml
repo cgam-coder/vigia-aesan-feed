@@ -32,7 +32,8 @@ jobs:
            const r=await fetch(base+path,{headers:{Authorization:'Bearer '+process.env.SYNC_TOKEN},signal:AbortSignal.timeout(25000)}),p=await r.json();if(!r.ok)throw Error('native GET '+r.status);if(p.state)delete p.state.ownershipFingerprint;console.log('R9_NATIVE '+JSON.stringify({at:new Date().toISOString(),path,body:p}));
           }
           const sqls=[
-          "SELECT name,sql FROM sqlite_master WHERE type='table' AND (name LIKE '%reliab%' OR name LIKE '%sync%' OR name LIKE '%revision%' OR name LIKE '%migration%' OR name IN ('alerts','alert_versions','source_checks','alert_source_identities','alert_aliases','alert_dimensions','alert_countries','alert_risk_types')) ORDER BY name",
+          "SELECT * FROM d1_migrations ORDER BY id",
+          "SELECT name,sql FROM sqlite_master WHERE type='table' AND (name LIKE '%reliab%' OR name LIKE '%sync%' OR name LIKE '%revision%' OR name LIKE '%migration%' OR name LIKE 'alert_%' OR name IN ('alerts','alert_versions','source_checks','alert_source_identities','alert_aliases','alert_dimensions','alert_countries','alert_risk_types')) ORDER BY name",
           "SELECT owner_id,expires_at,epoch,state_json FROM source_reliability_control WHERE id=1",
           "SELECT * FROM source_reliability_jobs WHERE finished_at IS NULL OR started_at>='2026-10-09T00:00:00Z' ORDER BY started_at",
           "SELECT * FROM source_sync_locks",
@@ -40,6 +41,7 @@ jobs:
           "SELECT * FROM source_revision_certifications",
           "SELECT source,COUNT(*) AS total,MAX(updated_at) AS last_updated,MAX(detected_at) AS last_detected FROM alerts GROUP BY source",
           "SELECT id,reference,content_hash,version_count,published_at,detected_at,updated_at FROM alerts WHERE source='OECD' AND reference='EN/US/27022'",
+          "SELECT * FROM source_checks WHERE (source='SAFETY GATE' AND checked_at BETWEEN '2026-10-08T13:41:39Z' AND '2026-10-08T13:51:43Z') OR (source='OECD' AND checked_at BETWEEN '2026-10-08T15:41:29Z' AND '2026-10-08T15:50:43Z') OR (source='RASFF' AND checked_at BETWEEN '2026-10-08T16:16:40Z' AND '2026-10-08T16:25:46Z') ORDER BY checked_at",
           "SELECT source,COUNT(*) AS total,MIN(checked_at) AS earliest,MAX(checked_at) AS latest,SUM(changed_count) AS changed FROM source_checks WHERE (source='SAFETY GATE' AND checked_at>='2026-10-08T13:41:39Z') OR (source='OECD' AND checked_at>='2026-10-08T15:41:29Z') OR (source='RASFF' AND checked_at>='2026-10-08T16:16:40Z') GROUP BY source",
           "SELECT a.source,COUNT(*) AS versions_after FROM alert_versions v JOIN alerts a ON a.id=v.alert_id WHERE (a.source='SAFETY GATE' AND v.detected_at>='2026-10-08T13:41:39Z') OR (a.source='OECD' AND v.detected_at>='2026-10-08T15:41:29Z') OR (a.source='RASFF' AND v.detected_at>='2026-10-08T16:16:40Z') GROUP BY a.source",
           "SELECT id,reference,content_hash,version_count,published_at,detected_at,updated_at FROM alerts WHERE source='SAFETY GATE' AND (detected_at>='2026-10-08T13:41:39Z' OR updated_at>='2026-10-08T13:41:39Z') ORDER BY id"
@@ -52,4 +54,4 @@ jobs:
            console.log('R9_SELECT '+JSON.stringify({at:new Date().toISOString(),sql,data:p}));
           }
           console.log('R9_COMPLETE '+JSON.stringify({at:new Date().toISOString(),zeroWrite:true}));
-                    NODE
+          NODE
