@@ -1,30 +1,12 @@
-name: SR271 cancel superseded readonly observer only
+name: SR271 superseded observer cancellation disarmed
 on:
   push:
     branches: [source-reliability/recovery-snapshot-20261009]
     paths: [.github/workflows/sr271-observer-handoff.yml]
 permissions:
   contents: read
-  actions: write
 jobs:
-  handoff:
-    if: github.run_attempt == 1
+  disarmed:
     runs-on: ubuntu-24.04
-    timeout-minutes: 3
     steps:
-      - name: Read exact old and new observers cancel old once then verify
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_ATTEMPT: ${{ github.run_attempt }}
-        run: |
-          node --input-type=module <<'NODE'
-          if(Number(process.env.RUN_ATTEMPT)!==1||Date.now()>Date.parse('2026-10-09T10:10:00Z'))throw Error('Cancellation checkpoint expired');
-          const root='https://api.github.com/repos/cgam-coder/vigia-aesan-feed/actions/runs/',headers={Authorization:'Bearer '+process.env.GH_TOKEN,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
-          async function get(id){const r=await fetch(root+id,{headers,signal:AbortSignal.timeout(20000)});if(!r.ok)throw Error('Read blocked '+r.status);return r.json();}
-          const old=await get('37908621569'),next=await get('37914623749');
-          console.log('SR271_OBSERVER_HANDOFF_PREFLIGHT '+JSON.stringify({old:{id:old.id,status:old.status,head:old.head_sha},next:{id:next.id,status:next.status,head:next.head_sha}}));
-          if(old.head_sha!=='b68dba9f66d94e8f87d1b8c461ce818c53d5742a'||next.head_sha!=='ec41c5550489ed9bce960c781b6ea89d8d034ce2'||!old.path.endsWith('sr271-bounded-certification.yml')||!next.path.endsWith('sr271-bounded-certification.yml'))throw Error('Readonly observer identity drift');
-          if(old.status!=='completed'){try{const r=await fetch(root+'37908621569/cancel',{method:'POST',headers,signal:AbortSignal.timeout(20000)});console.log('SR271_OBSERVER_CANCEL_ONCE '+JSON.stringify({id:old.id,http:r.status,sourceMutation:false}));if(![202,409].includes(r.status))throw Error('Cancellation rejected '+r.status);}catch(e){console.log('SR271_OBSERVER_CANCEL_UNCONFIRMED '+JSON.stringify({name:e.name,neverRepeatPost:true}));}}
-          const deadline=Date.now()+90000;let a,b;for(;;){a=await get('37908621569');b=await get('37914623749');if(a.status==='completed')break;if(Date.now()>deadline)throw Error('Previous readonly observer cancellation not yet confirmed; consult only');await new Promise(r=>setTimeout(r,5000));}
-          console.log('SR271_OBSERVER_HANDOFF_VERIFIED '+JSON.stringify({at:new Date().toISOString(),old:{id:a.id,status:a.status,conclusion:a.conclusion},next:{id:b.id,status:b.status},productionWrites:0,deadlineUnchanged:'2026-10-09T14:45:28.304Z'}));
-          NODE
+      - run: echo 'Previous readonly observer cancelled and replacement running; no action token or production credentials.'
