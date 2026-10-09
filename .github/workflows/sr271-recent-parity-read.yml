@@ -1,0 +1,21 @@
+name: SR271 recent parity missing identities primary SELECT-only diagnostic
+on:
+  push:
+    branches: [source-reliability/recovery-snapshot-20261009]
+    paths: [.github/workflows/sr271-recent-parity-read.yml, ops/sr271-recent-parity-read.mjs]
+permissions:
+  contents: read
+jobs:
+  read:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Primary SELECT only; no source mutation, no audit write
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: node ops/sr271-recent-parity-read.mjs
