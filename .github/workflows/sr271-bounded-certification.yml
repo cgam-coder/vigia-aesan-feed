@@ -24,7 +24,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T10:36:55.000Z
+          CHECKPOINT_AT: 2026-10-09T11:08:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -44,7 +44,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T10:46:55.000Z
+          CHECKPOINT_AT: 2026-10-09T11:18:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -64,7 +64,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T10:56:55.000Z
+          CHECKPOINT_AT: 2026-10-09T11:28:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -84,7 +84,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T11:06:55.000Z
+          CHECKPOINT_AT: 2026-10-09T11:38:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -104,7 +104,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T11:16:55.000Z
+          CHECKPOINT_AT: 2026-10-09T11:48:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -124,7 +124,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T11:26:55.000Z
+          CHECKPOINT_AT: 2026-10-09T11:58:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -144,7 +144,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T11:36:55.000Z
+          CHECKPOINT_AT: 2026-10-09T12:08:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -164,7 +164,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T11:46:55.000Z
+          CHECKPOINT_AT: 2026-10-09T12:18:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -184,7 +184,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T11:56:55.000Z
+          CHECKPOINT_AT: 2026-10-09T12:28:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -204,7 +204,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T12:06:55.000Z
+          CHECKPOINT_AT: 2026-10-09T12:38:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -224,7 +224,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T12:16:55.000Z
+          CHECKPOINT_AT: 2026-10-09T12:48:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -244,7 +244,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T12:26:55.000Z
+          CHECKPOINT_AT: 2026-10-09T12:58:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -264,7 +264,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T12:36:55.000Z
+          CHECKPOINT_AT: 2026-10-09T13:08:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -284,7 +284,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T12:46:55.000Z
+          CHECKPOINT_AT: 2026-10-09T13:18:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -304,7 +304,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T12:56:55.000Z
+          CHECKPOINT_AT: 2026-10-09T13:28:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -324,7 +324,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T13:06:55.000Z
+          CHECKPOINT_AT: 2026-10-09T13:38:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -344,7 +344,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T13:16:55.000Z
+          CHECKPOINT_AT: 2026-10-09T13:48:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -364,7 +364,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T13:26:55.000Z
+          CHECKPOINT_AT: 2026-10-09T13:58:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -384,7 +384,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T13:36:55.000Z
+          CHECKPOINT_AT: 2026-10-09T14:08:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -404,7 +404,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T13:46:55.000Z
+          CHECKPOINT_AT: 2026-10-09T14:18:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -424,7 +424,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T13:56:55.000Z
+          CHECKPOINT_AT: 2026-10-09T14:28:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
@@ -444,73 +444,13 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T14:06:55.000Z
+          CHECKPOINT_AT: 2026-10-09T14:38:00.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'false'
         run: node ops/sr271-bounded-observer.mjs
   checkpoint_23:
     needs: [checkpoint_22]
     if: success() && github.run_attempt == 1 && needs.checkpoint_22.outputs.complete != 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    outputs:
-      complete: ${{ steps.observe.outputs.complete }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - id: observe
-        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
-        env:
-          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T14:16:55.000Z
-          RUN_ATTEMPT: ${{ github.run_attempt }}
-          FINAL_CHECKPOINT: 'false'
-        run: node ops/sr271-bounded-observer.mjs
-  checkpoint_24:
-    needs: [checkpoint_23]
-    if: success() && github.run_attempt == 1 && needs.checkpoint_23.outputs.complete != 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    outputs:
-      complete: ${{ steps.observe.outputs.complete }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - id: observe
-        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
-        env:
-          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T14:26:55.000Z
-          RUN_ATTEMPT: ${{ github.run_attempt }}
-          FINAL_CHECKPOINT: 'false'
-        run: node ops/sr271-bounded-observer.mjs
-  checkpoint_25:
-    needs: [checkpoint_24]
-    if: success() && github.run_attempt == 1 && needs.checkpoint_24.outputs.complete != 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    outputs:
-      complete: ${{ steps.observe.outputs.complete }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - id: observe
-        name: Atomic SELECT snapshot and independent GET-only certification checkpoint
-        env:
-          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T14:36:55.000Z
-          RUN_ATTEMPT: ${{ github.run_attempt }}
-          FINAL_CHECKPOINT: 'false'
-        run: node ops/sr271-bounded-observer.mjs
-  checkpoint_26:
-    needs: [checkpoint_25]
-    if: success() && github.run_attempt == 1 && needs.checkpoint_25.outputs.complete != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
