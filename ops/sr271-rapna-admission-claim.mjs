@@ -1,0 +1,42 @@
+import crypto from 'node:crypto';
+const stop=Date.parse('2026-10-09T14:26:00Z'),root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f',db='55596003-1b90-4f66-aad8-decb21205f13',owner='sr271-rapna-completed-plan-20261009';
+if(Date.now()>stop||Number(process.env.RUN_ATTEMPT)!==1)throw Error('Exclusive preflight expired');
+const out=(tag,p)=>console.log(tag+' '+JSON.stringify(p));
+async function cf(path){const r=await fetch(root+path,{headers:{Authorization:'Bearer '+process.env.CF_TOKEN},signal:AbortSignal.timeout(25000)}),p=await r.json();if(!r.ok||!p.success)throw Error('CF GET unavailable');return p.result;}
+async function query(batch){if(batch.some(x=>!x.sql.startsWith('SELECT ')))throw Error('SELECT-only preflight');const r=await fetch(root+'/d1/database/'+db+'/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({batch}),signal:AbortSignal.timeout(30000)}),p=await r.json();if(!r.ok||!p.success||p.result.some(x=>!x.success||x.meta?.changes||x.meta?.rows_written||x.meta?.served_by_primary!==true))throw Error('Primary SELECT unavailable');return p.result.map(x=>x.results);}
+const runtime=await cf('/workers/scripts/vigia-runtime/deployments'),runner=await cf('/workers/scripts/vigia-source-runner/deployments');
+if(runtime.deployments[0].versions.length!==1||runtime.deployments[0].versions[0].version_id!=='06f38889-a47a-4431-a295-aeca456d9732'||runtime.deployments[0].versions[0].percentage!==100||runner.deployments[0].versions.length!==1||runner.deployments[0].versions[0].version_id!=='ba9f64ab-1615-4200-9cf5-da0b1d829638'||runner.deployments[0].versions[0].percentage!==100)throw Error('Allocation changed');
+const r=await fetch(root+'/workers/scripts/vigia-source-runner/content/v2',{headers:{Authorization:'Bearer '+process.env.CF_TOKEN},signal:AbortSignal.timeout(25000)});if(!r.ok)throw Error('Module GET unavailable');
+const type=r.headers.get('content-type')??'',bytes=new Uint8Array(await r.arrayBuffer());let module=bytes;
+if(type.includes('multipart')){const form=await new Response(bytes,{headers:{'Content-Type':type.replace('multipart/mixed','multipart/form-data')}}).formData(),file=form.get('source-runner.mjs');if(!file||typeof file==='string')throw Error('Module missing');module=new Uint8Array(await file.arrayBuffer());}
+const hash=crypto.createHash('sha256').update(module).digest('hex');if(hash!=='a974372ff794e8bbeb6a1328160f8a48b8e9a0362918a84c90ac3abdc93ae153'||module.byteLength!==826920)throw Error('Runner module changed');
+await cf('/workers/scripts/vigia-runtime/versions/f08b6a16-495f-4752-9a1f-64e2d18eaee0');
+const sqls=[
+{sql:'SELECT owner_id,epoch,expires_at,state_json FROM source_reliability_control WHERE id=1'},
+{sql:'SELECT * FROM source_sync_locks'},
+{sql:'SELECT id,source,mode,deadline FROM source_reliability_jobs WHERE finished_at IS NULL'},
+{sql:"SELECT id FROM source_reliability_jobs WHERE receipt_json IS NULL OR json_extract(receipt_json,'$.outcome')='unknown'"},
+{sql:'SELECT effect_key FROM source_reliability_effects WHERE committed_at IS NULL'},
+{sql:'SELECT * FROM source_sync_state'},
+{sql:'SELECT * FROM source_revision_certifications'}
+];
+let rows;
+while(Date.now()<stop){rows=await query(sqls);const [c,l,j,u,p]=rows;if(c[0].owner_id===null&&!l.length&&!j.length&&!u.length&&!p.length)break;out('SR271_RAPNA_QUIET_WAIT',{at:new Date().toISOString(),owner:c[0].owner_id,active:j,unknown:u,pending:p,zeroWrite:true});await new Promise(r=>setTimeout(r,10000));}
+if(!rows||Date.now()>=stop)throw Error('No quiet checkpoint; no merge authority acquired');
+const [controls,locks,jobs,uncertain,pending,states,certs]=rows,before=controls[0];
+if(locks.length||jobs.length||uncertain.length||pending.length||before.owner_id!==null)throw Error('Quiet preflight changed');
+const expectedF2b={"source":"SAFETY GATE","mode":"historical-reconcile","status":"completed","cursor":1118,"total_units":1118,"pages_scanned":1118,"records_observed":47124,"records_persisted":20028,"new_count":25,"updated_count":20003,"detail_failures":0,"page_errors":0,"oldest_published_at":"2005-02-03T23:00:00.000Z","newest_published_at":"2026-10-02T15:33:00.738Z","coverage":"official-index-complete","started_at":"2026-10-03T17:41:29.330Z","last_success_at":"2026-10-05T00:05:35.864Z","completed_at":"2026-10-05T00:05:35.864Z","last_error":null,"updated_at":"2026-10-05T00:05:35.864Z","lease_owner_id":null,"lease_mode":null,"lease_expires_at":null,"last_skipped_at":"2026-10-03T19:10:51.957Z","last_skip_reason":"recent-priority","last_skipped_owner_id":"e9a238b7-dcae-4e2d-8761-5691f879087a","plan_version":"safety-gate-weekly-detail-v1:d64a863503fafe96e91588761e24355c05f054245e2712017c1a65c53fb0894f","cursor_key":null},expectedF2bCerts=[{"source":"SAFETY GATE","mode":"historical-reconcile","cycle_id":"safety-gate-weekly-detail-v1:d64a863503fafe96e91588761e24355c05f054245e2712017c1a65c53fb0894f","completed_at":"2026-10-05T00:05:35.864Z","total_units":1118,"records_observed":47124,"coverage":"official-index-complete","audit_status":"passed","audit_checked_at":"2026-10-05T00:05:38.702Z","evidence_json":"{\"schemaVersion\":2,\"scope\":\"full-archive\",\"certificationPolicy\":\"required\",\"enumerationAuthority\":\"official-weekly-report-index\",\"contentAuthority\":\"official-json-detail\",\"state\":{\"cursor\":1118,\"totalUnits\":1118,\"recordsObserved\":47124,\"pagesScanned\":1118,\"recordsPersisted\":20028,\"newCount\":25,\"updatedCount\":20003,\"pageErrors\":0,\"detailFailures\":0},\"audit\":{\"checkedAt\":\"2026-10-05T00:05:38.702Z\",\"counts\":{\"alerts\":85086,\"aesanAlerts\":128,\"safetyGateAlerts\":21396,\"safetyGateUniqueReferences\":21396,\"safetyGateVersions\":43744,\"safetyGateVersionCountSum\":43744},\"integrity\":{\"duplicateReferenceGroups\":0,\"invalidIdentities\":0,\"emptyCanonicalRows\":0,\"invalidOfficialUrls\":0}}}","updated_at":"2026-10-05T00:05:38.702Z"}];
+const stable=x=>JSON.stringify(x, Object.keys(x).sort());
+const f2b=states.find(x=>x.source==='SAFETY GATE'&&x.mode==='historical-reconcile');
+const f2bPreserved=Boolean(f2b&&stable(f2b)===stable(expectedF2b)&&JSON.stringify(certs.filter(x=>x.source==='SAFETY GATE').map(stable).sort())===JSON.stringify(expectedF2bCerts.map(stable).sort()));
+
+if(!f2bPreserved)throw Error('F2B baseline changed');
+if(!states.some(s=>s.source==='RASFF'&&s.mode==='reconcile'&&Date.parse(s.completed_at??'')>=Date.parse('2026-10-09T08:45:00Z'))||!certs.some(c=>c.source==='OECD'&&c.mode==='historical-reconcile'&&c.audit_status==='passed'&&Date.parse(c.completed_at)>=Date.parse('2026-10-09T08:45:00Z')))throw Error('New historical certificates not confirmed');
+out('SR271_RAPNA_PRIMARY_PREFLIGHT',{at:new Date().toISOString(),zeroWrite:true,runnerHash:hash,runnerBytes:module.byteLength,control:before,states,certs,allocations:{runtime:runtime.deployments[0],runner:runner.deployments[0]}});
+const at=new Date().toISOString(),expires=new Date(Date.now()+480000).toISOString(),epoch=before.epoch+1;
+const statement={sql:"UPDATE source_reliability_control SET owner_id=?,epoch=epoch+1,expires_at=? WHERE id=1 AND owner_id IS NULL AND epoch=? AND NOT EXISTS(SELECT 1 FROM source_sync_locks) AND NOT EXISTS(SELECT 1 FROM source_reliability_jobs WHERE finished_at IS NULL OR receipt_json IS NULL OR json_extract(receipt_json,'$.outcome')='unknown') AND NOT EXISTS(SELECT 1 FROM source_reliability_effects WHERE committed_at IS NULL) RETURNING epoch",params:[owner,expires,before.epoch]};
+let confirmed=false;
+try{const r=await fetch(root+'/d1/database/'+db+'/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(statement),signal:AbortSignal.timeout(25000)}),p=await r.json();confirmed=r.ok&&p.success&&p.result[0].results[0]?.epoch===epoch;}catch{}
+const after=(await query([{sql:'SELECT owner_id,epoch,expires_at FROM source_reliability_control WHERE id=1'}]))[0][0];
+if(after.owner_id!==owner||after.epoch!==epoch||after.expires_at!==expires)throw Error('Claim absent or uncertain; do not resend');
+out('SR271_RAPNA_EXCLUSIVE_CHECKPOINT',{at:new Date().toISOString(),owner,epoch,expires,claimConfirmed:confirmed||after.owner_id===owner,noSourceEffectsRepeated:true,runtimeOnlyCorrection:true,noRunnerUpload:true});
