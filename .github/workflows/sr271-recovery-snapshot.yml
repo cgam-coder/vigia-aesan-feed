@@ -1,4 +1,4 @@
-name: SR271 recovery authenticated GET SELECT snapshot
+name: SR271 bounded post-recovery natural receipts and independent watchdog
 on:
   push:
     branches: [source-reliability/recovery-snapshot-20261009]
@@ -8,11 +8,16 @@ concurrency:
   group: sr271-recovery-snapshot-20261009
   cancel-in-progress: false
 jobs:
-  snapshot:
+  checkpoint_0638:
     if: github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
+      - name: Wait for the bounded natural checkpoint
+        env:
+          CHECKPOINT_AT: 2026-10-09T06:38:00Z
+        run: |
+          node --input-type=module -e "const target=Date.parse(process.env.CHECKPOINT_AT);while(Date.now()<target)await new Promise(r=>setTimeout(r,5000));"
       - name: Authenticated Cloudflare GET and D1 SELECT only
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -20,7 +25,111 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f',db='55596003-1b90-4f66-aad8-decb21205f13',base='https://vigia-runtime.c-gamiz93.workers.dev';
-          if(Date.now()>Date.parse('2026-10-09T07:00:00Z'))throw Error('snapshot expired');
+          if(Date.now()>Date.parse('2026-10-09T07:05:00Z'))throw Error('snapshot expired');
+          async function cf(path){const r=await fetch(root+path,{headers:{Authorization:'Bearer '+process.env.CF_TOKEN},signal:AbortSignal.timeout(25000)});const p=await r.json();if(!r.ok||!p.success)throw Error('CF read failed '+path+' '+r.status);return p.result;}
+          for(const service of ['vigia-runtime','vigia-source-runner']){
+           const deployments=await cf('/workers/scripts/'+service+'/deployments'),active=deployments.deployments[0],versions=[];
+           for(const v of active.versions)versions.push({allocation:v,metadata:await cf('/workers/scripts/'+service+'/versions/'+v.version_id)});
+           const settings=await cf('/workers/scripts/'+service+'/settings'),schedule=await cf('/workers/scripts/'+service+'/schedules');
+           console.log('R9_AVAILABLE_VERSIONS '+JSON.stringify({service,versions:await cf('/workers/scripts/'+service+'/versions')}));
+           console.log('R9_ALLOCATION '+JSON.stringify({at:new Date().toISOString(),service,active,versions:versions.map(x=>({allocation:x.allocation,number:x.metadata.number,metadata:x.metadata.metadata})),rollback:deployments.deployments.slice(1,3),schedule,bindings:settings.bindings?.filter(x=>['d1','service','plain_text'].includes(x.type)).filter(x=>x.type!=='plain_text'||/MODE|GATE|DELTA/.test(x.name))}));
+          }
+          for(const path of ['/api/source-reliability?observe=1','/api/freshness?observe=1']){
+           const r=await fetch(base+path,{headers:{Authorization:'Bearer '+process.env.SYNC_TOKEN},signal:AbortSignal.timeout(25000)}),p=await r.json();if(!r.ok)throw Error('native GET '+r.status);if(p.state)delete p.state.ownershipFingerprint;console.log('R9_NATIVE '+JSON.stringify({at:new Date().toISOString(),path,body:p}));
+          }
+          const sqls=["SELECT owner_id,expires_at,epoch,state_json FROM source_reliability_control WHERE id=1","SELECT * FROM source_reliability_jobs WHERE id IN ('8f5b996c-b058-4864-8472-ec2836e6274a','b2c82f49-3d5c-4d4a-8b44-9e274174ceb4','e431e648-2055-4183-a085-9c16121d7907','6eaf629f-e7f9-476f-bd6a-7a2c6d302165') OR (started_at>='2026-10-09T06:00:00Z') ORDER BY started_at","SELECT * FROM source_sync_locks","SELECT * FROM source_sync_state","SELECT * FROM source_revision_certifications","SELECT old_job_id,recovery_id,manifest_hash,receipt_json,committed_at FROM source_reliability_recoveries ORDER BY committed_at","SELECT job_id,source,mode,COUNT(*) AS markers,SUM(committed_at IS NULL) AS pending,MAX(committed_at) AS latest,MAX(LENGTH(CAST(manifest_json AS BLOB))) AS max_bytes FROM source_reliability_effects GROUP BY job_id ORDER BY latest","SELECT effect_key,job_id,source,mode,ordinal,committed_at,result_json FROM source_reliability_effects WHERE committed_at IS NULL OR ordinal=-1 OR ordinal=999999 ORDER BY job_id,ordinal","SELECT old_job_id,COUNT(*) AS parts,MIN(manifest_hash) AS min_hash,MAX(manifest_hash) AS max_hash,SUM(LENGTH(CAST(payload AS BLOB))) AS bytes FROM source_reliability_recovery_plans GROUP BY old_job_id","SELECT source,COUNT(*) AS total,MAX(updated_at) AS last_updated,MAX(detected_at) AS last_detected FROM alerts GROUP BY source","SELECT id,reference,content_hash,version_count,published_at,detected_at,updated_at FROM alerts WHERE source='OECD' AND reference='EN/US/27022'","SELECT source,COUNT(*) AS checks,MAX(checked_at) AS last_check,SUM(changed_count) AS changes FROM source_checks WHERE datetime(checked_at)>=datetime('2026-10-09T05:53:00Z') GROUP BY source","SELECT a.source,COUNT(*) AS versions_after FROM alert_versions v JOIN alerts a ON a.id=v.alert_id WHERE datetime(v.detected_at)>=datetime('2026-10-09T05:53:00Z') GROUP BY a.source"];
+          for(const sql of sqls){
+           if(!sql.startsWith('SELECT '))throw Error('SELECT only');
+           const r=await fetch(root+'/d1/database/'+db+'/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql}),signal:AbortSignal.timeout(25000)}),p=await r.json();
+           if(!r.ok||!p.success||p.result.some(x=>!x.success||x.meta?.changes||x.meta?.rows_written))throw Error('SELECT evidence unconfirmed');
+           for(const row of p.result.flatMap(x=>x.results))if(row.state_json){const s=JSON.parse(row.state_json);delete s.ownershipFingerprint;row.state_json=JSON.stringify(s);}
+           console.log('R9_SELECT '+JSON.stringify({at:new Date().toISOString(),sql,data:p}));
+          }
+          console.log('R9_COMPLETE '+JSON.stringify({at:new Date().toISOString(),zeroWrite:true}));
+          NODE
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Independent strict five-source watchdog with GET-only transport
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {runWatchdog} from './scripts/freshness-watchdog.mjs';
+          const report=await runWatchdog({url:'https://vigia-runtime.c-gamiz93.workers.dev/api/freshness',token:process.env.VIGIA_SYNC_TOKEN,fetchImpl:(url,options)=>{if(options?.method!=='GET')throw Error('GET-only observer');return fetch(url,options);}});
+          console.log('R9_INDEPENDENT_WATCHDOG '+JSON.stringify(report));
+          NODE
+  checkpoint_0644:
+    needs: checkpoint_0638
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Wait for the bounded natural checkpoint
+        env:
+          CHECKPOINT_AT: 2026-10-09T06:44:00Z
+        run: |
+          node --input-type=module -e "const target=Date.parse(process.env.CHECKPOINT_AT);while(Date.now()<target)await new Promise(r=>setTimeout(r,5000));"
+      - name: Authenticated Cloudflare GET and D1 SELECT only
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f',db='55596003-1b90-4f66-aad8-decb21205f13',base='https://vigia-runtime.c-gamiz93.workers.dev';
+          if(Date.now()>Date.parse('2026-10-09T07:05:00Z'))throw Error('snapshot expired');
+          async function cf(path){const r=await fetch(root+path,{headers:{Authorization:'Bearer '+process.env.CF_TOKEN},signal:AbortSignal.timeout(25000)});const p=await r.json();if(!r.ok||!p.success)throw Error('CF read failed '+path+' '+r.status);return p.result;}
+          for(const service of ['vigia-runtime','vigia-source-runner']){
+           const deployments=await cf('/workers/scripts/'+service+'/deployments'),active=deployments.deployments[0],versions=[];
+           for(const v of active.versions)versions.push({allocation:v,metadata:await cf('/workers/scripts/'+service+'/versions/'+v.version_id)});
+           const settings=await cf('/workers/scripts/'+service+'/settings'),schedule=await cf('/workers/scripts/'+service+'/schedules');
+           console.log('R9_AVAILABLE_VERSIONS '+JSON.stringify({service,versions:await cf('/workers/scripts/'+service+'/versions')}));
+           console.log('R9_ALLOCATION '+JSON.stringify({at:new Date().toISOString(),service,active,versions:versions.map(x=>({allocation:x.allocation,number:x.metadata.number,metadata:x.metadata.metadata})),rollback:deployments.deployments.slice(1,3),schedule,bindings:settings.bindings?.filter(x=>['d1','service','plain_text'].includes(x.type)).filter(x=>x.type!=='plain_text'||/MODE|GATE|DELTA/.test(x.name))}));
+          }
+          for(const path of ['/api/source-reliability?observe=1','/api/freshness?observe=1']){
+           const r=await fetch(base+path,{headers:{Authorization:'Bearer '+process.env.SYNC_TOKEN},signal:AbortSignal.timeout(25000)}),p=await r.json();if(!r.ok)throw Error('native GET '+r.status);if(p.state)delete p.state.ownershipFingerprint;console.log('R9_NATIVE '+JSON.stringify({at:new Date().toISOString(),path,body:p}));
+          }
+          const sqls=["SELECT owner_id,expires_at,epoch,state_json FROM source_reliability_control WHERE id=1","SELECT * FROM source_reliability_jobs WHERE id IN ('8f5b996c-b058-4864-8472-ec2836e6274a','b2c82f49-3d5c-4d4a-8b44-9e274174ceb4','e431e648-2055-4183-a085-9c16121d7907','6eaf629f-e7f9-476f-bd6a-7a2c6d302165') OR (started_at>='2026-10-09T06:00:00Z') ORDER BY started_at","SELECT * FROM source_sync_locks","SELECT * FROM source_sync_state","SELECT * FROM source_revision_certifications","SELECT old_job_id,recovery_id,manifest_hash,receipt_json,committed_at FROM source_reliability_recoveries ORDER BY committed_at","SELECT job_id,source,mode,COUNT(*) AS markers,SUM(committed_at IS NULL) AS pending,MAX(committed_at) AS latest,MAX(LENGTH(CAST(manifest_json AS BLOB))) AS max_bytes FROM source_reliability_effects GROUP BY job_id ORDER BY latest","SELECT effect_key,job_id,source,mode,ordinal,committed_at,result_json FROM source_reliability_effects WHERE committed_at IS NULL OR ordinal=-1 OR ordinal=999999 ORDER BY job_id,ordinal","SELECT old_job_id,COUNT(*) AS parts,MIN(manifest_hash) AS min_hash,MAX(manifest_hash) AS max_hash,SUM(LENGTH(CAST(payload AS BLOB))) AS bytes FROM source_reliability_recovery_plans GROUP BY old_job_id","SELECT source,COUNT(*) AS total,MAX(updated_at) AS last_updated,MAX(detected_at) AS last_detected FROM alerts GROUP BY source","SELECT id,reference,content_hash,version_count,published_at,detected_at,updated_at FROM alerts WHERE source='OECD' AND reference='EN/US/27022'","SELECT source,COUNT(*) AS checks,MAX(checked_at) AS last_check,SUM(changed_count) AS changes FROM source_checks WHERE datetime(checked_at)>=datetime('2026-10-09T05:53:00Z') GROUP BY source","SELECT a.source,COUNT(*) AS versions_after FROM alert_versions v JOIN alerts a ON a.id=v.alert_id WHERE datetime(v.detected_at)>=datetime('2026-10-09T05:53:00Z') GROUP BY a.source"];
+          for(const sql of sqls){
+           if(!sql.startsWith('SELECT '))throw Error('SELECT only');
+           const r=await fetch(root+'/d1/database/'+db+'/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql}),signal:AbortSignal.timeout(25000)}),p=await r.json();
+           if(!r.ok||!p.success||p.result.some(x=>!x.success||x.meta?.changes||x.meta?.rows_written))throw Error('SELECT evidence unconfirmed');
+           for(const row of p.result.flatMap(x=>x.results))if(row.state_json){const s=JSON.parse(row.state_json);delete s.ownershipFingerprint;row.state_json=JSON.stringify(s);}
+           console.log('R9_SELECT '+JSON.stringify({at:new Date().toISOString(),sql,data:p}));
+          }
+          console.log('R9_COMPLETE '+JSON.stringify({at:new Date().toISOString(),zeroWrite:true}));
+          NODE
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Independent strict five-source watchdog with GET-only transport
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {runWatchdog} from './scripts/freshness-watchdog.mjs';
+          const report=await runWatchdog({url:'https://vigia-runtime.c-gamiz93.workers.dev/api/freshness',token:process.env.VIGIA_SYNC_TOKEN,fetchImpl:(url,options)=>{if(options?.method!=='GET')throw Error('GET-only observer');return fetch(url,options);}});
+          console.log('R9_INDEPENDENT_WATCHDOG '+JSON.stringify(report));
+          NODE
+  checkpoint_0650:
+    needs: checkpoint_0644
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Wait for the bounded natural checkpoint
+        env:
+          CHECKPOINT_AT: 2026-10-09T06:50:00Z
+        run: |
+          node --input-type=module -e "const target=Date.parse(process.env.CHECKPOINT_AT);while(Date.now()<target)await new Promise(r=>setTimeout(r,5000));"
+      - name: Authenticated Cloudflare GET and D1 SELECT only
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f',db='55596003-1b90-4f66-aad8-decb21205f13',base='https://vigia-runtime.c-gamiz93.workers.dev';
+          if(Date.now()>Date.parse('2026-10-09T07:05:00Z'))throw Error('snapshot expired');
           async function cf(path){const r=await fetch(root+path,{headers:{Authorization:'Bearer '+process.env.CF_TOKEN},signal:AbortSignal.timeout(25000)});const p=await r.json();if(!r.ok||!p.success)throw Error('CF read failed '+path+' '+r.status);return p.result;}
           for(const service of ['vigia-runtime','vigia-source-runner']){
            const deployments=await cf('/workers/scripts/'+service+'/deployments'),active=deployments.deployments[0],versions=[];
