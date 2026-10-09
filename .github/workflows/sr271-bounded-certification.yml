@@ -1,4 +1,4 @@
-name: SR271 final productive Worker118 five-source proof within original 14_45 deadline
+name: SR271 post-cleanup final primary proof within original deadline
 on:
   push:
     branches: [source-reliability/recovery-snapshot-20261009]
@@ -9,62 +9,20 @@ concurrency:
   group: sr271-bounded-final-observer-20261009
   cancel-in-progress: true
 jobs:
-  checkpoint_1:
+  post_cleanup:
     if: github.run_attempt == 1
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    outputs:
-      complete: ${{ steps.observe.outputs.complete }}
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
       - id: observe
-        name: Primary SELECT and independent strict five-source watchdog
+        name: Post-cleanup primary SELECT and independent strict watchdog
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T14:24:30.000Z
-          RUN_ATTEMPT: ${{ github.run_attempt }}
-          FINAL_CHECKPOINT: 'false'
-        run: node ops/sr271-bounded-observer.mjs
-  checkpoint_2:
-    needs: [checkpoint_1]
-    if: success() && github.run_attempt == 1 && needs.checkpoint_1.outputs.complete != 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    outputs:
-      complete: ${{ steps.observe.outputs.complete }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - id: observe
-        name: Primary SELECT and independent strict five-source watchdog
-        env:
-          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T14:34:30.000Z
-          RUN_ATTEMPT: ${{ github.run_attempt }}
-          FINAL_CHECKPOINT: 'false'
-        run: node ops/sr271-bounded-observer.mjs
-  checkpoint_3:
-    needs: [checkpoint_2]
-    if: success() && github.run_attempt == 1 && needs.checkpoint_2.outputs.complete != 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    outputs:
-      complete: ${{ steps.observe.outputs.complete }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - id: observe
-        name: Primary SELECT and independent strict five-source watchdog
-        env:
-          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          CHECKPOINT_AT: 2026-10-09T14:44:55.000Z
+          CHECKPOINT_AT: 2026-10-09T14:39:30.000Z
           RUN_ATTEMPT: ${{ github.run_attempt }}
           FINAL_CHECKPOINT: 'true'
         run: node ops/sr271-bounded-observer.mjs
