@@ -1,4 +1,4 @@
-name: SR271 separately reviewed additive schema activation
+name: SR271 distinct absent Safety Gate effects recovery
 on:
   push:
     branches: [source-reliability/durable-recovery-20261009]
@@ -16,11 +16,13 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Verified exact candidate and separate schema checkpoint
+      - name: New fenced CAS effects with immutable preimages and durable commit receipts
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
-          RECOVERY_PHASE: schema
+          RECOVERY_PHASE: effects
+          RECOVERY_OWNER: sr271-effects-recovery-20261009
+          REPAIR_JOB_ID: 6eaf629f-e7f9-476f-bd6a-7a2c6d302165
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';import zlib from 'node:zlib';import crypto from 'node:crypto';
