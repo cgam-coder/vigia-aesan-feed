@@ -7,7 +7,7 @@ if(!response.ok||!body.success||body.result.some((r:any)=>r.meta.rows_written||r
 const state=body.result[0].results[0],at=new Date().toISOString(),results=[];
 for(const concurrency of [3,6]){
  let requests=0,inflight=0,peak=0;const durations:number[]=[];
- const fetchImpl:typeof fetch=async(input,init)=>{if(init?.method&&init.method!=='GET')throw Error('Official GET-only benchmark');requests++;inflight++;peak=Math.max(peak,inflight);const started=performance.now();try{return await fetch(input,init);}finally{inflight--;durations.push(performance.now()-started);}};
+ const fetchImpl:typeof fetch=async(input,init)=>{const url=String(input),method=init?.method??'GET';if(method!=='GET'&&!(method==='POST'&&url==='https://webgate.ec.europa.eu/rasff-window/backend/public/notification/search/consolidated/en/'))throw Error('Official read-only benchmark endpoint rejected');requests++;inflight++;peak=Math.max(peak,inflight);const started=performance.now();try{return await fetch(input,init);}finally{inflight--;durations.push(performance.now()-started);}};
  const started=performance.now(),r=await fetchRasffReconcileBatch(state.cursor,state.cursor_key,{fetch:fetchImpl,detailConcurrency:concurrency,detailMaxAttempts:1},at,40);
  const wallMs=performance.now()-started;durations.sort((a,b)=>a-b);
  const record={concurrency,requests,peak,wallMs,requestP50Ms:durations[Math.floor(durations.length*.5)],requestP95Ms:durations[Math.floor(durations.length*.95)],processed:r.processedCount,retained:r.retainedCount,detailFailures:r.detailFailures,nextCursor:r.nextCursor,nextCursorKey:r.nextCursorKey,identities:r.alerts.map(x=>({reference:x.reference,hash:x.contentHash})).sort((a,b)=>a.reference.localeCompare(b.reference))};results.push(record);
