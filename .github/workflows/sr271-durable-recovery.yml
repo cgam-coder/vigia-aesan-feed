@@ -1,4 +1,4 @@
-name: SR271 verify runner 11 and release the known recovery owner
+name: SR271 compact current Safety Gate recovery with bounded evidence
 on:
   push:
     branches: [source-reliability/durable-recovery-20261009]
@@ -11,26 +11,37 @@ jobs:
   checkpoint:
     if: github.run_attempt == 1
     runs-on: ubuntu-24.04
-    timeout-minutes: 3
+    timeout-minutes: 8
     steps:
-      - name: GET SELECT preflight and one previously unstarted lease release
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: cgam-coder/vigia-runtime
+          ref: 18267048adc66cbd2e5de8ff272e4a0bc856952a
+          path: verified-runtime
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: verified-runtime/package-lock.json
+      - name: Verify compact CAS rollback, response loss, old epoch fencing and no resend
+        run: |
+          cp ops/sr271-compact-legacy-recovery.ts ops/sr271-compact-legacy-recovery.test.ts verified-runtime/ops/
+          cd verified-runtime
+          npm ci --ignore-scripts --no-audit --no-fund
+          node --import tsx --test ops/sr271-compact-legacy-recovery.test.ts
+      - name: GET SELECT preflight and distinct bounded compact CAS; no old transaction replay
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           node --input-type=module <<'NODE'
-          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f',database='55596003-1b90-4f66-aad8-decb21205f13',owner='sr271-legacy-reconciliation-20261009';
-          if(Date.now()>Date.parse('2026-10-09T06:24:00Z')||Number(process.env.RUN_ATTEMPT)!==1)throw Error('Release checkpoint expired');
-          async function cf(path){const r=await fetch(root+path,{headers:{Authorization:'Bearer '+process.env.CF_TOKEN},signal:AbortSignal.timeout(20000)}),p=await r.json();if(!r.ok||!p.success)throw Error('GET failed '+path);return p.result;}
-          async function sql(sql,params=[]){const r=await fetch(root+'/d1/database/'+database+'/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql,params}),signal:AbortSignal.timeout(20000)}),p=await r.json();if(!r.ok||!p.success||p.result.some(x=>!x.success))throw Error('D1 unconfirmed '+r.status+' '+JSON.stringify(p.errors??[]));return p.result[0].results;}
-          for(const service of ['vigia-runtime','vigia-source-runner']){const a=(await cf('/workers/scripts/'+service+'/deployments')).deployments[0];console.log('R9_RELEASE_ALLOCATION '+JSON.stringify({service,at:new Date().toISOString(),active:a}));if(service==='vigia-source-runner'&&(a.versions.length!==1||a.versions[0].version_id!=='9ccaa456-4b52-41ce-a12a-249f9e1a9db4'||a.versions[0].percentage!==100))throw Error('Journaled runner allocation unverified');}
-          const settings=await cf('/workers/scripts/vigia-source-runner/settings'),subdomain=await cf('/workers/scripts/vigia-source-runner/subdomain'),schedule=await cf('/workers/scripts/vigia-source-runner/schedules');
-          if(!settings.bindings.some(x=>x.name==='VIGIA_SYNC_TOKEN'&&x.type==='secret_text')||!settings.bindings.some(x=>x.name==='SOURCE_RUNNER_MODE'&&x.text==='active')||subdomain.enabled||subdomain.previews_enabled||schedule.schedules.length)throw Error('Runner postflight unverified');
-          const before=(await sql('SELECT owner_id,epoch,expires_at FROM source_reliability_control WHERE id=1'))[0],recoveries=await sql('SELECT old_job_id,recovery_id,committed_at FROM source_reliability_recoveries ORDER BY committed_at'),locks=await sql('SELECT * FROM source_sync_locks');
-          console.log('R9_RELEASE_PREFLIGHT '+JSON.stringify({at:new Date().toISOString(),before,recoveries,locks,runner11Verified:true}));
-          if(before.owner_id!==owner||before.epoch!==194||Date.parse(before.expires_at)<=Date.now()||locks.length)throw Error('Exclusive owner no longer eligible; no release mutation');
-          let responseKnown=false;try{await sql('UPDATE source_reliability_control SET owner_id=NULL,expires_at=NULL WHERE id=1 AND owner_id=? AND epoch=? RETURNING owner_id,epoch',[owner,194]);responseKnown=true;}catch{console.log('R9_RELEASE_TRANSPORT Unknown; SELECT follows; no resend');}
-          const after=(await sql('SELECT owner_id,epoch,expires_at FROM source_reliability_control WHERE id=1'))[0];
-          console.log('R9_RELEASE_RESULT '+JSON.stringify({at:new Date().toISOString(),responseKnown,after,oldOwnerGone:after.owner_id!==owner,noDeploymentRepeated:true}));
-          if(after.owner_id===owner)throw Error('Release result HOLD; do not repeat');
-                    NODE
+          import fs from 'node:fs';import zlib from 'node:zlib';import crypto from 'node:crypto';
+          const code=zlib.gunzipSync(Buffer.from(fs.readFileSync('ops/sr271-compact-recovery-api.b64','utf8'),'base64'));
+          if(crypto.createHash('sha256').update(code).digest('hex')!=='c4fb472a04f1f14b1fc23bac58cba9a11f698ea391bab901cc0e79c8bbdcd739')throw Error('Compact artifact changed');
+          fs.writeFileSync('ops/sr271-compact-recovery-api.mjs',code);
+          await import('./ops/sr271-compact-recovery-api.mjs');
+          NODE
