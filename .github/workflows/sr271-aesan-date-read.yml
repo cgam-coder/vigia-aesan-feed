@@ -1,0 +1,25 @@
+name: SR271 AESAN explicit date official filtered GET comparison
+on:
+  push:
+    branches: [source-reliability/recovery-snapshot-20261009]
+    paths: [.github/workflows/sr271-aesan-date-read.yml]
+permissions:
+  contents: read
+jobs:
+  official_filtered_read:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Two official GET requests only
+        run: |
+          node --input-type=module <<'NODE'
+          import {createHash} from 'node:crypto';
+          if(Number(process.env.GITHUB_RUN_ATTEMPT)!==1||Date.now()>Date.parse('2026-10-09T09:40:00Z'))throw Error('Read expired');
+          const base='https://www.aesan.gob.es/alertas/buscador-alertas',type='649ce619-367b-4ad2-96cd-27b905fb6020';
+          for(const params of [{type},{type,'filter-initDate':'01/01/2000','filter-endDate':'09/10/2026',quantity:'20'}]){
+           const u=new URL(base);for(const[k,v]of Object.entries(params))u.searchParams.set(k,v);
+           const r=await fetch(u,{method:'GET',redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(25000)});if(!r.ok)throw Error('Official GET '+r.status);const s=await r.text();
+           console.log('R13_AESAN_FILTER '+JSON.stringify({at:new Date().toISOString(),url:u.href,sha:createHash('sha256').update(s).digest('hex'),inputs:[...s.matchAll(/<input\b[^>]*>/giu)].map(x=>x[0]).filter(x=>/Date|date|quantity|filter/u.test(x)),range:s.match(/<div\b[^>]*class=["']result__info["'][^>]*>([\s\S]*?)<\/div>/iu)?.[1],cards:[...s.matchAll(/<a\b[^>]*\bclass\s*=\s*["'][^"']*\bseeMoreCard\b[^"']*["'][^>]*>[\s\S]*?<\/a>/giu)].map(x=>x[0]),zeroWrite:true}));
+          }
+          NODE
