@@ -1,4 +1,4 @@
-name: SR271 runner capacity activation disarmed after verified completion
+name: SR271 capacity allocation readback GET SELECT only
 on:
   push:
     branches: [source-reliability/durable-recovery-20261009]
@@ -6,7 +6,29 @@ on:
 permissions:
   contents: read
 jobs:
-  checkpoint:
+  readback:
+    if: github.run_attempt == 1
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
-      - run: echo 'Runner 13 verified in run 37906917714; activation disarmed. No production mutation.'
+      - name: Read actual allocation module settings and all durable source checkpoints
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          node --input-type=module <<'NODE'
+          import crypto from 'node:crypto';
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f',database='55596003-1b90-4f66-aad8-decb21205f13',script='/workers/scripts/vigia-source-runner';
+          if(Date.now()>Date.parse('2026-10-09T09:05:00Z')||Number(process.env.RUN_ATTEMPT)!==1)throw Error('Runner preflight expired');
+          const report=(tag,value)=>console.log(tag+' '+JSON.stringify(value));
+          async function cf(path){const r=await fetch(root+path,{headers:{Authorization:'Bearer '+process.env.CF_TOKEN},signal:AbortSignal.timeout(25000)}),p=await r.json();if(!r.ok||!p.success)throw Error('Cloudflare GET failed '+path);return p.result;}
+          for(const service of ['vigia-runtime','vigia-source-runner']){const d=await cf('/workers/scripts/'+service+'/deployments'),v=await cf('/workers/scripts/'+service+'/versions/'+d.deployments[0].versions[0].version_id);report('R11_POST_UPLOAD_PREFLIGHT_ALLOCATION',{at:new Date().toISOString(),service,active:d.deployments[0],number:v.number,rollback:d.deployments.slice(1,3)});}
+          const r=await fetch(root+script+'/content/v2',{headers:{Authorization:'Bearer '+process.env.CF_TOKEN},signal:AbortSignal.timeout(25000)});
+          if(!r.ok)throw Error('Runner artifact GET failed '+r.status);
+          const type=r.headers.get('content-type')??'',bytes=new Uint8Array(await r.arrayBuffer());let module=bytes,names=[];
+          if(type.includes('multipart')){const response=new Response(bytes,{headers:{'Content-Type':type.replace('multipart/mixed','multipart/form-data')}}),form=await response.formData();names=[...form.keys()];const file=form.get('source-runner.mjs');if(!file||typeof file==='string')throw Error('Runner content module not found: '+names.join(','));module=new Uint8Array(await file.arrayBuffer());}
+          const hash=crypto.createHash('sha256').update(module).digest('hex');report('R11_POST_UPLOAD_PREFLIGHT_ARTIFACT',{at:new Date().toISOString(),http:r.status,type,names,bytes:module.byteLength,hash});
+          const settings=await cf(script+'/settings'),subdomain=await cf(script+'/subdomain'),schedules=await cf(script+'/schedules');report('R11_POST_UPLOAD_PREFLIGHT_SETTINGS',{compatibility_date:settings.compatibility_date,compatibility_flags:settings.compatibility_flags,limits:settings.limits,observability:settings.observability,bindings:settings.bindings.map(b=>({name:b.name,type:b.type,id:b.id,text:b.type==='plain_text'?b.text:undefined})),subdomain,schedules});
+          for(const sql of ["SELECT owner_id,epoch,expires_at FROM source_reliability_control WHERE id=1","SELECT * FROM source_sync_locks","SELECT id,source,mode,kind,phase,started_at,deadline,finished_at,receipt_json FROM source_reliability_jobs WHERE finished_at IS NULL OR started_at>='2026-10-09T07:54:00Z' ORDER BY started_at","SELECT effect_key,job_id,source,mode,ordinal FROM source_reliability_effects WHERE committed_at IS NULL","SELECT job_id,COUNT(*) AS markers,SUM(committed_at IS NULL) AS pending,MAX(ordinal) AS head FROM source_reliability_effects WHERE job_id='b217d0ca-28ee-43f0-9480-9b99c7775971' GROUP BY job_id"]){const r=await fetch(root+'/d1/database/'+database+'/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql}),signal:AbortSignal.timeout(25000)}),p=await r.json();if(!r.ok||!p.success||p.result.some(x=>x.meta?.changes||x.meta?.rows_written))throw Error('SELECT unconfirmed');report('R11_POST_UPLOAD_PREFLIGHT_SELECT',{at:new Date().toISOString(),sql,result:p.result});}
+          report('R11_POST_UPLOAD_PREFLIGHT_COMPLETE',{at:new Date().toISOString(),zeroWrite:true,capacityArtifactVerified:hash==='422fd0033c235aed95c7d06b535483b019a38481649643361a8ab37a66b03e07'});
+          NODE
