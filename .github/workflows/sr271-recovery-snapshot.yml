@@ -9,14 +9,14 @@ concurrency:
   group: sr271-recovery-snapshot-20261009
   cancel-in-progress: false
 jobs:
-  checkpoint_0906:
+  checkpoint_0941:
     if: github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - name: Wait for the bounded natural checkpoint
         env:
-          CHECKPOINT_AT: 2026-10-09T09:06:00Z
+          CHECKPOINT_AT: 2026-10-09T09:41:00Z
         run: |
           node --input-type=module -e "const target=Date.parse(process.env.CHECKPOINT_AT);while(Date.now()<target)await new Promise(r=>setTimeout(r,5000));"
       - name: Authenticated Cloudflare GET and D1 SELECT only
@@ -26,7 +26,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f',db='55596003-1b90-4f66-aad8-decb21205f13',base='https://vigia-runtime.c-gamiz93.workers.dev';
-          if(Date.now()>Date.parse('2026-10-09T09:10:00Z'))throw Error('snapshot expired');
+          if(Date.now()>Date.parse('2026-10-09T09:45:00Z'))throw Error('snapshot expired');
           async function cf(path){const r=await fetch(root+path,{headers:{Authorization:'Bearer '+process.env.CF_TOKEN},signal:AbortSignal.timeout(25000)});const p=await r.json();if(!r.ok||!p.success)throw Error('CF read failed '+path+' '+r.status);return p.result;}
           for(const service of ['vigia-runtime','vigia-source-runner']){
            const deployments=await cf('/workers/scripts/'+service+'/deployments'),active=deployments.deployments[0],versions=[];
@@ -49,7 +49,7 @@ jobs:
 
           for(const service of ['vigia-source-runner','vigia-runtime']){
            const filters=[{key:'$metadata.service',operation:'eq',type:'string',value:service}];if(service==='vigia-runtime')filters.push({key:'$workers.eventType',operation:'eq',type:'string',value:'scheduled'});
-           const body={queryId:'sr271-capacity-natural-'+service+'-'+Date.now(),dry:true,view:'invocations',limit:100,timeframe:{from:Date.parse('2026-10-09T08:45:00Z'),to:Date.now()},parameters:{filterCombination:'and',filters}};
+           const body={queryId:'sr271-capacity-natural-'+service+'-'+Date.now(),dry:true,view:'invocations',limit:100,timeframe:{from:Date.parse('2026-10-09T09:29:00Z'),to:Date.now()},parameters:{filterCombination:'and',filters}};
            const r=await fetch(root+'/workers/observability/telemetry/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(30000)}),p=await r.json();
            if(!r.ok||!p.success||p.result?.run?.dry!==true)throw Error('Dry telemetry query unconfirmed');
            console.log('R11_NATURAL_TELEMETRY '+JSON.stringify({at:new Date().toISOString(),service,dry:p.result.run.dry,events:Object.values(p.result.invocations??{}).flat().map(x=>({at:x.timestamp,component:x.source?.component,sourceOutcome:x.source?.outcome,sourceName:x.source?.source,service:x.$metadata?.service,requestId:x.$metadata?.requestId,traceId:x.$metadata?.traceId,version:x.$workers?.scriptVersion?.id,outcome:x.$workers?.outcome,cpuMs:x.$workers?.cpuTimeMs,wallMs:x.$workers?.wallTimeMs}))}));
