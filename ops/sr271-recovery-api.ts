@@ -73,7 +73,7 @@ if(mode==='schema'){
 }else if(mode==='legacy'){
  const verified:string[]=[];
  for(const id of ['b2c82f49-3d5c-4d4a-8b44-9e274174ceb4','e431e648-2055-4183-a085-9c16121d7907','8f5b996c-b058-4864-8472-ec2836e6274a']){
-  const full=await observeLegacyRecovery(db,id);const fullHash=await legacyManifestHash(full);
+  let full:LegacyRecoveryManifest;try{full=await observeLegacyRecovery(db,id);}catch(error){report('R9_LEGACY_OBSERVATION_HOLD',{id,reason:error instanceof Error?error.message:'Official observation unproved',claimUntouched:true});continue;}const fullHash=await legacyManifestHash(full);
   report('R9_LEGACY_CURRENT_PROOF',{id,at:full.observedAt,covered:full.covered,missing:full.official.missing,mismatches:full.official.mismatches,fullHash,records:full.official.recordsObserved});
   if(!full.covered){const {gzipSync}=await import('node:zlib'),encoded=Buffer.from(gzipSync(JSON.stringify(full))).toString('base64');for(let offset=0;offset<encoded.length;offset+=12000)report('R9_LEGACY_HOLD_CHUNK',{id,offset,data:encoded.slice(offset,offset+12000)});report('R9_LEGACY_HOLD_END',{id,hash:fullHash,encodedBytes:encoded.length});continue;}
   // The source observation is immutable; payload alerts are unnecessary for
