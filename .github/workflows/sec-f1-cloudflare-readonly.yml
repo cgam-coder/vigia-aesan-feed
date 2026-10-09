@@ -1,4 +1,4 @@
-name: SEC-F1 isolated Cloudflare metadata inspection GET only
+name: SEC-F1 isolated Cloudflare auth and deployment read audit
 
 on:
   push:
@@ -13,71 +13,102 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
-      - name: Read allowed Cloudflare API metadata without printing credentials
+      - name: Inspect Cloudflare auth policy and build chain with GET only
         shell: bash
         env:
           CF_INSPECT_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           node --input-type=module <<'NODE'
-          const token = process.env.CF_INSPECT_TOKEN;
-          const account = '9c1807c68493f14259248b5f5782cc6f';
-          if (!token) {
-            console.log('SEC_F1_INSPECTION ' + JSON.stringify({check:'credential_present',available:false}));
-            process.exitCode = 1;
-          } else {
-            console.log('SEC_F1_INSPECTION ' + JSON.stringify({check:'credential_present',available:true}));
-            const root = 'https://api.cloudflare.com/client/v4';
-            const jobs = [
-              {name:'token_verify',path:'/user/tokens/verify'},
-              {name:'runtime_deployments',path:'/accounts/'+account+'/workers/scripts/vigia-runtime/deployments'},
-              {name:'runner_deployments',path:'/accounts/'+account+'/workers/scripts/vigia-source-runner/deployments'},
-              {name:'runtime_schedules',path:'/accounts/'+account+'/workers/scripts/vigia-runtime/schedules'},
-              {name:'runner_schedules',path:'/accounts/'+account+'/workers/scripts/vigia-source-runner/schedules'},
-              {name:'runtime_settings',path:'/accounts/'+account+'/workers/scripts/vigia-runtime/settings'},
-              {name:'runner_settings',path:'/accounts/'+account+'/workers/scripts/vigia-source-runner/settings'},
-              {name:'d1_list',path:'/accounts/'+account+'/d1/database?per_page=100'}
-            ];
-            function safe(name,body) {
-              const r = body && typeof body==='object' ? body.result : null;
-              if (name==='token_verify') return {token_status:r?.status??null,expires_on:r?.expires_on??null};
-              if (name.endsWith('_deployments')) {
-                const dep = Array.isArray(r?.deployments)?r.deployments:Array.isArray(r)?r:[];
-                return {deployments:dep.slice(0,2).map(d=>({
-                  id:d.id??null,created_on:d.created_on??null,
-                  versions:Array.isArray(d.versions)?d.versions.map(v=>({version_id:v.version_id??null,percentage:v.percentage??null})):[]
+          const token=process.env.CF_INSPECT_TOKEN;
+          const account='9c1807c68493f14259248b5f5782cc6f';
+          const base='https://api.cloudflare.com/client/v4';
+          const print=(check,body)=>console.log('SEC_F1_AUTH_AUDIT '+JSON.stringify({check,...body}));
+          if(!token){print('credential_present',{available:false});process.exitCode=1;process.exit();}
+          print('credential_present',{available:true});
+          async function get(check,path){
+            try{
+              const response=await fetch(base+path,{method:'GET',redirect:'error',
+                headers:{Authorization:'Bearer '+token,Accept:'application/json'},
+                signal:AbortSignal.timeout(18000)});
+              const data=await response.json().catch(()=>null);
+              const ok=response.ok&&data?.success===true;
+              const meta={http:response.status,success:ok,
+                error_codes:Array.isArray(data?.errors)?data.errors.map(x=>x.code).filter(Number.isInteger):[]};
+              return {meta,data:ok?data.result:null};
+            }catch(e){return {meta:{outcome:'request_failed',error_type:e?.name??'Error'},data:null};}
+          }
+          function policySummary(result){
+            if(!result||typeof result!=='object')return {detail_available:false};
+            const policies=Array.isArray(result.policies)?result.policies:[];
+            return {detail_available:true,token_status:result.status??null,
+              has_ip_restrictions:Boolean(result.condition?.request_ip),
+              not_before:result.not_before??null,expires_on:result.expires_on??null,
+              policy_count:policies.length,policies:policies.map(p=>({
+                effect:p.effect??null,
+                permission_groups:Array.isArray(p.permission_groups)?p.permission_groups.map(g=>g.name).filter(x=>typeof x==='string').sort():[],
+                resource_scopes:Object.entries(p.resources??{}).map(([kind,value])=>({
+                  kind,scope:value==='*'?'wildcard':(typeof value==='string'&&value.endsWith('/*')?'wildcard_children':'specific')
+                }))
+              }))};
+          }
+          const userVerify=await get('user_token_verify','/user/tokens/verify');
+          print('user_token_verify',{...userVerify.meta,
+            ...(userVerify.data?{status:userVerify.data.status??null,expires_on:userVerify.data.expires_on??null}:{})});
+          const accountVerify=await get('account_token_verify','/accounts/'+account+'/tokens/verify');
+          print('account_token_verify',{...accountVerify.meta,
+            ...(accountVerify.data?{status:accountVerify.data.status??null,expires_on:accountVerify.data.expires_on??null}:{})});
+          const verification=accountVerify.data?.id?{type:'account',id:accountVerify.data.id}:
+            userVerify.data?.id?{type:'user',id:userVerify.data.id}:null;
+          if(verification){
+            const target=verification.type==='account'?'/accounts/'+account+'/tokens/'+verification.id:'/user/tokens/'+verification.id;
+            const detail=await get('current_token_policy',target);
+            print('current_token_policy',{kind:verification.type,...detail.meta,...(detail.data?policySummary(detail.data):{detail_available:false})});
+          }else print('current_token_policy',{detail_available:false,reason:'token_identity_unavailable'});
+          const tests=[
+            ['account_members','/accounts/'+account+'/members'],
+            ['worker_runtime_script_settings','/accounts/'+account+'/workers/scripts/vigia-runtime/script-settings'],
+            ['worker_runner_script_settings','/accounts/'+account+'/workers/scripts/vigia-source-runner/script-settings'],
+            ['worker_build_limits','/accounts/'+account+'/builds/account/limits'],
+            ['worker_build_by_version','/accounts/'+account+'/builds/builds?version_ids=db730433-2d85-4581-b3e4-687761d5da56'],
+            ['runtime_deployments','/accounts/'+account+'/workers/scripts/vigia-runtime/deployments'],
+            ['runner_deployments','/accounts/'+account+'/workers/scripts/vigia-source-runner/deployments'],
+            ['runtime_crons','/accounts/'+account+'/workers/scripts/vigia-runtime/schedules'],
+            ['runner_crons','/accounts/'+account+'/workers/scripts/vigia-source-runner/schedules']
+          ];
+          for(const [check,path] of tests){
+            const {meta,data}=await get(check,path);
+            let safe={};
+            if(data!==null){
+              if(check==='account_members'){
+                const rows=Array.isArray(data)?data:[];
+                safe={member_count:rows.length,statuses:[...new Set(rows.map(x=>x.status).filter(Boolean))].sort(),
+                  role_names:[...new Set(rows.flatMap(x=>Array.isArray(x.roles)?x.roles.map(y=>y.name):[]).filter(Boolean))].sort()};
+              }else if(check.endsWith('script_settings')){
+                safe={logpush:data.logpush??null,observability_enabled:data.observability?.enabled??null,
+                  observability_head_sampling_rate:data.observability?.head_sampling_rate??null,
+                  tail_consumer_count:Array.isArray(data.tail_consumers)?data.tail_consumers.length:null};
+              }else if(check==='worker_build_limits'){
+                safe={numeric_fields:Object.fromEntries(Object.entries(data??{}).filter(([k,v])=>typeof v==='number'&&/minute|build|limit|remaining|used/i.test(k)))};
+              }else if(check==='worker_build_by_version'){
+                const entries=Array.isArray(data)?data:Object.values(data?.builds??data??{}).filter(x=>x&&typeof x==='object');
+                safe={builds:entries.slice(0,5).map(x=>({
+                  outcome:x.build_outcome??null,created_on:x.created_on??null,
+                  trigger_source:x.build_trigger_metadata?.build_trigger_source??null,
+                  branch:x.build_trigger_metadata?.branch??null,
+                  commit_hash:x.build_trigger_metadata?.commit_hash??null,
+                  provider_type:x.build_trigger_metadata?.provider_type??null,
+                  repo_name:x.build_trigger_metadata?.repo_name??null
                 }))};
-              }
-              if (name.endsWith('_schedules')) return {crons:Array.isArray(r?.schedules)?r.schedules.map(x=>x.cron):[]};
-              if (name.endsWith('_settings')) return {
-                bindings:Array.isArray(r?.bindings)?r.bindings.map(b=>({name:b.name??null,type:b.type??null})):[],
-                compatibility_date:r?.compatibility_date??null,
-                has_observability:Boolean(r?.observability)
-              };
-              if (name==='d1_list') {
-                const list=Array.isArray(r)?r:Array.isArray(r?.results)?r.results:[];
-                return {nagamealert_databases:list.filter(x=>typeof x.name==='string' && x.name.toLowerCase().includes('nagamealert'))
-                  .map(x=>({name:x.name,file_size:Number.isFinite(x.file_size)?x.file_size:null,created_at:x.created_at??null,read_replication:x.read_replication?.mode??null})),
-                  matched:list.filter(x=>typeof x.name==='string'&&x.name.toLowerCase().includes('nagamealert')).length};
-              }
-              return {};
-            }
-            for(const job of jobs) {
-              try {
-                const response=await fetch(root+job.path,{method:'GET',redirect:'error',
-                  headers:{Authorization:'Bearer '+token,Accept:'application/json'},
-                  signal:AbortSignal.timeout(20000)});
-                const data=await response.json().catch(()=>null);
-                console.log('SEC_F1_INSPECTION '+JSON.stringify({
-                  check:job.name,http:response.status,success:data?.success===true,
-                  error_codes:Array.isArray(data?.errors)?data.errors.map(e=>e.code).filter(Number.isInteger):[],
-                  ...(data?.success===true?safe(job.name,data):{})
-                }));
-              } catch (error) {
-                console.log('SEC_F1_INSPECTION '+JSON.stringify({check:job.name,outcome:'network_or_decode_error',
-                  error_type:error?.name??'Error'}));
+              }else if(check.endsWith('deployments')){
+                const a=Array.isArray(data?.deployments)?data.deployments:Array.isArray(data)?data:[];
+                safe={latest:a.slice(0,2).map(x=>({id:x.id,created_on:x.created_on,
+                  versions:Array.isArray(x.versions)?x.versions.map(y=>({version_id:y.version_id,percentage:y.percentage})):[]}))};
+              }else if(check.endsWith('crons')){
+                safe={crons:Array.isArray(data?.schedules)?data.schedules.map(x=>x.cron):[]};
               }
             }
+            print(check,{...meta,...safe});
           }
           NODE
