@@ -4752,10 +4752,10 @@ var officialFetch = async (input, options) => {
   requests++;
   return fetch(input, { ...options, signal: AbortSignal.timeout(3e4) });
 };
-var detail2 = await fetchOecdDetail(oecdUri("EN", "US", "27022"), { fetch: officialFetch, retries: 0 });
+var detail2 = await fetchOecdDetail(oecdUri("EN", "US", "27022"), { fetchImpl: officialFetch, retries: 0 });
 var normalized = await normalizeOecdDetail(detail2, row.detected_at);
 var materialParity = oecdOfficialSourceFingerprint(canonical) === oecdOfficialSourceFingerprint(normalized.canonical);
 var identityParity = normalized.id === row.id && normalized.reference === row.reference && normalized.canonical.identity.sourceRecordId === row.source_record_id;
 var hashParity = normalized.contentHash === row.content_hash;
 console.log("SR271_OECD_27022_OFFICIAL_READ " + JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), zeroWrite: true, primarySnapshot: true, requests, reference: row.reference, id: row.id, sourceRecordId: row.source_record_id, storedHash: row.content_hash, officialHash: normalized.contentHash, versionCount: row.version_count, publishedAt: row.published_at, officialPublishedAt: normalized.publishedAt, storedUpdatedAt: row.updated_at, identityParity, materialParity, hashParity, officialUri: detail2.uri, officialDate: detail2.publishedDate, classification: normalized.type }));
-if (!identityParity || !materialParity || !hashParity || normalized.publishedAt !== row.published_at) process.exitCode = 1;
+if (requests !== 1 || !identityParity || !materialParity || !hashParity || normalized.publishedAt !== row.published_at) process.exitCode = 1;
