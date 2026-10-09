@@ -1,4 +1,4 @@
-name: SR271 authenticated runner budget upgrade preflight read only
+name: SR271 authenticated runner budget upgrade exclusive verified checkpoint before merge and upload
 on:
   push:
     branches: [source-reliability/durable-recovery-20261009]
@@ -12,9 +12,9 @@ jobs:
   preflight:
     if: github.run_attempt == 1
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 12
     steps:
-      - name: Authenticated allocation artifact and SELECT-only job preflight
+      - name: Read all state then acquire one exclusive empty-source checkpoint
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
@@ -34,4 +34,14 @@ jobs:
           const settings=await cf(script+'/settings'),subdomain=await cf(script+'/subdomain'),schedules=await cf(script+'/schedules');report('R10_RUNNER_PREFLIGHT_SETTINGS',{compatibility_date:settings.compatibility_date,compatibility_flags:settings.compatibility_flags,limits:settings.limits,observability:settings.observability,bindings:settings.bindings.map(b=>({name:b.name,type:b.type,id:b.id,text:b.type==='plain_text'?b.text:undefined})),subdomain,schedules});
           for(const sql of ["SELECT owner_id,epoch,expires_at FROM source_reliability_control WHERE id=1","SELECT * FROM source_sync_locks","SELECT id,source,mode,kind,phase,started_at,deadline,finished_at,receipt_json FROM source_reliability_jobs WHERE finished_at IS NULL OR started_at>='2026-10-09T07:54:00Z' ORDER BY started_at","SELECT effect_key,job_id,source,mode,ordinal FROM source_reliability_effects WHERE committed_at IS NULL","SELECT job_id,COUNT(*) AS markers,SUM(committed_at IS NULL) AS pending,MAX(ordinal) AS head FROM source_reliability_effects WHERE job_id='b217d0ca-28ee-43f0-9480-9b99c7775971' GROUP BY job_id"]){const r=await fetch(root+'/d1/database/'+database+'/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql}),signal:AbortSignal.timeout(25000)}),p=await r.json();if(!r.ok||!p.success||p.result.some(x=>x.meta?.changes||x.meta?.rows_written))throw Error('SELECT unconfirmed');report('R10_RUNNER_PREFLIGHT_SELECT',{at:new Date().toISOString(),sql,result:p.result});}
           report('R10_RUNNER_PREFLIGHT_COMPLETE',{at:new Date().toISOString(),zeroWrite:true,runner11ArtifactVerified:hash==='5521bbeed6f6ca7b2eb494c2bd752e83916c8567f6203386106bd7425c3abe67'});
+          const owner='sr271-budget-runner-20261009',stop=Math.min(Date.now()+360000,Date.parse('2026-10-09T08:25:00Z'));
+          async function select(sql,params=[]){if(!sql.startsWith('SELECT '))throw Error('Read only');const r=await fetch(root+'/d1/database/'+database+'/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql,params}),signal:AbortSignal.timeout(25000)}),p=await r.json();if(!r.ok||!p.success||p.result.some(x=>x.meta?.changes||x.meta?.rows_written))throw Error('SELECT failed');return p.result[0].results;}
+          let before;
+          for(;;){before=(await select('SELECT owner_id,epoch,expires_at FROM source_reliability_control WHERE id=1'))[0];const leases=await select('SELECT source,owner_id,expires_at FROM source_sync_locks WHERE expires_at>?',[new Date().toISOString()]);const jobs=await select('SELECT id,source,mode FROM source_reliability_jobs WHERE finished_at IS NULL AND deadline>?',[Date.now()]);const pending=await select('SELECT effect_key FROM source_reliability_effects WHERE committed_at IS NULL');if(before.owner_id===null&&!leases.length&&!jobs.length&&!pending.length)break;report('R10_RUNNER_CLAIM_WAIT',{at:new Date().toISOString(),owner:before.owner_id,leases,jobs,pending,zeroWrite:true});if(Date.now()>=stop)throw Error('No quiet checkpoint; no concurrent deployment');await new Promise(r=>setTimeout(r,10000));}
+          const runtime=await cf('/workers/scripts/vigia-runtime/deployments'),runner=await cf(script+'/deployments');
+          if(runtime.deployments[0].versions.length!==1||runtime.deployments[0].versions[0].version_id!=='f6b08d9a-356d-4dbb-8e9a-223f831ea8c1'||runtime.deployments[0].versions[0].percentage!==100||runner.deployments[0].versions[0].version_id!=='9ccaa456-4b52-41ce-a12a-249f9e1a9db4'||!runner.deployments[0].versions.every(x=>x.percentage===100)||hash!=='5521bbeed6f6ca7b2eb494c2bd752e83916c8567f6203386106bd7425c3abe67')throw Error('Allocation or runner artifact drift');
+          const at=new Date().toISOString(),expires=new Date(Date.now()+480000).toISOString(),epoch=before.epoch+1;
+          const statement={sql:"UPDATE source_reliability_control SET owner_id=?,epoch=epoch+1,expires_at=? WHERE id=1 AND owner_id IS NULL AND epoch=? AND NOT EXISTS(SELECT 1 FROM source_sync_locks WHERE expires_at>?) AND NOT EXISTS(SELECT 1 FROM source_reliability_jobs WHERE finished_at IS NULL AND deadline>?) AND NOT EXISTS(SELECT 1 FROM source_reliability_effects WHERE committed_at IS NULL) RETURNING epoch",params:[owner,expires,before.epoch,at,Date.now()]};
+          try{const r=await fetch(root+'/d1/database/'+database+'/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(statement),signal:AbortSignal.timeout(25000)}),p=await r.json();if(!r.ok||!p.success||p.result[0].results[0]?.epoch!==epoch)throw Error('Exclusive claim not confirmed');}catch(error){const row=(await select('SELECT owner_id,epoch,expires_at FROM source_reliability_control WHERE id=1'))[0];if(row.owner_id!==owner||row.epoch!==epoch||row.expires_at!==expires)throw error;}
+          const after=(await select('SELECT owner_id,epoch,expires_at FROM source_reliability_control WHERE id=1'))[0];if(after.owner_id!==owner||after.epoch!==epoch)throw Error('Claim postflight changed');report('R10_RUNNER_EXCLUSIVE_CHECKPOINT',{at:new Date().toISOString(),owner,epoch,expires,sourceWorkNotRepeated:true,readyForVerifiedMergeAndOneRunnerUpload:true});
           NODE
