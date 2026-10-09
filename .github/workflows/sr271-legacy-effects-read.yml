@@ -1,0 +1,44 @@
+name: SR271 legacy effects official GET SELECT proof
+on:
+  push:
+    branches: [source-reliability/legacy-effects-read-20261009]
+permissions:
+  contents: read
+concurrency:
+  group: sr271-legacy-effects-read-20261009
+  cancel-in-progress: false
+jobs:
+  proof:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Official current effects and immutable preimages SELECT only
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {gunzipSync,gzipSync} from 'node:zlib';
+          import {readFileSync,writeFileSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          writeFileSync('/tmp/sr271-observer.mjs',gunzipSync(Buffer.from(readFileSync('ops/sr271-legacy-observer.b64','utf8'),'base64')));
+          const {observeLegacyRecovery,LEGACY_RECOVERY_IDS}=await import('file:///tmp/sr271-observer.mjs');
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f',dbId='55596003-1b90-4f66-aad8-decb21205f13';
+          if(Date.now()>Date.parse('2026-10-09T06:10:00Z'))throw Error('read proof expired');
+          const db={prepare:(sql)=>{if(!sql.startsWith('SELECT '))throw Error('SELECT-only proof');let params=[];
+           const statement={bind:(...v)=>{params=v;return statement;},all:async()=>{const r=await fetch(root+'/d1/database/'+dbId+'/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql,params}),signal:AbortSignal.timeout(25000)}),p=await r.json();if(!r.ok||!p.success||p.result.some(x=>!x.success||x.meta?.changes||x.meta?.rows_written))throw Error('unconfirmed SELECT');return p.result[0];},first:async()=>{const r=await statement.all();return r.results[0]??null;}};return statement;}};
+          const results=await Promise.allSettled(Object.keys(LEGACY_RECOVERY_IDS).map(async id=>{
+           let calls=0;const deadline=Date.now()+360000;
+           const official=(url,init={})=>{if(++calls>800||Date.now()>=deadline)throw Error('bounded official observation exhausted');return fetch(url,{...init,signal:AbortSignal.any([AbortSignal.timeout(25000),...(init.signal?[init.signal]:[])])});};
+           const m=await observeLegacyRecovery(db,id,official),serialized=JSON.stringify(m),hash=createHash('sha256').update(serialized).digest('hex'),encoded=gzipSync(serialized).toString('base64');
+           console.log('R9_LEGACY_SUMMARY '+JSON.stringify({at:new Date().toISOString(),id,source:m.job.source,covered:m.covered,reason:m.reason,officialCalls:calls,records:m.official.recordsObserved,alerts:m.official.alerts.length,missing:m.official.missing,mismatches:m.official.mismatches,queries:m.preimages.length,manifestHash:hash,manifestBytes:Buffer.byteLength(serialized)}));
+           for(let offset=0;offset<encoded.length;offset+=12000)console.log('R9_MANIFEST_CHUNK '+JSON.stringify({id,offset,data:encoded.slice(offset,offset+12000)}));
+           console.log('R9_MANIFEST_END '+JSON.stringify({id,hash,encodedBytes:encoded.length}));
+           return{id,covered:m.covered,reason:m.reason};
+          }));
+          for(let i=0;i<results.length;i++){const r=results[i];if(r.status==='rejected')console.log('R9_LEGACY_HOLD '+JSON.stringify({id:Object.keys(LEGACY_RECOVERY_IDS)[i],reason:String(r.reason)}));}
+          console.log('R9_READ_PROOF_COMPLETE '+JSON.stringify({at:new Date().toISOString(),zeroWrite:true,results:results.map(r=>r.status==='fulfilled'?r.value:{covered:false,reason:String(r.reason)})}));
+          NODE
