@@ -1,0 +1,32 @@
+name: SR271 separately reviewed additive schema activation
+on:
+  push:
+    branches: [source-reliability/durable-recovery-20261009]
+permissions:
+  contents: read
+concurrency:
+  group: sr271-durable-recovery-20261009
+  cancel-in-progress: false
+jobs:
+  checkpoint:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Verified exact candidate and separate schema checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RECOVERY_PHASE: schema
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';import zlib from 'node:zlib';import crypto from 'node:crypto';
+          const code=zlib.gunzipSync(Buffer.from(fs.readFileSync('ops/sr271-recovery-api.b64','utf8'),'base64'));
+          if(crypto.createHash('sha256').update(code).digest('hex')!=='814c6049cfeb73d8b21b20a22a203a0ef37701fd431754e45e661e33c5bb4e59')throw Error('Artifact hash changed');
+          fs.writeFileSync('ops/sr271-recovery-api.mjs',code);
+          process.env.SCHEMA_SQL=fs.readFileSync('ops/sr271-durable-effects-v1.sql','utf8');
+          await import('./ops/sr271-recovery-api.mjs');
+          NODE
