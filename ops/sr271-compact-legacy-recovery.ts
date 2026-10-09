@@ -15,17 +15,18 @@ export function compactPreimage(p:LegacyRecoveryManifest['preimages'][number]){
 }
 
 /** Distinct current-state CAS. The original large transaction is NEVER resent. */
-export async function reconcileCompactSafetyGate(db:D1Database,manifest:LegacyRecoveryManifest,hash:string,lease:ReliabilityControlLease,at:string,report:(tag:string,value:unknown)=>void=()=>{}){
+export async function reconcileCompactSafetyGate(db:D1Database,manifest:LegacyRecoveryManifest,hash:string,lease:ReliabilityControlLease,at:string,report:(tag:string,value:unknown)=>void=()=>{},parentHash:string=hash){
  const prior=await db.prepare('SELECT manifest_hash,receipt_json FROM source_reliability_recoveries WHERE old_job_id=?').bind(oldId).first<{manifest_hash:string;receipt_json:string}>();if(prior){if(prior.manifest_hash!==hash)throw Error('Different recovery already committed');return true;}
  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(manifest))),actualHash=[...new Uint8Array(digest)].map(x=>x.toString(16).padStart(2,'0')).join('');
  const age=Date.parse(at)-Date.parse(manifest.observedAt);
  if(hash!==actualHash||manifest.oldJobId!==oldId||manifest.job.epoch!==2||manifest.job.receipt_json!==null||manifest.job.finished_at!==null||manifest.state.source!=='SAFETY GATE'||manifest.state.mode!=='recent'||manifest.state.cursor!==0||manifest.state.lease_owner_id!==oldId||!manifest.covered||manifest.official.missing.length||manifest.official.mismatches.length||age<0||age>30*60000||lease.epoch<=194)throw Error('Compact recovery baseline unproved');
- const parentKey='legacy-reconcile:'+oldId+':'+hash,key='legacy-reconcile-compact:'+oldId+':'+hash;
+ if(!/^[a-f0-9]{64}$/u.test(parentHash))throw Error('Original intent hash invalid');
+ const parentKey='legacy-reconcile:'+oldId+':'+parentHash,key='legacy-reconcile-compact:'+oldId+':'+hash;
  const parent=await db.prepare('SELECT manifest_json,committed_at,result_json FROM source_reliability_effects WHERE effect_key=? AND job_id=? AND ordinal=-1').bind(parentKey,oldId).first<{manifest_json:string;committed_at:string|null;result_json:string|null}>();
  if(!parent||parent.committed_at!==null||parent.result_json!==null)throw Error('Original unfinished intent differs');
  const parentBody=JSON.parse(parent.manifest_json) as {manifestHash:string;originalJob:unknown;originalState:unknown};
- if(parentBody.manifestHash!==hash||JSON.stringify(parentBody.originalJob)!==JSON.stringify(manifest.job)||JSON.stringify(parentBody.originalState)!==JSON.stringify(manifest.state))throw Error('Original intent preimages differ');
- if(await db.prepare('SELECT effect_key FROM source_reliability_effects WHERE effect_key=?').bind(key).first())throw Error('Compact intent already exists; marker reconciliation only, never resend');
+ if(parentBody.manifestHash!==parentHash||JSON.stringify(parentBody.originalJob)!==JSON.stringify(manifest.job)||JSON.stringify(parentBody.originalState)!==JSON.stringify(manifest.state))throw Error('Original intent preimages differ');
+ if(await db.prepare('SELECT effect_key FROM source_reliability_effects WHERE job_id=? AND ordinal=-2').bind(oldId).first())throw Error('Compact intent already exists; marker reconciliation only, never resend');
  const state=await createD1AlertStore(db).readSyncState!('SAFETY GATE','recent');
  if(!state||state.cursor!==0||state.updatedAt!==manifest.state.updated_at||state.leaseOwnerId!==oldId)throw Error('Source state changed');
  const recoveryId=crypto.randomUUID(),restored={...state,status:'partial' as const,leaseOwnerId:null,leaseMode:null,leaseExpiresAt:null,lastError:null,updatedAt:at};

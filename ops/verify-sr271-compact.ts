@@ -62,3 +62,20 @@ test('changed source preimage after compact planning rolls back every metadata e
  const original=base.batch.bind(base);base.batch=async statements=>{const r=await original(statements);if(statements.some(s=>s.sql.includes('INSERT INTO source_reliability_effects')&&s.params.includes('legacy-reconcile-compact:'+id+':'+hash)))db.prepare("UPDATE source_sync_state SET cursor=1 WHERE source='SAFETY GATE'").run();return r;};
  await assert.rejects(reconcileCompactSafetyGate(base as unknown as D1Database,manifest,hash,lease,at));assert.equal(db.prepare('SELECT COUNT(*) AS n FROM source_reliability_recoveries').get().n,0);assert.equal(db.prepare('SELECT receipt_json FROM source_reliability_jobs WHERE id=?').get(id).receipt_json,null);assert.equal(db.prepare('SELECT committed_at FROM source_reliability_effects WHERE effect_key=?').get(parent).committed_at,null);
 }));
+test('fresh current-effects proof closes the separate original intent without changing its immutable manifest',()=>fixture(async({db,base,lease,manifest,hash,parent})=>{
+ const original=db.prepare('SELECT manifest_json FROM source_reliability_effects WHERE effect_key=?').get(parent).manifest_json;
+ const fresh={...manifest,observedAt:'2026-10-09T06:30:00.000Z'},freshHash=await legacyManifestHash(fresh);
+ assert.notEqual(freshHash,hash);
+ assert.equal(await reconcileCompactSafetyGate(base as unknown as D1Database,fresh,freshHash,lease,'2026-10-09T06:30:01.000Z',()=>{},hash),true);
+ assert.equal(db.prepare('SELECT manifest_json FROM source_reliability_effects WHERE effect_key=?').get(parent).manifest_json,original);
+ assert.equal(db.prepare('SELECT manifest_hash FROM source_reliability_recoveries').get().manifest_hash,freshHash);
+ const closure=JSON.parse(db.prepare('SELECT result_json FROM source_reliability_effects WHERE effect_key=?').get(parent).result_json);
+ assert.equal(closure.originalTransactionResult,'unconfirmed-and-fenced');assert.ok(closure.replacementEffectKey.endsWith(freshHash));
+}));
+test('a different fresh hash cannot bypass an uncertain compact commit intent',()=>fixture(async({db,base,lease,manifest,hash,parent})=>{
+ const original=base.batch.bind(base);let finals=0;base.batch=async statements=>{if(statements.some(s=>s.sql.includes('INSERT INTO source_reliability_recoveries'))){finals++;throw Error('remote result unknown');}return original(statements);};
+ await assert.rejects(reconcileCompactSafetyGate(base as unknown as D1Database,manifest,hash,lease,at));
+ const fresh={...manifest,observedAt:'2026-10-09T06:30:00.000Z'},freshHash=await legacyManifestHash(fresh);
+ await assert.rejects(reconcileCompactSafetyGate(base as unknown as D1Database,fresh,freshHash,lease,'2026-10-09T06:30:01.000Z',()=>{},hash),/Compact intent already exists/);
+ assert.equal(finals,1);assert.equal(db.prepare('SELECT committed_at FROM source_reliability_effects WHERE effect_key=?').get(parent).committed_at,null);
+}));
