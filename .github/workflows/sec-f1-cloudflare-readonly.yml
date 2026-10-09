@@ -99,7 +99,15 @@ jobs:
                   branch:x.build_trigger_metadata?.branch??null,
                   commit_hash:x.build_trigger_metadata?.commit_hash??null,
                   provider_type:x.build_trigger_metadata?.provider_type??null,
-                  repo_name:x.build_trigger_metadata?.repo_name??null
+                  repo_name:x.build_trigger_metadata?.repo_name??null,
+                  build_gate:{
+                    configured_build_command_type:typeof x.build_trigger_metadata?.build_command,
+                    has_explicit_cloudflare_ci:/build:cloudflare/.test(x.build_trigger_metadata?.build_command??''),
+                    has_direct_tests:/npm\\s+(?:run\\s+)?(?:test|ci)/.test(x.build_trigger_metadata?.build_command??''),
+                    has_explicit_typecheck:/tsc\\s+--noEmit/.test(x.build_trigger_metadata?.build_command??''),
+                    has_explicit_lint:/\\blint\\b/.test(x.build_trigger_metadata?.build_command??''),
+                    deploy_configured:Boolean(x.build_trigger_metadata?.deploy_command)
+                  }
                 }))};
               }else if(check.endsWith('deployments')){
                 const a=Array.isArray(data?.deployments)?data.deployments:Array.isArray(data)?data:[];
