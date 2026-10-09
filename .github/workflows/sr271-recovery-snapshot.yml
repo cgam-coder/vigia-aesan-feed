@@ -21,12 +21,12 @@ jobs:
           const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
           if(Date.now()>Date.parse('2026-10-09T07:15:00Z'))throw Error('diagnostic expired');
           const redact=v=>JSON.parse(JSON.stringify(v).replaceAll(process.env.CF_TOKEN,'[redacted]'));
-          for(const view of ['invocations','events']){
-           const body={queryId:'sr271-readonly-lifecycle-20261009-'+view,dry:true,view,limit:200,timeframe:{from:Date.parse('2026-10-09T06:18:00Z'),to:Date.now()},parameters:{filterCombination:'or',filters:['vigia-runtime','vigia-source-runner'].map(value=>({key:'$metadata.service',operation:'eq',type:'string',value}))}};
+          for(const view of ['runner','scheduled']){
+           const body={queryId:'sr271-readonly-lifecycle-20261009-'+view,dry:true,view:'invocations',limit:200,timeframe:{from:Date.parse('2026-10-09T06:18:00Z'),to:Date.now()},parameters:{filterCombination:'and',filters:view==='runner'?[{key:'$metadata.service',operation:'eq',type:'string',value:'vigia-source-runner'}]:[{key:'$metadata.service',operation:'eq',type:'string',value:'vigia-runtime'},{key:'$workers.eventType',operation:'eq',type:'string',value:'scheduled'}]}};
            const r=await fetch(root+'/workers/observability/telemetry/query',{method:'POST',headers:{Authorization:'Bearer '+process.env.CF_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(30000)});const p=await r.json();
            console.log('R9_TELEMETRY_STATUS '+JSON.stringify({at:new Date().toISOString(),view,http:r.status,success:p.success,errors:p.errors,run:p.result?.run,keys:Object.keys(p.result??{})}));
            const clean=(v,depth=0)=>{if(depth>12)return '[depth]';if(Array.isArray(v))return v.map(x=>clean(x,depth+1));if(v&&typeof v==='object'){const o={};for(const [k,x]of Object.entries(v)){if(/headers|cookie|authorization|token|body|email|ipAddress/i.test(k))continue;o[k]=clean(x,depth+1);}return o;}return v};
-           for(const k of ['events','invocations','requests','traces'])if(p.result?.[k])console.log('R9_TELEMETRY '+JSON.stringify({view,key:k,data:redact(clean(p.result[k]))}));
+           for(const k of ['events','invocations','requests','traces'])if(p.result?.[k])console.log('R9_TELEMETRY '+JSON.stringify({view,key:k,data:Object.values(p.result[k]).flat().map(x=>({at:x.timestamp,source:x.source,metadata:x.$metadata,workers:x.$workers?{scriptName:x.$workers.scriptName,scriptVersion:x.$workers.scriptVersion,eventType:x.$workers.eventType,outcome:x.$workers.outcome,cpuTimeMs:x.$workers.cpuTimeMs,wallTimeMs:x.$workers.wallTimeMs,event:x.$workers.event?{cron:x.$workers.event.cron,path:x.$workers.event.path}:null}:null})).map(redact)}));
            if(!r.ok||!p.success)break;
           }
           console.log('R9_TELEMETRY_COMPLETE '+JSON.stringify({at:new Date().toISOString(),dry:true,domainWrites:0}));
