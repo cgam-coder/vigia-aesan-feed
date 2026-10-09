@@ -1,0 +1,83 @@
+name: SEC-F1 isolated Cloudflare metadata inspection GET only
+
+on:
+  push:
+    branches:
+      - sec-f1/cloudflare-api-readonly-20261009
+    paths:
+      - .github/workflows/sec-f1-cloudflare-readonly.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Read allowed Cloudflare API metadata without printing credentials
+        shell: bash
+        env:
+          CF_INSPECT_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const token = process.env.CF_INSPECT_TOKEN;
+          const account = '9c1807c68493f14259248b5f5782cc6f';
+          if (!token) {
+            console.log('SEC_F1_INSPECTION ' + JSON.stringify({check:'credential_present',available:false}));
+            process.exitCode = 1;
+          } else {
+            console.log('SEC_F1_INSPECTION ' + JSON.stringify({check:'credential_present',available:true}));
+            const root = 'https://api.cloudflare.com/client/v4';
+            const jobs = [
+              {name:'token_verify',path:'/user/tokens/verify'},
+              {name:'runtime_deployments',path:'/accounts/'+account+'/workers/scripts/vigia-runtime/deployments'},
+              {name:'runner_deployments',path:'/accounts/'+account+'/workers/scripts/vigia-source-runner/deployments'},
+              {name:'runtime_schedules',path:'/accounts/'+account+'/workers/scripts/vigia-runtime/schedules'},
+              {name:'runner_schedules',path:'/accounts/'+account+'/workers/scripts/vigia-source-runner/schedules'},
+              {name:'runtime_settings',path:'/accounts/'+account+'/workers/scripts/vigia-runtime/settings'},
+              {name:'runner_settings',path:'/accounts/'+account+'/workers/scripts/vigia-source-runner/settings'},
+              {name:'d1_list',path:'/accounts/'+account+'/d1/database?per_page=100'}
+            ];
+            function safe(name,body) {
+              const r = body && typeof body==='object' ? body.result : null;
+              if (name==='token_verify') return {token_status:r?.status??null,expires_on:r?.expires_on??null};
+              if (name.endsWith('_deployments')) {
+                const dep = Array.isArray(r?.deployments)?r.deployments:Array.isArray(r)?r:[];
+                return {deployments:dep.slice(0,2).map(d=>({
+                  id:d.id??null,created_on:d.created_on??null,
+                  versions:Array.isArray(d.versions)?d.versions.map(v=>({version_id:v.version_id??null,percentage:v.percentage??null})):[]
+                }))};
+              }
+              if (name.endsWith('_schedules')) return {crons:Array.isArray(r?.schedules)?r.schedules.map(x=>x.cron):[]};
+              if (name.endsWith('_settings')) return {
+                bindings:Array.isArray(r?.bindings)?r.bindings.map(b=>({name:b.name??null,type:b.type??null})):[],
+                compatibility_date:r?.compatibility_date??null,
+                has_observability:Boolean(r?.observability)
+              };
+              if (name==='d1_list') {
+                const list=Array.isArray(r)?r:Array.isArray(r?.results)?r.results:[];
+                return {nagamealert_databases:list.filter(x=>typeof x.name==='string' && x.name.toLowerCase().includes('nagamealert'))
+                  .map(x=>({name:x.name,file_size:Number.isFinite(x.file_size)?x.file_size:null,created_at:x.created_at??null,read_replication:x.read_replication?.mode??null})),
+                  matched:list.filter(x=>typeof x.name==='string'&&x.name.toLowerCase().includes('nagamealert')).length};
+              }
+              return {};
+            }
+            for(const job of jobs) {
+              try {
+                const response=await fetch(root+job.path,{method:'GET',redirect:'error',
+                  headers:{Authorization:'Bearer '+token,Accept:'application/json'},
+                  signal:AbortSignal.timeout(20000)});
+                const data=await response.json().catch(()=>null);
+                console.log('SEC_F1_INSPECTION '+JSON.stringify({
+                  check:job.name,http:response.status,success:data?.success===true,
+                  error_codes:Array.isArray(data?.errors)?data.errors.map(e=>e.code).filter(Number.isInteger):[],
+                  ...(data?.success===true?safe(job.name,data):{})
+                }));
+              } catch (error) {
+                console.log('SEC_F1_INSPECTION '+JSON.stringify({check:job.name,outcome:'network_or_decode_error',
+                  error_type:error?.name??'Error'}));
+              }
+            }
+          }
+          NODE
