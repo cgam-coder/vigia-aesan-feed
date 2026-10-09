@@ -1,4 +1,4 @@
-name: SR271 final bounded post-memory-fix natural receipts and independent watchdog
+name: SR271 journal recovery preflight authenticated read only
 on:
   push:
     branches: [source-reliability/recovery-snapshot-20261009]
@@ -8,14 +8,14 @@ concurrency:
   group: sr271-recovery-snapshot-20261009
   cancel-in-progress: false
 jobs:
-  checkpoint_0714:
+  checkpoint_now:
     if: github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
       - name: Wait for the bounded natural checkpoint
         env:
-          CHECKPOINT_AT: 2026-10-09T07:14:00Z
+          CHECKPOINT_AT: 2026-10-09T07:35:00Z
         run: |
           node --input-type=module -e "const target=Date.parse(process.env.CHECKPOINT_AT);while(Date.now()<target)await new Promise(r=>setTimeout(r,5000));"
       - name: Authenticated Cloudflare GET and D1 SELECT only
@@ -25,7 +25,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f',db='55596003-1b90-4f66-aad8-decb21205f13',base='https://vigia-runtime.c-gamiz93.workers.dev';
-          if(Date.now()>Date.parse('2026-10-09T07:20:00Z'))throw Error('snapshot expired');
+          if(Date.now()>Date.parse('2026-10-09T08:00:00Z'))throw Error('snapshot expired');
           async function cf(path){const r=await fetch(root+path,{headers:{Authorization:'Bearer '+process.env.CF_TOKEN},signal:AbortSignal.timeout(25000)});const p=await r.json();if(!r.ok||!p.success)throw Error('CF read failed '+path+' '+r.status);return p.result;}
           for(const service of ['vigia-runtime','vigia-source-runner']){
            const deployments=await cf('/workers/scripts/'+service+'/deployments'),active=deployments.deployments[0],versions=[];
