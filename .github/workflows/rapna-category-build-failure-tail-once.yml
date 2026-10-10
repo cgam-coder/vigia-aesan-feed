@@ -24,13 +24,31 @@ jobs:
           if(!token){emit({status:'HOLD',reason:'missing_token'});process.exitCode=1;process.exit();}
           const target='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/builds/builds/7e0cfdad-4693-41b8-801d-d5bfddc27b4e/logs';
           try{
-            const r=await fetch(target,{method:'GET',headers:{Authorization:'Bearer '+token,Accept:'application/json'},redirect:'error',signal:AbortSignal.timeout(16000)});
-            const j=await r.json().catch(()=>null);
-            const rows=Array.isArray(j?.result?.lines)?j.result.lines:[];
-            const sanitized=rows.map(x=>(typeof x==='string'?x:Array.isArray(x)?String(x.at(-1)):String(x?.message??x?.text??x??'')))
-              .map(x=>x.replace(/[A-Za-z0-9_+./-]{100,}/g,'[LONG_TOKEN_REDACTED]').slice(0,260))
-              .filter(x=>!/(Bearer |CF_TOKEN|CLOUDFLARE_API_TOKEN|GITHUB_TOKEN|AUTHORIZATION=|client_secret|private.key|api_key=)/i.test(x));
-            emit({http:r.status,success:j?.success===true,rows:rows.length,
-              head:sanitized.slice(0,12),tail:sanitized.slice(-18),failures:sanitized.map((text,i)=>({i,text})).filter(v=>/✗|✘|×|fail|error|timeout|timed out|exit code|out of memory|worker.*killed|script.*killed/i.test(v.text)).slice(-30),raw_responses_discarded:true});
+            let cursor=null;
+            const seen=new Set();
+            const safe=[];
+            const pages=[];
+            for(let page=0;page<8;page++){
+              const u=new URL(target);
+              if(cursor)u.searchParams.set('cursor',cursor);
+              const r=await fetch(u,{method:'GET',headers:{Authorization:'Bearer '+token,Accept:'application/json'},redirect:'error',signal:AbortSignal.timeout(14000)});
+              const j=await r.json().catch(()=>null);
+              const rows=Array.isArray(j?.result?.lines)?j.result.lines:[];
+              const next=j?.result?.cursor??null;
+              pages.push({page,http:r.status,success:j?.success===true,count:rows.length,
+                has_next:Boolean(next),truncated:j?.result?.truncated===true});
+              if(r.status!==200||j?.success!==true)break;
+              for(const item of rows) {
+                const s=typeof item==='string'?item:Array.isArray(item)?String(item.at(-1)):String(item?.message??item?.text??'');
+                if(/Bearer |CF_TOKEN|CLOUDFLARE_API_TOKEN|GITHUB_TOKEN|AUTHORIZATION=|client_secret|private.key|api_key=/i.test(s))continue;
+                safe.push(s.replace(/[A-Za-z0-9_+./-]{100,}/g,'[REDACTED]').slice(0,320));
+              }
+              if(!next||seen.has(next))break;
+              seen.add(next);
+              cursor=next;
+            }
+            const key=/^\\s*(?:✖|✘|✗|×|Error:|Failed:|Failed build|fail \\d|error TS|# fail|not ok|\\[ERROR\\]|\\[error\\])/i;
+            const matches=safe.map((s,i)=>({i,text:s})).filter(x=>key.test(x.text));
+            emit({pages,lines:safe.length,head:safe.slice(0,5),tail:safe.slice(-40),failures:matches.slice(-30),raw_responses_discarded:true});
           }catch(e){emit({outcome:'read_failed',error_type:e?.name??'Error'});process.exitCode=1;}
           NODE
