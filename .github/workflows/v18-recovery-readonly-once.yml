@@ -1,0 +1,79 @@
+name: V18 recovery bounded read-only once
+
+on:
+  push:
+    branches: [sec-f1/cloudflare-api-readonly-20261009]
+    paths: [.github/workflows/v18-recovery-readonly-once.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Read deployed control, D1 journals and receipts only
+        env:
+          CF_READ_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SYNC_READ_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const out=(x)=>console.log('V18_RECOVERY_READ '+JSON.stringify(x));
+          const secrets=[process.env.CF_READ_TOKEN,process.env.SYNC_READ_TOKEN].filter(Boolean);
+          const clean=(x)=> {
+           if(typeof x==='string'){let t=x;for(const s of secrets)t=t.split(s).join('[REDACTED]');return t.replace(/Bearer\s+\S+/gi,'Bearer [REDACTED]').slice(0,1200);}
+           if(Array.isArray(x))return x.map(clean);
+           if(x&&typeof x==='object')return Object.fromEntries(Object.entries(x).map(([k,v])=>[k,clean(v)]));
+           return x;
+          };
+          const req=async(url,token,body)=> {
+           const r=await fetch(url,{method:body?'POST':'GET',redirect:'error',headers:{Authorization:'Bearer '+token,Accept:'application/json',...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(18000)});
+           const data=await r.json().catch(()=>null);return {http:r.status,data};
+          };
+          const acct='9c1807c68493f14259248b5f5782cc6f';
+          const dbid='55596003-1b90-4f66-aad8-decb21205f13';
+          const cfbase='https://api.cloudflare.com/client/v4/accounts/'+acct;
+          let rowsRead=0,queries=0;
+          const query=async(label,sql,params=[])=>{
+           if(!/^SELECT\b/i.test(sql)||sql.includes(';')||queries>=12||rowsRead>100000)throw Error('READ_BUDGET_STOP');
+           queries++;
+           const r=await req(cfbase+'/d1/database/'+dbid+'/query',process.env.CF_READ_TOKEN,{sql,params});
+           if(r.http!==200||r.data?.success!==true){out({gate:label,http:r.http,success:false,codes:r.data?.errors?.map(e=>e.code)});throw Error('D1_READ_UNAVAILABLE');}
+           const result=r.data.result;
+           for(const z of result) {rowsRead+=z.meta?.rows_read??0;if(z.meta?.rows_written!==0)throw Error('READ_CONTRACT_VIOLATION');}
+           const rows=result.flatMap(z=>z.results??[]);
+           out(clean({gate:label,http:r.http,rowsRead:result.reduce((s,z)=>s+(z.meta?.rows_read??0),0),rowsWritten:result.reduce((s,z)=>s+(z.meta?.rows_written??0),0),rows}));
+           return rows;
+          };
+          if(secrets.length!==2){out({gate:'auth',available:false});process.exit(1);}
+          try {
+           const native=await req('https://vigia-runtime.c-gamiz93.workers.dev/api/source-reliability?observe=1',process.env.SYNC_READ_TOKEN);
+           const d=native.data??{},st=d.state??{};
+           out(clean({gate:'native',http:native.http,buildSha:d.buildSha,mode:d.mode,observedAt:d.observedAt,certified:d.officialParityCertified,activeLease:d.activeLease,epoch:d.epoch,ageMinutes:d.ageMinutes,lastWake:st.lastWakeAt,lastOutcome:st.lastOutcome,attempts:st.attempts,revisions:st.revisionAttempts,lastAudit:st.lastAudit}));
+           for(const name of ['vigia-runtime','vigia-source-runner']){
+            const r=await req(cfbase+'/workers/scripts/'+name+'/deployments',process.env.CF_READ_TOKEN);
+            out({gate:'deployments',worker:name,http:r.http,success:r.data?.success,items:r.data?.result?.deployments?.slice(0,3).map(v=>({id:v.id,created_on:v.created_on,versions:v.versions}))});
+            const s=await req(cfbase+'/workers/scripts/'+name+'/schedules',process.env.CF_READ_TOKEN);
+            out({gate:'schedules',worker:name,http:s.http,success:s.data?.success,items:s.data?.result});
+           }
+           const meta=await req(cfbase+'/d1/database/'+dbid,process.env.CF_READ_TOKEN);
+           out({gate:'database',http:meta.http,success:meta.data?.success,name:meta.data?.result?.name,uuid:meta.data?.result?.uuid,file_size:meta.data?.result?.file_size,num_tables:meta.data?.result?.num_tables});
+           if(meta.data?.result?.uuid!==dbid||meta.data?.result?.name!=='nagamealert')throw Error('DATABASE_BASELINE_MISMATCH');
+           await query('schema',"SELECT name,sql FROM sqlite_schema WHERE type IN ('table','index') AND (name LIKE 'source_reliability%' OR name IN ('source_sync_state','source_sync_locks','source_revision_certifications') OR name LIKE '%snapshot%') ORDER BY name LIMIT 50");
+           await query('control',"SELECT id,owner_id,expires_at,epoch,last_scheduled_time,json_extract(state_json,'$.lastWakeAt') AS wake,json_extract(state_json,'$.lastOutcome') AS outcome,json_extract(state_json,'$.revisionAttempts') AS revision_attempts FROM source_reliability_control WHERE id=1");
+           const suspect=Object.entries(st.revisionAttempts??{}).filter(([k,v])=>['unknown','failed','running'].includes(v?.outcome)).slice(0,6);
+           const ids=suspect.map(([k,v])=>v.id).filter(x=>typeof x==='string');
+           if(ids.length){
+            const slots=ids.map(()=>'?').join(',');
+            await query('jobs','SELECT id,source,mode,kind,epoch,started_at,deadline,finished_at,phase,write_intent_at,receipt_json FROM source_reliability_jobs WHERE id IN ('+slots+')',ids);
+            await query('effect_stats','SELECT job_id,COUNT(*) AS markers,SUM(committed_at IS NULL) AS uncommitted,SUM(result_json IS NULL) AS no_result,MIN(ordinal) AS first,MAX(ordinal) AS last FROM source_reliability_effects WHERE job_id IN ('+slots+') GROUP BY job_id',ids);
+            await query('effect_tail','SELECT effect_key,job_id,ordinal,committed_at,length(manifest_json) AS manifest_bytes,json_extract(manifest_json,\'$.kind\') AS kind,json_extract(result_json,\'$.checkpoint\') AS checkpoint,json_extract(result_json,\'$.statementCount\') AS statement_count FROM source_reliability_effects WHERE job_id IN ('+slots+') ORDER BY job_id,ordinal DESC LIMIT 35',ids);
+            await query('recoveries','SELECT old_job_id,recovery_id,manifest_hash,committed_at,json_extract(receipt_json,\'$.outcome\') AS outcome,json_extract(receipt_json,\'$.reason\') AS reason FROM source_reliability_recoveries WHERE old_job_id IN ('+slots+')',ids);
+           }
+           await query('source_states',"SELECT * FROM source_sync_state WHERE source IN ('AESAN','RAPNA','RASFF','SAFETY GATE','OECD') ORDER BY source,mode LIMIT 25");
+           await query('source_leases',"SELECT * FROM source_sync_locks WHERE source IN ('AESAN','RAPNA','RASFF','SAFETY GATE','OECD') LIMIT 5");
+           await query('certificates',"SELECT * FROM source_revision_certifications WHERE source IN ('AESAN','RAPNA','RASFF','SAFETY GATE','OECD') ORDER BY source,mode LIMIT 20");
+           out({gate:'cost_actual',d1_queries:queries,d1_rows_read:rowsRead,d1_rows_written:0,estimated_read_usd_if_all_over_quota:rowsRead*0.001/1000000,expected_incremental_usd:0,included_read_headroom_last_verified:18400000000,new_builds:0,new_crons:0,new_workers:0});
+          }catch(e){out({gate:'STOP',reason:clean(e.message),queries,rowsRead});process.exitCode=1;}
+          NODE
