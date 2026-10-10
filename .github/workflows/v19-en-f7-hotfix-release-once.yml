@@ -1,4 +1,4 @@
-name: V19 EN F7 hotfix production final build read-only
+name: V19 EN F7 postdeploy exact Worker certification
 on:
   push:
     branches: [sec-f1/cloudflare-api-readonly-20261009]
