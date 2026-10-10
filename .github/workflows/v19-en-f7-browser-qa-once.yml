@@ -1,0 +1,102 @@
+name: V19 EN F7 production-style browser QA one-off
+on:
+  push:
+    branches: [sec-f1/cloudflare-api-readonly-20261009]
+    paths: [.github/workflows/v19-en-f7-browser-qa-once.yml]
+permissions:
+  contents: read
+concurrency:
+  group: v19-en-f7-browser-qa
+  cancel-in-progress: false
+jobs:
+  browser:
+    if: github.actor == 'cgam-coder'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Read-only F7 preview desktop/mobile/narrow browser acceptance
+        shell: bash
+        run: |
+          mkdir -p /tmp/na-en-qa
+          cd /tmp/na-en-qa
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund --silent playwright@1.57.0
+          npx playwright install chromium
+          cat > verify.mjs <<'NODE'
+          import assert from "node:assert/strict";
+          import { chromium } from "playwright";
+          const base="https://fix-v19-en-home-f7-parity-20261010-vigia-runtime.c-gamiz93.workers.dev";
+          const variants=[
+            {name:"mobile",width:390,height:844,asset:"home-f7-en-mobile.png"},
+            {name:"narrow",width:320,height:700,asset:"home-f7-en-narrow.png"},
+            {name:"desktop",width:1440,height:900,asset:"home-f7-en-desktop.png"},
+          ];
+          const browser=await chromium.launch({headless:true,args:["--no-sandbox"]});
+          let total=0;
+          try {
+            for(const cfg of variants){
+              const context=await browser.newContext({viewport:{width:cfg.width,height:cfg.height},reducedMotion:"reduce",deviceScaleFactor:1});
+              const page=await context.newPage();
+              const errors=[];
+              page.on("pageerror",e=>errors.push(String(e)));
+              const response=await page.goto(base+"/en/",{waitUntil:"domcontentloaded",timeout:30000});
+              assert.equal(response?.status(),200);
+              await page.locator("h1").waitFor({timeout:20000});
+              const data=await page.evaluate(()=>{
+                const el=document.querySelector(".na-home-horizon");
+                const image=el?.querySelector("picture img");
+                const cards=el?.querySelector('[class*="f7CardsArtwork"]');
+                return {version:el?.getAttribute("data-home-version"),locale:el?.getAttribute("data-locale"),
+                  title:el?.querySelector("h1")?.textContent,
+                  h1Count:document.querySelectorAll("h1").length,
+                  imgSrc:image?.currentSrc||"",
+                  imageReady:!!image?.naturalWidth,
+                  css:cards?getComputedStyle(cards).backgroundImage:"",
+                  containsLegacy:!!document.querySelector('[class*="_home_"]:not([data-home-version])'),
+                  htmlWidth:document.documentElement.scrollWidth,
+                  links:[...el.querySelectorAll("a[href]")].map(a=>({href:a.getAttribute("href"),text:a.textContent?.trim()||""})) };
+              });
+              assert.equal(data.version,"f7-pixel-locked");
+              assert.equal(data.locale,"en");
+              assert.equal(data.title,"NagameAlert");
+              assert.equal(data.h1Count,1);
+              assert.equal(data.containsLegacy,false);
+              assert.ok(data.htmlWidth<=cfg.width+2,`horizontal overflow ${cfg.name}: ${data.htmlWidth}`);
+              for(const route of ["/en/","/en/alerts","/en/sources","/en/methodology","/"]){
+                assert.ok(data.links.some(a=>a.href===route),`missing navigation ${cfg.name} ${route}`);
+              }
+              if(cfg.width<768) {
+                assert.ok(data.imgSrc.includes(cfg.asset),`wrong selected mobile art ${data.imgSrc}`);
+                assert.ok(data.imageReady,`missing mobile art ${cfg.name}`);
+                const menu=page.locator("main details").first();
+                await menu.locator("summary").click();
+                assert.equal(await menu.getAttribute("open"),"");
+                assert.equal(await menu.locator('a[href="/en/alerts"]').count(),1);
+                await menu.locator("summary").click();
+                assert.equal(await menu.getAttribute("open"),null);
+              } else {
+                assert.ok(data.css.includes(cfg.asset),`English desktop card background missing: ${data.css}`);
+              }
+              assert.equal(errors.length,0,errors.join(";"));
+              const png=await page.screenshot({type:"jpeg",quality:50,clip:{x:0,y:0,width:cfg.width,height:cfg.height}});
+              if(cfg.name!=="desktop")console.log("V19_EN_BROWSER_SCREEN "+cfg.name+" "+png.toString("base64"));
+              console.log("V19_EN_BROWSER "+JSON.stringify({name:cfg.name,pass:true,
+                source:data.imgSrc.slice(-60),h1Count:data.h1Count,overflow:0,imagesReady:data.imageReady,
+                menuTested:cfg.width<768,errors:errors.length}));
+              total++;
+              await context.close();
+            }
+            const ctx=await browser.newContext({viewport:{width:390,height:844},reducedMotion:"reduce"});
+            const page=await ctx.newPage();
+            const es=await page.goto(base+"/",{waitUntil:"domcontentloaded"});
+            assert.equal(es?.status(),200);
+            assert.equal(await page.locator('.na-home-horizon').getAttribute("data-locale"),"es");
+            assert.equal(await page.locator('.na-home-horizon').getAttribute("data-home-version"),"f7-pixel-locked");
+            assert.ok((await page.locator('picture img').getAttribute('src')).includes('home-f7-es-desktop.png'));
+            console.log("V19_EN_BROWSER "+JSON.stringify({name:"spanish-control",pass:true,modified:false}));
+            await ctx.close();
+            total++;
+            console.log("V19_EN_BROWSER_RESULT "+JSON.stringify({checks:total,outcome:"PASS"}));
+          } finally {await browser.close();}
+          NODE
+          node verify.mjs
