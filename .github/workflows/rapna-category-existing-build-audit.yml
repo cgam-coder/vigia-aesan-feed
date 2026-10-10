@@ -1,4 +1,4 @@
-name: RAPNA category investigate existing production attempt (GET only)
+name: RAPNA category read failed production CI (GET only)
 on:
   push:
     branches: [sec-f1/cloudflare-api-readonly-20261009]
@@ -6,49 +6,34 @@ on:
 permissions:
   contents: read
 jobs:
-  audit:
+  inspect:
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
-      - name: Locate exact SHA production deployment attempt, no writes
+      - name: Read and redact failures in exact CI build
         shell: bash
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          VIGIA_READ: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           node --input-type=module <<'NODE'
-          const token=process.env.CF_TOKEN,read=process.env.VIGIA_READ;
-          const base='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
-          const expected='0c924db3ec367614a3d57ecd94ab24428f3794e6';
-          const log=x=>console.log('RAPNA_CATEGORY_DUP '+JSON.stringify(x));
-          if(!token||!read){log({gate:'auth',fail:true});process.exitCode=1;process.exit();}
-          const get=async(url,t)=>{const r=await fetch(url,{method:'GET',headers:{Authorization:'Bearer '+t,Accept:'application/json'},redirect:'error',signal:AbortSignal.timeout(14000)});
-            return {http:r.status,body:await r.json().catch(()=>null)};};
+          const token=process.env.CF_TOKEN;
+          const out=x=>console.log('RAPNA_FULL_CI_FAIL '+JSON.stringify(x));
+          if(!token){out({error:'token_missing'});process.exitCode=1;process.exit();}
+          const id='7e0cfdad-4693-41b8-801d-d5bfddc27b4e';
           try{
-            const scripts=await get(base+'/workers/scripts',token);
-            const w=(scripts.body?.result??[]).find(s=>s.id==='vigia-runtime');
-            if(!w?.tag)throw Error('worker_not_found');
-            const builds=await get(base+'/builds/workers/'+w.tag+'/builds',token);
-            const all=Array.isArray(builds.body?.result)?builds.body.result:builds.body?.result?.builds??[];
-            const matches=all.filter(x=>x.build_trigger_metadata?.commit_hash===expected);
-            log({gate:'matching_builds',http:builds.http,all_records:all.length,count:matches.length,
-              matches:matches.map(x=>({build_uuid:x.build_uuid,status:x.status,
-                outcome:x.build_outcome,created:x.created_on,updated:x.modified_on,
-                branch:x.build_trigger_metadata?.branch,
-                source:x.build_trigger_metadata?.build_trigger_source,
-                deploy_command:x.build_trigger_metadata?.deploy_command})).slice(0,12)});
-            for(const b of matches.slice(0,4)){
-              const uuid=b.build_uuid;
-              const l=await get(base+'/builds/builds/'+uuid+'/logs',token);
-              const lines=(l.body?.result?.lines??[]).map(x=>Array.isArray(x)?String(x.at(-1)):String(x));
-              const important=lines.filter(x=>/Executing user deploy command|Success: Deploy command completed|Failed:|Preview: main|Deployment|Uploading|Deployed|already running|ERROR/i.test(x))
-                .filter(x=>!/Bearer|secret|password|token/i.test(x)).slice(-18);
-              log({gate:'build_logs',uuid,http:l.http,lines:lines.length,important:important.map(x=>x.slice(0,250))});
+            const r=await fetch('https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/builds/builds/'+id+'/logs',
+              {method:'GET',redirect:'error',headers:{Authorization:'Bearer '+token,Accept:'application/json'},signal:AbortSignal.timeout(17000)});
+            const j=await r.json();
+            const rows=(Array.isArray(j?.result?.lines)?j.result.lines:[]).map(v=>Array.isArray(v)?String(v.at(-1)):String(v));
+            const filtered=[];
+            for(let i=0;i<rows.length;i++){
+              if(/(?:^|\s)(?:not ok\b|FAIL\b|FAILED\b|Error:|ERR_ASSERT|AssertionError|TS\d{4}|✗|# fail|npm error)|expected|assert\.equal|test failed|failed to|was not equal/i.test(rows[i])) {
+                for(let k=Math.max(0,i-1);k<=Math.min(rows.length-1,i+3);k++)filtered.push(k);
+              }
             }
-            const d=await get(base+'/workers/scripts/vigia-runtime/deployments',token);
-            log({gate:'allocation',http:d.http,deployed:d.body?.result?.deployments?.slice(0,2).map(x=>({
-              id:x.id,versions:x.versions?.map(v=>({id:v.version_id,percent:v.percentage})),created:x.created_on}))});
-            const r=await get('https://vigia-runtime.c-gamiz93.workers.dev/api/source-reliability?observe=1',read);
-            log({gate:'runtime',http:r.http,sha:r.body?.buildSha,activeLease:r.body?.activeLease,unknownRevision:Object.entries(r.body?.state?.revisionAttempts??{}).filter(([k,v])=>v?.outcome==='unknown').map(([k])=>k)});
-          }catch(e){log({gate:'error',kind:e?.name??'Error'});process.exitCode=1;}
+            const eligible=s=>!/(?:Bearer|Authorization|CLOUDFLARE_API_TOKEN|VIGIA_SYNC_TOKEN|github_pat|password|secret|token=)/i.test(s);
+            const flagged=[...new Set(filtered)].sort((a,b)=>a-b).filter(i=>eligible(rows[i])).slice(-44).map(i=>({line:i+1,text:rows[i].slice(0,250)}));
+            const tail=rows.slice(-30).filter(eligible).map(x=>x.slice(0,250));
+            out({http:r.status,success:j?.success===true,row_count:rows.length,flagged,tail,raw_discarded:true});
+          }catch(e){out({outcome:'read_failed',error:e?.name??'Error'});process.exitCode=1;}
           NODE
