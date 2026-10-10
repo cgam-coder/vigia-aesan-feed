@@ -43,9 +43,27 @@ jobs:
           await q('pending_historical_effects',"SELECT job_id,COUNT(*) AS markers,SUM(committed_at IS NULL OR result_json IS NULL) AS pending FROM source_reliability_effects WHERE job_id IN (?,?,?) GROUP BY job_id",ids);
           await q('recovery_receipts',"SELECT old_job_id,recovery_id,manifest_hash,committed_at FROM source_reliability_recoveries WHERE old_job_id IN (?,?,?)",ids);
           out({gate:'read_cost',rowsRead,rowsWritten:0});
-          const b=await req('/builds/builds/2816547d-0d92-4b63-91a9-c230b3ac2a0c');
-          const meta=b.result?.build_trigger_metadata;
-          out({gate:'build_metadata',http:b.http,result:b.result});
           const scripts=await req('/workers/scripts');
-          out({gate:'script_ids',http:scripts.http,result:scripts.result?.filter(x=>x.id==='vigia-runtime'||x.id==='vigia-source-runner').map(x=>({id:x.id,tag:x.tag}))});
+          if(scripts.http!==200||!Array.isArray(scripts.result))throw Error('SCRIPT_LIST_HOLD');
+          const tags=[...new Set(scripts.result.map(x=>x.tag).filter(Boolean))];
+          let calls=0,count=0,minutes=0,active=0,unknownTimes=0;
+          for(const tag of tags){
+           for(let page=1;page<=8;page++){
+            if(++calls>160)throw Error('BUILD_READ_CAP_HOLD');
+            const r=await req('/builds/workers/'+tag+'/builds?per_page=100&page='+page);
+            if(r.http!==200||!r.success)throw Error('BUILD_LIST_HOLD_'+r.http);
+            const builds=Array.isArray(r.result)?r.result:r.result?.builds??[];
+            for(const b of builds){if(b.created_on<'2026-09-25T00:00:00Z')continue;count++;if(!b.stopped_on){active++;minutes+=20;}else {const t=(Date.parse(b.stopped_on)-Date.parse(b.running_on??b.initializing_on??b.created_on))/60000;if(!Number.isFinite(t)||t<0){unknownTimes++;minutes+=20;}else minutes+=Math.ceil(t);}}
+            if(page===1)out({gate:'build_page',tag,keys:Object.keys(r.result??{}),count:builds.length,result_info:r.result_info,sample:builds.slice(0,1).map(b=>({status:b.status,created_on:b.created_on,running_on:b.running_on,stopped_on:b.stopped_on}))});
+            if(builds.length<100||page>=(r.result_info?.total_pages??999))break;
+            if(page===8)throw Error('BUILD_PAGINATION_HOLD');
+           }
+          }
+          out({gate:'build_budget',workerTags:tags.length,calls,buildCount:count,conservativeRoundedMinutes:minutes,active,unknownTimes,includedMinutes:6000,reservedProductionBuildMinutes:20,remainingAfterReserve:6000-minutes-20});
+          if(active||unknownTimes||minutes+20>=6000)throw Error('BUILD_BUDGET_HOLD');
+          const query='query { viewer { accounts(filter:{accountTag:"9c1807c68493f14259248b5f5782cc6f"}) { workersInvocationsAdaptive(limit:10,filter:{scriptName:"vigia-runtime",datetime_geq:"2026-10-10T08:00:00Z",datetime_leq:"2026-10-10T08:30:00Z"}) { sum { requests errors subrequests } quantiles { cpuTimeP50 cpuTimeP99 } dimensions { status } } } } }';
+          const metrics=await req('https://api.cloudflare.com/client/v4/graphql',cf,{query});
+          out({gate:'pre_metrics',http:metrics.http,data:metrics.data,errors:metrics.errors?.map(x=>x.message)});
+          const pub=await fetch('https://nagamealert.com/api/terminal/alerts?source=RASFF&period=30d&pageSize=20',{signal:AbortSignal.timeout(15000)});
+          const p=await pub.json();out({gate:'rasff_latest_public',http:pub.status,references:p.items?.slice(0,4).map(x=>x.reference),updated:p.lastUpdatedAt});
           NODE
