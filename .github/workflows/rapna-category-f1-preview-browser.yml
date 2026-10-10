@@ -1,0 +1,83 @@
+name: RAPNA official category preview Chrome one-shot
+
+on:
+  push:
+    branches: [sec-f1/cloudflare-api-readonly-20261009]
+    paths: [.github/workflows/rapna-category-f1-preview-browser.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Install bounded browser dependencies
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/rapna-category-pw" playwright@1.56.1 --ignore-scripts --no-audit --no-fund --silent
+          which google-chrome
+      - name: Test RAPNA category search multiselect source isolation on existing preview
+        shell: bash
+        run: |
+          node <<'NODE'
+          const path=require('node:path');
+          const {chromium}=require(path.join(process.env.RUNNER_TEMP,'rapna-category-pw/node_modules/playwright'));
+          const preview='https://feat-rapna-official-category-filter-20261010-vigia-runtime.c-gamiz93.workers.dev';
+          const output=x=>console.log('RAPNA_CATEGORY_BROWSER '+JSON.stringify(x));
+          let browser;
+          (async()=>{
+            const report={commit:'ea77ccf',preview_status:null,real_fixture_source:'public terminal RAPNA API',in_memory_only:true,checks:{}};
+            try{
+              const r=await fetch('https://nagamealert.com/api/terminal/alerts?source=RAPNA&period=30d&pageSize=5',{signal:AbortSignal.timeout(17000)});
+              if(!r.ok)throw Error('fixture HTTP '+r.status);
+              const fixture=await r.json();
+              if(!Array.isArray(fixture.items)||fixture.items.length<2)throw Error('fixture unavailable');
+              browser=await chromium.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox']});
+              const ctx=await browser.newContext({viewport:{width:1440,height:900},locale:'es-ES',serviceWorkers:'block'});
+              const page=await ctx.newPage();
+              let apiCategoryRequests=[],unhandledErrors=[];
+              page.on('pageerror',e=>unhandledErrors.push(e.name));
+              await page.route('**/api/terminal/alerts?**',route=>{
+                const u=new URL(route.request().url());
+                const categories=u.searchParams.getAll('rapnaCategory');
+                if(u.searchParams.get('source')==='RAPNA')apiCategoryRequests.push(categories);
+                const filtered=u.searchParams.get('source')==='RAPNA'&&categories.length?
+                  fixture.items.filter(item=>categories.includes(item.productClass)):fixture.items;
+                const data={...fixture,items:filtered,total:filtered.length,
+                  facets:{...fixture.facets,rapnaCategories:['Juguetes','Material eléctrico','Artículos del hogar']},
+                  pagination:{...fixture.pagination,returned:filtered.length,hasMore:false,nextCursor:null},
+                  query:{...fixture.query,rapnaCategories:categories}};
+                return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
+              });
+              const nav=await page.goto(preview+'/es/alertas?source=RAPNA&period=30d',{waitUntil:'domcontentloaded',timeout:28000});
+              report.preview_status=nav?.status()??null;
+              const field=page.locator('fieldset.na-terminal-rapna-categories');
+              await field.waitFor({state:'visible',timeout:22000});
+              report.checks.exclusive_rapna_visible=true;
+              await field.locator('summary').click();
+              const search=field.locator('input[type=search]');
+              await search.fill('Juguet');
+              report.checks.search_filters=await field.locator('.na-terminal-rapna-categories__options label').count()===1;
+              await search.fill('');
+              await field.locator('label').filter({hasText:'Juguetes'}).last().locator('input[type=checkbox]').check();
+              await page.waitForURL(/rapnaCategory=Juguetes/u,{timeout:16000});
+              report.checks.category_in_url=new URL(page.url()).searchParams.get('rapnaCategory')==='Juguetes';
+              await page.waitForTimeout(900);
+              report.checks.category_forwarded=apiCategoryRequests.some(c=>c.includes('Juguetes'));
+              const count=await page.locator('article.na-alert-card[data-source=RAPNA]').count();
+              const expected=fixture.items.filter(i=>i.productClass==='Juguetes').length;
+              report.checks.category_list_matches=count===expected;
+              await page.getByRole('button',{name:/AESAN/u}).first().click();
+              await page.waitForURL(u=>new URL(u).searchParams.get('source')==='AESAN',{timeout:16000});
+              report.checks.category_removed_on_switch=!page.url().includes('rapnaCategory=');
+              report.checks.no_rapna_options_in_aesan=await page.locator('fieldset.na-terminal-rapna-categories').count()===0;
+              report.js_error_count=unhandledErrors.length;
+              report.pass=Object.values(report.checks).every(Boolean)&&unhandledErrors.length===0;
+              if(!report.pass)process.exitCode=1;
+              await ctx.close();
+            }catch(e){report.pass=false;report.error_type=e.name;report.error=String(e.message||'').split('\n')[0].slice(0,160);process.exitCode=1;}
+            finally{await browser?.close().catch(()=>{});output(report);}
+          })();
+          NODE
