@@ -1,4 +1,4 @@
-name: RAPNA final production isolation and browser proof
+name: RAPNA read existing production build chain
 on:
   push:
     branches: [sec-f1/cloudflare-api-readonly-20261009]
@@ -8,126 +8,19 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 4
+    timeout-minutes: 2
     steps:
-      - name: Check actual deployment and quarantines read-only
+      - name: Read build trigger and current deployment only
         env:
           CF_READ_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          SYNC_READ_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           node --input-type=module <<'NODE'
-          const cf=process.env.CF_READ_TOKEN,sync=process.env.SYNC_READ_TOKEN;
+          const token=process.env.CF_READ_TOKEN;
           const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
-          const out=x=>console.log('RAPNA_RELEASE '+JSON.stringify(x));
-          const req=async(path,token=cf,body)=>{const r=await fetch(path.startsWith('https:')?path:root+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),redirect:'error',signal:AbortSignal.timeout(18000)});return{http:r.status,...await r.json()};};
-          let build=await req('/builds/builds/ca4bab1d-5c4c-4ec9-bcd5-c6279ae4dcfe');
-          for(let i=0;build.result?.status!=='stopped'&&i<20;i++){out({gate:'build_wait',status:build.result?.status,attempt:i});await new Promise(r=>setTimeout(r,10000));build=await req('/builds/builds/ca4bab1d-5c4c-4ec9-bcd5-c6279ae4dcfe');}
-          out({gate:'final_build',http:build.http,outcome:build.result?.build_outcome,status:build.result?.status,commit:build.result?.build_trigger_metadata?.commit_hash,created:build.result?.created_on,running:build.result?.running_on,stopped:build.result?.stopped_on});
-          if(build.http!==200||build.result?.status!=='stopped'||build.result?.build_outcome!=='success'||build.result?.build_trigger_metadata?.commit_hash!=='318151cd69f1afbfcecb281e15ba787d11f297bc')throw Error('FINAL_BUILD_HOLD');
-          const n=await req('https://vigia-runtime.c-gamiz93.workers.dev/api/source-reliability?observe=1',sync),st=n.state??{};
-          out({gate:'native',http:n.http,buildSha:n.buildSha,observedAt:n.observedAt,activeLease:n.activeLease,attempts:st.attempts,revisions:st.revisionAttempts,audit:st.lastAudit,officialParityCertified:n.officialParityCertified,unknownRecent:Object.keys(st.attempts??{}).filter(k=>st.attempts[k].outcome==='unknown'),unknownRevision:Object.keys(st.revisionAttempts??{}).filter(k=>st.revisionAttempts[k].outcome==='unknown')});
-          if(n.http!==200||n.buildSha!=='318151cd69f1afbfcecb281e15ba787d11f297bc')throw Error('EXECUTABLE_COMMIT_HOLD');
-          if(Object.values(st.attempts??{}).some(x=>x.outcome==='unknown')||Object.values(st.revisionAttempts??{}).some(x=>x.outcome==='unknown'))throw Error('UNKNOWN_STOP');
-          for(const key of ['RASFF:reconcile','OECD:historical-reconcile','RAPNA:legacy-reconcile']){const a=st.revisionAttempts?.[key];if(a?.outcome!=='failed'||a.nextEligibleAt!=='9999-01-01T00:00:00.000Z')throw Error('QUARANTINE_STOP');}
-          for(const name of ['vigia-runtime','vigia-source-runner']){
-           const d=await req('/workers/scripts/'+name+'/deployments');const deployments=d.result?.deployments?.slice(0,3);
-           out({gate:'deployments',name,http:d.http,items:deployments?.map(x=>({id:x.id,created:x.created_on,versions:x.versions}))});
-           const current=deployments?.[0]?.versions;if(d.http!==200||current?.length!==1||current[0].percentage!==100)throw Error('ALLOCATION_STOP');
-           if(name==='vigia-source-runner'&&current[0].version_id!=='ba9f64ab-1615-4200-9cf5-da0b1d829638')throw Error('RUNNER_CHANGED_STOP');
-           const v=await req('/workers/scripts/'+name+'/versions');
-           const versions=v.result?.items?.slice(0,4).map(x=>({id:x.id,number:x.number,created:x.metadata?.created_on,annotations:x.annotations}));
-           out({gate:'versions',name,http:v.http,items:versions});
-           if(name==='vigia-runtime'&&!versions?.some(x=>x.id==='db730433-2d85-4581-b3e4-687761d5da56'))throw Error('ROLLBACK_118_UNAVAILABLE');
-           const schedules=await req('/workers/scripts/'+name+'/schedules');out({gate:'schedules',name,http:schedules.http,result:schedules.result});
-           if(name==='vigia-runtime'&&JSON.stringify(schedules.result?.schedules?.map(x=>x.cron))!==JSON.stringify(['*/5 * * * *']))throw Error('CRON_CHANGED');
-           if(name==='vigia-source-runner'&&schedules.result?.schedules?.length!==0)throw Error('RUNNER_CRON_CHANGED');
-          }
-          const settings=await req('/workers/scripts/vigia-runtime/settings'),db='55596003-1b90-4f66-aad8-decb21205f13';
-          const bindings=settings.result?.bindings?.filter(x=>x.type==='d1');out({gate:'binding',http:settings.http,d1:bindings});
-          if(!bindings?.some(x=>x.name==='DB'&&x.id===db))throw Error('D1_BINDING_STOP');
-          let rowsRead=0;
-          const q=async(gate,sql,params=[])=>{if(!/^SELECT\b/.test(sql)||sql.includes(';'))throw Error('READ_ONLY_STOP');const r=await req('/d1/database/'+db+'/query',cf,{sql,params});if(r.http!==200||!r.success)throw Error('D1_READ_HOLD');for(const x of r.result){rowsRead+=x.meta?.rows_read??0;if(x.meta?.rows_written!==0)throw Error('UNEXPECTED_D1_WRITE');}const rows=r.result.flatMap(x=>x.results??[]);if(gate!=='historical_states')out({gate,rows});return rows;};
-          const historic=await q('historical_states','SELECT * FROM source_sync_state WHERE (source=? AND mode=?) OR (source=? AND mode=?) OR (source=? AND mode=?)',['RASFF','reconcile','OECD','historical-reconcile','RAPNA','legacy-reconcile']);
-          const expected={RASFF:'51fb1fb19d04753afef01c4b59a3874f57e9d8cb8b6f370e62bca177dbd499f8',OECD:'a1e67909ca6b7aabe3d978fd262a70b25a7342f4c79c02ca73d553f9fb3400f0',RAPNA:'f148686df8384cbe9befd826edbc915098b578d9fddfb3260090c9d1f1ef81ef'};
-          if(historic.length!==3)throw Error('HISTORICAL_STATE_MISSING');
-          for(const row of historic){const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(row))))).map(n=>n.toString(16).padStart(2,'0')).join('');out({gate:'historical_state_unchanged',source:row.source,mode:row.mode,cursor:row.cursor,key:row.cursor_key,plan:row.plan_version,hash,match:hash===expected[row.source]});if(hash!==expected[row.source])throw Error('HISTORICAL_STATE_CHANGED_STOP');}
-          const ids=['15ff9a7c-4094-4836-996b-b36591cab779','bb90ee24-dffa-4b25-9a03-8e994a29df64','7d965614-eb79-468c-838a-249147a0fb58'];
-          const e=await q('effect_journals','SELECT job_id,COUNT(*) AS markers,SUM(committed_at IS NULL OR result_json IS NULL) AS pending FROM source_reliability_effects WHERE job_id IN (?,?,?) GROUP BY job_id',ids);if(e.length!==3||e.some(x=>x.pending!==0))throw Error('UNRECONCILED_EFFECT_STOP');
-          const unfinished=await q('unfinished_historical_jobs',"SELECT id,source,mode,deadline,phase,write_intent_at FROM source_reliability_jobs WHERE kind='revision' AND finished_at IS NULL LIMIT 10");if(unfinished.length)throw Error('HISTORICAL_ACTIVE_STOP');
-          await q('recovery_receipts','SELECT old_job_id,recovery_id,manifest_hash,committed_at FROM source_reliability_recoveries WHERE old_job_id IN (?,?,?)',ids);
-          out({gate:'d1_read_only',rowsRead,rowsWritten:0,newBuilds:0,newCrons:0});
-          const logs=await req('/builds/builds/ca4bab1d-5c4c-4ec9-bcd5-c6279ae4dcfe/logs');
-          const lines=(logs.result?.lines??[]).map(x=>Array.isArray(x)?String(x[1]):typeof x==='string'?x:x.line??JSON.stringify(x));
-          out({gate:'quality_proof',http:logs.http,truncated:logs.result?.truncated,cursor:logs.result?.cursor,lines:lines.filter(x=>/Running Cloudflare CI|tests \d|pass \d|fail \d|failing tests|✖|Deployment ID|Current Version ID|Uploaded|Deployed|duration_ms/.test(x)).slice(-35)});
-          const start=build.result?.stopped_on;const end=new Date().toISOString();
-          const query='query { viewer { accounts(filter:{accountTag:"9c1807c68493f14259248b5f5782cc6f"}) { workersInvocationsAdaptive(limit:10,filter:{scriptName:"vigia-runtime",datetime_geq:"'+start+'",datetime_leq:"'+end+'"}) { sum { requests errors subrequests } quantiles { cpuTimeP50 cpuTimeP99 } dimensions { status } } } } }';
-          const metrics=await req('https://api.cloudflare.com/client/v4/graphql',cf,{query});out({gate:'post_metrics',http:metrics.http,start,end,data:metrics.data,errors:metrics.errors?.map(x=>x.message)});
-          for(const [url,date] of [['/es/privacidad','10 de octubre de 2026'],['/en/privacy','10 October 2026']]){const r=await fetch('https://nagamealert.com'+url,{signal:AbortSignal.timeout(15000)});const body=await r.text();const pass=r.status===200&&body.includes('servicios.consumo.gob.es')&&body.includes('IP')&&body.includes(date);out({gate:'privacy_production',url,http:r.status,officialTransportDisclosure:pass});if(!pass)throw Error('PRIVACY_HOLD');}
-          out({gate:'DEPLOYMENT_PASS',photoVerificationSeparate:true,historicalCertification:'HOLD'});
-          NODE
-  browser:
-    needs: inspect
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - name: Install existing pinned browser harness without secrets or checkout
-        run: |
-          npm install --prefix "$RUNNER_TEMP/rapna-playwright" playwright@1.56.1 --ignore-scripts --no-audit --no-fund --silent
-          timeout 240 "$RUNNER_TEMP/rapna-playwright/node_modules/.bin/playwright" install --with-deps webkit
-      - name: Verify production cards and details in both languages
-        run: |
-          node <<'NODE'
-          const path=require('node:path'),crypto=require('node:crypto');
-          const {chromium,webkit}=require(path.join(process.env.RUNNER_TEMP,'rapna-playwright/node_modules/playwright'));
-          const origin='https://nagamealert.com';
-          const output=x=>console.log('RAPNA_PRODUCTION_BROWSER '+JSON.stringify(x));
-          (async()=>{
-          const api=await fetch(origin+'/api/terminal/alerts?source=RAPNA&period=30d&pageSize=10',{signal:AbortSignal.timeout(15000)});
-          const data=await api.json();if(api.status!==200||!data.items?.find(x=>x.reference==='159/2026'&&x.imageUrl))throw Error('REAL_PRODUCTION_RECORD_MISSING');
-          output({gate:'real_records',http:api.status,refs:data.items.map(x=>({reference:x.reference,hasImage:!!x.imageUrl})),fixtures:0,interceptedResponses:0});
-          let nagameRequests=1,passes=0;
-          const profiles=[{name:'Chrome desktop',engine:chromium,mobile:false},{name:'Chrome mobile emulation',engine:chromium,mobile:true},{name:'WebKit Linux desktop',engine:webkit,mobile:false}];
-          for(const profile of profiles){
-           const browser=await profile.engine.launch(profile.engine===chromium?{headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-dev-shm-usage']}:{headless:true});
-           const context=await browser.newContext({viewport:profile.mobile?{width:390,height:844}:{width:1440,height:900},...(profile.mobile?{isMobile:true,hasTouch:true,deviceScaleFactor:2}:{}),serviceWorkers:'block',locale:'es-ES'});
-           try {
-           for(const locale of ['es','en']){
-            const page=await context.newPage();const errors=[],csp=[],official=[],failures=[];
-            await page.addInitScript(()=>{window.__mediaCsp=[];document.addEventListener('securitypolicyviolation',e=>window.__mediaCsp.push({directive:e.violatedDirective,blocked:e.blockedURI}));});
-            page.on('request',r=>{if(r.url().startsWith(origin)){nagameRequests++;if(nagameRequests>500)throw Error('ORDINARY_SMOKE_REQUEST_CAP');}});
-            page.on('pageerror',e=>errors.push(String(e.message).slice(0,180)));
-            page.on('requestfailed',r=>{if(r.url().includes('rapna')||r.url().includes('consumo.gob.es'))failures.push({url:r.url().split('?')[0],reason:r.failure()?.errorText});});
-            page.on('response',async r=>{if(r.url()==='https://servicios.consumo.gob.es/rapnaBEPublic/listadoPublico/fichero'){const h=await r.request().allHeaders();official.push({status:r.status(),cookie:!!h.cookie,referer:!!h.referer,origin:h.origin});}});
-            const response=await page.goto(origin+'/'+locale+'/'+(locale==='es'?'alertas':'alerts')+'?source=RAPNA&period=30d',{waitUntil:'domcontentloaded',timeout:30000});
-            if(response.status()!==200)throw Error('LIST_HTTP_'+response.status());
-            const policy=response.headers()['content-security-policy']??'';if(!policy.includes('https://servicios.consumo.gob.es')||!policy.includes('blob:'))throw Error('PRODUCTION_CSP_MISSING');
-            const cards=page.locator('article.na-alert-card[data-source="RAPNA"]');
-            await cards.first().waitFor({state:'visible',timeout:22000});
-            const photo=async(element)=>{
-             await element.waitFor({state:'attached',timeout:10000});await element.scrollIntoViewIfNeeded();
-             await element.evaluate(i=>new Promise((resolve,reject)=>{if(i.complete&&i.naturalWidth>0)return resolve(true);const t=setTimeout(()=>reject(Error('IMAGE_LOAD_TIMEOUT')),25000);i.addEventListener('load',()=>{clearTimeout(t);resolve(true);},{once:true});i.addEventListener('error',()=>{clearTimeout(t);reject(Error('IMAGE_LOAD_ERROR'));},{once:true});}));
-             const value=await element.evaluate(i=>({complete:i.complete,width:i.naturalWidth,height:i.naturalHeight,blob:i.src.startsWith('blob:'),hidden:!!i.closest('[hidden]'),visible:i.getBoundingClientRect().width>0&&i.getBoundingClientRect().height>0}));
-             if(!value.blob||value.hidden||!value.visible||value.width<10||value.height<10)throw Error('PHOTO_CRITICAL_GATE');
-             return value;
-            };
-            const card159=cards.filter({hasText:'159/2026'}).first();await card159.waitFor({state:'visible',timeout:15000});
-            const image159=await photo(card159.locator('figure.na-alert-card__media img').first());
-            const screenshotHash=crypto.createHash('sha256').update(await card159.screenshot()).digest('hex');
-            let image158=null;
-            if(data.items.some(x=>x.reference==='158/2026'&&x.imageUrl)){const card158=cards.filter({hasText:'158/2026'}).first();image158=await photo(card158.locator('figure.na-alert-card__media img').first());}
-            const href=await card159.locator('a[href*="/rapna/"]').first().getAttribute('href');if(!href)throw Error('REAL_DETAIL_LINK_MISSING');
-            csp.push(...await page.evaluate(()=>window.__mediaCsp??[]));
-          const detail=await page.goto(new URL(href,origin).href,{waitUntil:'domcontentloaded',timeout:30000});
-            if(detail.status()!==200)throw Error('DETAIL_HTTP_'+detail.status());
-            const imageDetail=await photo(page.locator('.na-alert-detail__media img').first());
-            csp.push(...await page.evaluate(()=>window.__mediaCsp??[]));
-            if(errors.length||csp.length||official.some(x=>x.status!==200||x.cookie||x.referer)||!official.length)throw Error('BROWSER_SECURITY_OR_JS_GATE');
-            output({gate:'PASS',profile:profile.name,locale,listHttp:response.status(),detailHttp:detail.status(),detailUrl:page.url(),card159:image159,card158:image158,detail159:imageDetail,cardScreenshotSha256:screenshotHash,officialRequests:official,jsErrors:errors,cspViolations:csp,requestFailures:failures,fixtures:0,physicalSafari:false});
-            passes++;await page.close();
-           }
-           }finally{await context.close();await browser.close();}
-          }
-          output({gate:'SUMMARY',result:passes===6?'PASS':'FAIL',passes,nagameRequests,requestCap:500,noFixtures:true,noD1Writes:true,noNewBuild:true});
-          if(passes!==6)process.exitCode=1;
-          })().catch(e=>{output({gate:'FAIL',name:e.name,reason:String(e.message).slice(0,220)});process.exitCode=1;});
+          const get=async p=>{const r=await fetch(root+p,{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(18000)});return{http:r.status,...await r.json()};};
+          const out=x=>console.log('RAPNA_CHAIN_READ '+JSON.stringify(x));
+          const b=await get('/builds/builds/ca4bab1d-5c4c-4ec9-bcd5-c6279ae4dcfe');out({gate:'main_build_metadata',http:b.http,status:b.result?.status,outcome:b.result?.build_outcome,trigger:b.result?.trigger,source:b.result?.build_trigger_metadata});
+          const t=await get('/builds/workers/c16d1153847b48f7ba2245915cfd97ab/triggers');out({gate:'production_triggers',http:t.http,result:t.result});
+          const builds=await get('/builds/workers/c16d1153847b48f7ba2245915cfd97ab/builds?per_page=8&page=1');out({gate:'production_builds',http:builds.http,items:builds.result?.map(x=>({id:x.build_uuid,status:x.status,outcome:x.build_outcome,created:x.created_on,source:x.build_trigger_metadata,trigger:x.trigger}))});
+          const d=await get('/workers/scripts/vigia-runtime/deployments');out({gate:'actual_allocation',http:d.http,items:d.result?.deployments?.slice(0,2).map(x=>({id:x.id,created:x.created_on,versions:x.versions}))});
           NODE
