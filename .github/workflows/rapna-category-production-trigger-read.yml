@@ -50,6 +50,11 @@ jobs:
                 metadata_fields:x.build_trigger_metadata&&typeof x.build_trigger_metadata==='object'?Object.keys(x.build_trigger_metadata):[],
                 metadata_branch:x.build_trigger_metadata?.branch??x.build_trigger_metadata?.git_branch??null,
                 metadata_commit:x.build_trigger_metadata?.commit_hash??x.build_trigger_metadata?.commit_sha??null,
+                stored_trigger_command:typeof x.trigger?.deploy_command==='string'?x.trigger.deploy_command.slice(0,120):null,
+                stored_metadata_command:typeof x.build_trigger_metadata?.deploy_command==='string'?x.build_trigger_metadata.deploy_command.slice(0,120):null,
+                stored_trigger_source:typeof x.build_trigger_metadata?.build_trigger_source==='string'?x.build_trigger_metadata.build_trigger_source.slice(0,70):null,
+                stored_branch_includes:x.trigger?.branch_includes??null,
+                deploy_hook_fields:x.deploy_hook&&typeof x.deploy_hook==='object'?Object.keys(x.deploy_hook).slice(0,10):[],
                 deploy_hook_type:typeof x.deploy_hook,reason:x.reason??null});
               const logs=await get('/builds/builds/'+id+'/logs');
               const lines=Array.isArray(logs.payload?.result?.lines)?logs.payload.result.lines:[];
