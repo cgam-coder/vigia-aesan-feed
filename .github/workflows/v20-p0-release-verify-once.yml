@@ -1,112 +1,60 @@
-name: V20 P0 final build-and-live certification (read only)
+name: V20 P0 five-source post-natural-cron smoke (GET only)
 on:
   push:
     branches: [audit/v20-p0-release-20261010]
     paths: [.github/workflows/v20-p0-release-verify-once.yml]
-permissions: {contents: read}
+permissions: { contents: read }
 concurrency:
   group: v20-p0-release-verify-20261010
   cancel-in-progress: false
 jobs:
-  certify:
+  smoke:
     if: github.actor == 'cgam-coder' && github.run_attempt == 1
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 8
     steps:
-      - name: Observe exact Cloudflare build until terminal, then verify publication and all source health
+      - name: Verify natural coordinator wake after production release and each public source (GET only)
         env:
-          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
         run: |
           node --input-type=module <<'NODE'
-          const expected='0c61589b485a1e40ab8728378e14b85631f89d36';
-          const previous='282b63c9-6f2a-469d-b5d0-fe0067833a2b';
-          const runnerPrevious='ba9f64ab-1615-4200-9cf5-da0b1d829638';
-          const base='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
-          const cf=process.env.CF_TOKEN,tok=process.env.VIGIA_TOKEN;
-          const emit=(name,details)=>console.log('V20_RELEASE_CERT '+JSON.stringify({name,...details}));
-          const nap=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-          async function get(url,token){
-            try{const r=await fetch(url,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+token,Accept:'application/json'},signal:AbortSignal.timeout(15000)});
-              const b=await r.json().catch(()=>null);return {http:r.status,good:r.ok&&b?.success===true,body:b??null};}
-            catch{return {http:0,good:false,body:null};}
-          }
-          const fail=reason=>{emit('gate',{outcome:'HOLD',reason});process.exitCode=1;};
-          if(!cf||!tok){fail('tokens-not-accessible');process.exit();}
-          const s=await get(base+'/workers/scripts',cf);
-          const tag=Array.isArray(s.body?.result)?s.body.result.find(x=>x.id==='vigia-runtime')?.tag:null;
-          if(!tag||!/^[a-z0-9-]{16,64}$/i.test(tag)){fail('runtime-tag-not-found');process.exit();}
-          let build=null,live=null,d=null,attempts=0;
-          const deadline=Date.now()+9*60*1000;
+          const token=process.env.VIGIA_TOKEN,expected='0c61589b485a1e40ab8728378e14b85631f89d36';
+          const sources=['AESAN','RAPNA','RASFF','SAFETY GATE','OECD'];
+          const emit=(what,data)=>console.log('V20_POSTNATURAL '+JSON.stringify({what,...data}));
+          if(!token){emit('gate',{status:'HOLD',reason:'secret-unavailable'});process.exitCode=1;process.exit();}
+          const deadline=Date.now()+6*60*1000, threshold=Date.parse('2026-10-10T21:04:38Z');
+          let natural=false,body=null,checks=0;
           while(Date.now()<deadline){
-            attempts++;
-            const q=await get(base+'/builds/workers/'+encodeURIComponent(tag)+'/builds',cf);
-            const items=Array.isArray(q.body?.result)?q.body.result:Array.isArray(q.body?.result?.builds)?q.body.result.builds:[];
-            build=items.find(b=>b.build_trigger_metadata?.commit_hash===expected)??null;
-            if(!q.good||!build){fail('build-api-or-commit-unavailable');process.exit();}
-            if(build.status==='stopped'&&build.build_outcome!=='success'){
-              emit('build',{id:build.build_uuid,status:build.status,outcome:build.build_outcome});
-              fail('cloudflare-build-terminal-not-success');process.exit();
-            }
-            if(build.status==='stopped'&&build.build_outcome==='success'){
-              live=await get('https://nagamealert.com/api/source-reliability?observe=1',tok);
-              d=await get(base+'/workers/scripts/vigia-runtime/deployments',cf);
-              if(live.http===200&&live.body?.buildSha===expected&&d.good&&
-                d.body?.result?.deployments?.[0]?.versions?.length===1&&
-                d.body.result.deployments[0].versions[0].percentage===100&&
-                d.body.result.deployments[0].versions[0].version_id!==previous)break;
-            }
-            await nap(14000);
+            checks++;
+            try{
+              const r=await fetch('https://nagamealert.com/api/source-reliability?observe=1',{method:'GET',redirect:'error',
+                headers:{Authorization:'Bearer '+token,Accept:'application/json'},signal:AbortSignal.timeout(14000)});
+              body=await r.json();
+              natural=r.status===200&&body?.buildSha===expected&&body?.outcome==='observed'&&
+                Date.parse(body?.state?.lastWakeAt??'')>threshold&&
+                body?.activeLease===false;
+            }catch{natural=false;}
+            if(natural)break;
+            await new Promise(resolve=>setTimeout(resolve,14000));
           }
-          const version=d?.body?.result?.deployments?.[0]?.versions?.[0]?.version_id??null;
-          const buildDone=build?.status==='stopped'&&build?.build_outcome==='success';
-          const codeLive=live?.body?.buildSha===expected;
-          emit('build',{id:build?.build_uuid??null,status:build?.status??null,outcome:build?.build_outcome??null,
-            polls:attempts,codeLive,workerVersion:version,priorVersion:previous,
-            publishedDeployment:d?.body?.result?.deployments?.[0]?.id??null});
-          if(!buildDone||!codeLive||!version||version===previous){fail('build-complete-or-exact-deploy-unverified');process.exit();}
-          const runner=await get(base+'/workers/scripts/vigia-source-runner/deployments',cf);
-          const runnerVersion=runner.body?.result?.deployments?.[0]?.versions?.[0]?.version_id;
-          const runnerStable=runner.good&&runnerVersion===runnerPrevious&&runner.body?.result?.deployments?.[0]?.versions?.[0]?.percentage===100;
-          const native=await get('https://nagamealert.com/api/source-reliability?observe=1',tok);
-          const state=native.body?.state??{},audit=state.lastAudit??{},records=Array.isArray(audit.states)?audit.states:[];
-          const health=native.http===200&&native.body.mode==='five-source-coordinated'&&native.body.buildSha===expected&&
-            native.body.activeLease===false&&native.body.outcome==='observed'&&records.length===5&&
-            records.every(x=>x.latestIdentityParity===true&&x.missingOfficialIdentities?.length===0&&x.revisionMismatches?.length===0)&&
-            Object.values(state.attempts??{}).every(x=>x?.outcome==='completed');
-          emit('sources',{health,activeLease:native.body?.activeLease,buildSha:native.body?.buildSha,
-            sources:records.filter(x=>['AESAN','RAPNA','RASFF','SAFETY GATE','OECD'].includes(x.source)).map(x=>({
-              source:x.source,status:x.status,revisionStatus:x.revisionStatus,
-              recentAt:x.lastSyncSuccessAt,parity:x.latestIdentityParity,
-              missing:x.missingOfficialIdentities?.length,mismatches:x.revisionMismatches?.length})),
-            historicalHolds:['RASFF:reconcile','RAPNA:legacy-reconcile','OECD:historical-reconcile'].map(k=>({
-              lane:k,outcome:state.revisionAttempts?.[k]?.outcome,
-              blocked:state.revisionAttempts?.[k]?.nextEligibleAt==='9999-01-01T00:00:00.000Z'}))});
-          const sql='SELECT (SELECT COUNT(*) FROM source_reliability_jobs WHERE finished_at IS NULL) AS unfinished, (SELECT COUNT(*) FROM source_reliability_effects WHERE committed_at IS NULL OR result_json IS NULL) AS unconfirmed, (SELECT COUNT(*) FROM source_sync_locks WHERE expires_at > CURRENT_TIMESTAMP) AS locks';
-          const query=await fetch(base+'/d1/database/55596003-1b90-4f66-aad8-decb21205f13/query',{
-            method:'POST',redirect:'error',headers:{Authorization:'Bearer '+cf,Accept:'application/json','Content-Type':'application/json'},
-            body:JSON.stringify({sql}),signal:AbortSignal.timeout(15000)}).then(async r=>({http:r.status,body:await r.json().catch(()=>null)})).catch(()=>({http:0,body:null}));
-          const db=Array.isArray(query.body?.result)?query.body.result[0]?.results?.[0]:query.body?.result?.results?.[0];
-          const d1good=query.http===200&&query.body?.success===true&&db?.unfinished===0&&db?.unconfirmed===0&&db?.locks===0;
-          emit('d1',{good:d1good,unfinished:db?.unfinished??null,unconfirmed:db?.unconfirmed??null,locks:db?.locks??null,runnerStable,runnerVersion});
-          const pages=await Promise.all(['https://nagamealert.com/','https://nagamealert.com/en'].map(async url=>{
-            try{const r=await fetch(url,{method:'GET',redirect:'follow',signal:AbortSignal.timeout(12000)});return {status:r.status,finalHost:new URL(r.url).hostname,html:r.headers.get('content-type')?.includes('text/html')===true};}
-            catch{return {status:0,finalHost:null,html:false};}
-          }));
-          const url='https://nagamealert.com/api/terminal/alerts?source=AESAN&period=7d&pageSize=1';
-          async function apiProbe(headers){
-            try{const r=await fetch(url,{method:'GET',headers,signal:AbortSignal.timeout(18000)});
-              const body=await r.json().catch(()=>null);
-              return {status:r.status,p4:[...r.headers.keys()].some(k=>k.startsWith('x-nagame-p4-')),perf:r.headers.has('server-timing'),
-                valid:body?.apiVersion===1&&Array.isArray(body?.items)&&body?.pagination!=null};}
-            catch{return {status:0,p4:false,perf:false,valid:false};}
+          const audit=body?.state?.lastAudit?.states??[];
+          const parity=Array.isArray(audit)&&audit.length===5&&audit.every(x=>x.latestIdentityParity===true&&
+            x.missingOfficialIdentities?.length===0&&x.revisionMismatches?.length===0);
+          const recent=Object.entries(body?.state?.attempts??{}).every(([name,v])=>sources.includes(name)&&v?.outcome==='completed');
+          emit('coordinator',{natural,checks,buildSha:body?.buildSha??null,lastWakeAt:body?.state?.lastWakeAt??null,
+            ageMinutes:body?.ageMinutes??null,parity,recent,activeLease:body?.activeLease??null,globalHistoricalCertified:body?.officialParityCertified===true});
+          const results=[];
+          for(const source of sources){
+            try{
+              const url='https://nagamealert.com/api/terminal/alerts?source='+encodeURIComponent(source)+'&period=7d&pageSize=1';
+              const r=await fetch(url,{method:'GET',redirect:'error',headers:{Accept:'application/json'},signal:AbortSignal.timeout(14000)});
+              const j=await r.json().catch(()=>null);
+              results.push({source,http:r.status,contract:j?.apiVersion===1&&Array.isArray(j?.items)&&j?.pagination!==undefined,
+                returned:j?.items?.length??null,total:j?.total??null});
+            }catch{results.push({source,http:0,contract:false});}
           }
-          const normal=await apiProbe({Accept:'application/json'});
-          const special=await apiProbe({Accept:'application/json','X-Nagame-P4-Audit':'1','X-Nagame-Perf':'1'});
-          const surface=pages.every(x=>x.status===200&&x.html&&x.finalHost==='nagamealert.com')&&
-            [normal,special].every(x=>x.status===200&&!x.p4&&x.valid)&&special.perf;
-          emit('public',{surface,pages,normal,special});
-          const pass=runnerStable&&health&&d1good&&surface;
-          emit('decision',{outcome:pass?'PASS':'HOLD',productionPublished:true});
+          emit('public_sources',{results});
+          const pass=natural&&parity&&recent&&results.length===5&&results.every(x=>x.http===200&&x.contract);
+          emit('decision',{status:pass?'PASS':'HOLD',scope:'P0-postnatural, historical revision still independent'});
           if(!pass)process.exitCode=1;
           NODE
