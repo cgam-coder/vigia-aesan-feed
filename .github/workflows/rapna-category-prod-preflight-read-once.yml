@@ -1,0 +1,55 @@
+name: RAPNA category post-merge pre-publish read-only gates once
+
+on:
+  push:
+    branches: [sec-f1/cloudflare-api-readonly-20261009]
+    paths: [.github/workflows/rapna-category-prod-preflight-read-once.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  observe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Read existing production allocations and reliability, no mutations
+        env:
+          VI_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const token=process.env.VI_TOKEN, cf=process.env.CF_TOKEN;
+          const output=x=>console.log('RAPNA_CATEGORY_RELEASE_PRECHECK '+JSON.stringify(x));
+          if(!token||!cf){output({gate:'auth',ok:false});process.exitCode=1;process.exit();}
+          const request=async(url,secret)=>{
+            const r=await fetch(url,{method:'GET',redirect:'error',
+              headers:{Authorization:'Bearer '+secret,Accept:'application/json'},signal:AbortSignal.timeout(16000)});
+            return {http:r.status,json:await r.json().catch(()=>null)};
+          };
+          try{
+            const base='https://vigia-runtime.c-gamiz93.workers.dev';
+            const h=await request(base+'/api/source-reliability?observe=1',token);
+            const s=h.json?.state??{};
+            const allAttempts=Object.entries(s.attempts??{});
+            const revisions=Object.entries(s.revisionAttempts??{});
+            output({gate:'native',http:h.http,mode:h.json?.mode??null,outcome:h.json?.outcome??null,
+              build_sha:h.json?.buildSha??null,age_minutes:h.json?.ageMinutes??null,
+              activeLease:h.json?.activeLease===true,
+              unknownRecent:allAttempts.filter(([k,v])=>v?.outcome==='unknown').map(([k])=>k),
+              unknownRevision:revisions.filter(([k,v])=>v?.outcome==='unknown').map(([k])=>k),
+              knownHistoricalQuarantine:revisions.filter(([k,v])=>v?.nextEligibleAt==='9999-01-01T00:00:00.000Z').map(([k])=>k),
+              recentStatus:allAttempts.filter(([k,v])=>/:recent$/.test(k)).map(([k,v])=>({source:k.split(':')[0],outcome:v?.outcome??null})),
+              audit_time:s.lastAudit?.finishedAt??null});
+            if(h.http!==200||h.json?.mode!=='five-source-coordinated')process.exitCode=1;
+            const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/workers/scripts/';
+            for(const name of ['vigia-runtime','vigia-source-runner']){
+              const r=await request(root+name+'/deployments',cf);
+              const ds=Array.isArray(r.json?.result?.deployments)?r.json.result.deployments:[];
+              output({gate:'deployment',script:name,http:r.http,success:r.json?.success===true,
+                deployments:ds.slice(0,2).map(d=>({id:d.id,versions:d.versions?.map(v=>({id:v.version_id,percent:v.percentage})),created:d.created_on}))});
+              if(r.http!==200||r.json?.success!==true)process.exitCode=1;
+            }
+          }catch(e){output({gate:'read_error',kind:e?.name??'Error'});process.exitCode=1;}
+          NODE
