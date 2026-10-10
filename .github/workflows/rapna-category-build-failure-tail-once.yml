@@ -27,10 +27,10 @@ jobs:
             const r=await fetch(target,{method:'GET',headers:{Authorization:'Bearer '+token,Accept:'application/json'},redirect:'error',signal:AbortSignal.timeout(16000)});
             const j=await r.json().catch(()=>null);
             const rows=Array.isArray(j?.result?.lines)?j.result.lines:[];
-            const sanitized=rows.map(x=>(typeof x==='string'?x:String(x?.message??x?.text??x??'')))
+            const sanitized=rows.map(x=>(typeof x==='string'?x:Array.isArray(x)?String(x.at(-1)):String(x?.message??x?.text??x??'')))
               .map(x=>x.replace(/[A-Za-z0-9_+./-]{100,}/g,'[LONG_TOKEN_REDACTED]').slice(0,260))
               .filter(x=>!/(Bearer |CF_TOKEN|CLOUDFLARE_API_TOKEN|GITHUB_TOKEN|AUTHORIZATION=|client_secret|private.key|api_key=)/i.test(x));
             emit({http:r.status,success:j?.success===true,rows:rows.length,
-              tail:sanitized.slice(-50),raw_responses_discarded:true});
+              head:sanitized.slice(0,12),tail:sanitized.slice(-18),failures:sanitized.map((text,i)=>({i,text})).filter(v=>/✗|✘|×|fail|error|timeout|timed out|exit code|out of memory|worker.*killed|script.*killed/i.test(v.text)).slice(-30),raw_responses_discarded:true});
           }catch(e){emit({outcome:'read_failed',error_type:e?.name??'Error'});process.exitCode=1;}
           NODE
