@@ -1,4 +1,4 @@
-name: RAPNA visual publication read-only preflight
+name: RAPNA exact build failure read-only
 on:
   push:
     branches: [sec-f1/cloudflare-api-readonly-20261009]
@@ -8,69 +8,18 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 4
+    timeout-minutes: 2
     steps:
-      - name: Read production isolation and ordinary publication budget
+      - name: Read exact failed build log only
         env:
           CF_READ_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          SYNC_READ_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          BILLING_READ_TOKEN: ${{ secrets.CF_BILLING_AUDIT_READ_ONLY }}
         run: |
           node --input-type=module <<'NODE'
-          const base='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
-          const cf=process.env.CF_READ_TOKEN,sync=process.env.SYNC_READ_TOKEN,bill=process.env.BILLING_READ_TOKEN||cf;
-          const out=x=>console.log('MEDIA_PREFLIGHT '+JSON.stringify(x));
-          const req=async(path,token=cf,body)=>{const r=await fetch(path.startsWith('https:')?path:base+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},redirect:'error',...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(18000)});return {http:r.status,...await r.json()};};
-          if(!cf||!sync)throw Error('MISSING_EXISTING_AUTH');
-          const n=await req('https://vigia-runtime.c-gamiz93.workers.dev/api/source-reliability?observe=1',sync);
-          out({gate:'native',http:n.http,buildSha:n.buildSha,activeLease:n.activeLease,observedAt:n.observedAt,officialParityCertified:n.officialParityCertified,attempts:n.state?.attempts,revisions:n.state?.revisionAttempts,lastAudit:n.state?.lastAudit});
-          if(Object.values(n.state?.attempts??{}).some(x=>x.outcome==='unknown')||Object.values(n.state?.revisionAttempts??{}).some(x=>x.outcome==='unknown'))throw Error('UNKNOWN_GATE');
-          for(const name of ['vigia-runtime','vigia-source-runner']){
-           const d=await req('/workers/scripts/'+name+'/deployments');out({gate:'deployments',name,http:d.http,deployments:d.result?.deployments?.slice(0,3)});
-           const versions=await req('/workers/scripts/'+name+'/versions');out({gate:'versions',name,http:versions.http,versions:versions.result?.items?.slice(0,3).map(v=>({id:v.id,number:v.number,metadata:v.metadata,annotations:v.annotations}))});
-           const s=await req('/workers/scripts/'+name+'/schedules');out({gate:'schedules',name,http:s.http,result:s.result});
-          }
-          const settings=await req('/workers/scripts/vigia-runtime/settings');
-          out({gate:'bindings',http:settings.http,d1:settings.result?.bindings?.filter(x=>x.type==='d1'),limits:settings.result?.limits});
-          const db='55596003-1b90-4f66-aad8-decb21205f13';
-          if(!settings.result?.bindings?.some(x=>x.type==='d1'&&x.name==='DB'&&x.id===db))throw Error('BINDING_MISMATCH');
-          let rowsRead=0;
-          const q=async(gate,sql,params=[])=>{if(!/^SELECT\b/.test(sql)||sql.includes(';'))throw Error('READ_ONLY_STOP');const r=await req('/d1/database/'+db+'/query',cf,{sql,params});if(r.http!==200||!r.success)throw Error('D1_READ_FAILED_'+gate);for(const a of r.result){rowsRead+=a.meta?.rows_read||0;if(a.meta?.rows_written!==0)throw Error('UNEXPECTED_WRITE');}out({gate,rows:r.result.flatMap(x=>x.results),rowsRead});};
-          await q('coordinator',"SELECT owner_id,expires_at,epoch,json_extract(state_json,'$.revisionAttempts') AS revisions FROM source_reliability_control WHERE id=1");
-          await q('leases',"SELECT * FROM source_sync_locks LIMIT 10");
-          await q('unfinished_jobs',"SELECT id,source,mode,kind,phase,deadline,write_intent_at,finished_at FROM source_reliability_jobs WHERE finished_at IS NULL ORDER BY started_at DESC LIMIT 15");
-          const ids=['15ff9a7c-4094-4836-996b-b36591cab779','bb90ee24-dffa-4b25-9a03-8e994a29df64','7d965614-eb79-468c-838a-249147a0fb58'];
-          await q('historical_jobs',"SELECT id,source,mode,kind,phase,finished_at,json_extract(receipt_json,'$.outcome') AS outcome,json_extract(receipt_json,'$.reason') AS reason FROM source_reliability_jobs WHERE id IN (?,?,?)",ids);
-          await q('pending_historical_effects',"SELECT job_id,COUNT(*) AS markers,SUM(committed_at IS NULL OR result_json IS NULL) AS pending FROM source_reliability_effects WHERE job_id IN (?,?,?) GROUP BY job_id",ids);
-          await q('recovery_receipts',"SELECT old_job_id,recovery_id,manifest_hash,committed_at FROM source_reliability_recoveries WHERE old_job_id IN (?,?,?)",ids);
-          out({gate:'read_cost',rowsRead,rowsWritten:0});
-          const scripts=await req('/workers/scripts');
-          if(scripts.http!==200||!Array.isArray(scripts.result))throw Error('SCRIPT_LIST_HOLD');
-          const tags=[...new Set([...scripts.result.map(x=>x.tag).filter(Boolean),'970603d17e814ae191c510624f9200bf'])];
-          let calls=0,count=0,minutes=0,active=0,unknownTimes=0;
-          for(const tag of tags){
-           for(let page=1;page<=8;page++){
-            if(++calls>160)throw Error('BUILD_READ_CAP_HOLD');
-            const r=await req('/builds/workers/'+tag+'/builds?per_page=100&page='+page);
-            if(r.http!==200||!r.success)throw Error('BUILD_LIST_HOLD_'+r.http);
-            const builds=Array.isArray(r.result)?r.result:r.result?.builds??[];
-            for(const b of builds){if(b.created_on<'2026-09-25T00:00:00Z')continue;count++;if(!b.stopped_on){active++;minutes+=20;}else {const t=(Date.parse(b.stopped_on)-Date.parse(b.running_on??b.initializing_on??b.created_on))/60000;if(!Number.isFinite(t)||t<0){unknownTimes++;minutes+=20;}else minutes+=Math.ceil(t);}}
-            if(page===1)out({gate:'build_page',tag,keys:Object.keys(r.result??{}),count:builds.length,result_info:r.result_info,sample:builds.slice(0,1).map(b=>({status:b.status,created_on:b.created_on,running_on:b.running_on,stopped_on:b.stopped_on}))});
-            if(builds.length<100||page>=(r.result_info?.total_pages??999))break;
-            if(page===8)throw Error('BUILD_PAGINATION_HOLD');
-           }
-          }
-          out({gate:'build_budget',workerTags:tags.length,calls,buildCount:count,conservativeRoundedMinutes:minutes,active,unknownTimes,includedMinutes:6000,reservedProductionBuildMinutes:20,remainingAfterReserve:6000-minutes-20});
-          if(active||unknownTimes||minutes+20>=6000)throw Error('BUILD_BUDGET_HOLD');
-          const query='query { viewer { accounts(filter:{accountTag:"9c1807c68493f14259248b5f5782cc6f"}) { workersInvocationsAdaptive(limit:10,filter:{scriptName:"vigia-runtime",datetime_geq:"2026-10-10T08:38:00Z",datetime_leq:"2026-10-10T08:50:00Z"}) { sum { requests errors subrequests } quantiles { cpuTimeP50 cpuTimeP99 } dimensions { status } } } } }';
-          const metrics=await req('https://api.cloudflare.com/client/v4/graphql',cf,{query});
-          out({gate:'pre_metrics',http:metrics.http,data:metrics.data,errors:metrics.errors?.map(x=>x.message)});
-          const pub=await fetch('https://nagamealert.com/api/terminal/alerts?source=RASFF&period=30d&pageSize=20',{signal:AbortSignal.timeout(15000)});
-          const p=await pub.json();out({gate:'rasff_latest_public',http:pub.status,references:p.items?.slice(0,4).map(x=>x.reference),updated:p.lastUpdatedAt});
-          for(const tag of ['c16d1153847b48f7ba2245915cfd97ab','970603d17e814ae191c510624f9200bf']){const t=await req('/builds/workers/'+tag+'/triggers');out({gate:'existing_build_triggers',tag,http:t.http,triggers:t.result?.map(x=>({uuid:x.trigger_uuid,branch_includes:x.branch_includes,branch_excludes:x.branch_excludes,build_command:x.build_command,deploy_command:x.deploy_command,deleted_on:x.deleted_on}))});}
-          const b=await req('/builds/builds/4e105ba5-de31-4492-9730-6d8158e55041');
-          out({gate:'production_build',http:b.http,result:{id:b.result?.build_uuid,status:b.result?.status,outcome:b.result?.build_outcome,created:b.result?.created_on,running:b.result?.running_on,stopped:b.result?.stopped_on,commit:b.result?.build_trigger_metadata?.commit_hash,branch:b.result?.build_trigger_metadata?.branch,command:b.result?.build_trigger_metadata?.build_command,deploy:b.result?.build_trigger_metadata?.deploy_command}});
-          const logs=await req('/builds/builds/4e105ba5-de31-4492-9730-6d8158e55041/logs');
-          const lines=Array.isArray(logs.result)?logs.result:logs.result?.lines??[];
-          out({gate:'production_quality_logs',http:logs.http,keys:Object.keys(logs.result??{}).slice(0,8),proof:lines.map(x=>typeof x==='string'?x:x.line??x.message??x.text??JSON.stringify(x)).filter(x=>/Running Cloudflare CI|tests \d|pass \d|fail \d|duration_ms|artifact.*valid|Validation|typecheck|lint/i.test(x)).slice(-35)});
+          const token=process.env.CF_READ_TOKEN;
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          const r=await fetch(root+'/builds/builds/4e105ba5-de31-4492-9730-6d8158e55041/logs',{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(18000)});
+          const d=await r.json();const ls=(d.result?.lines??[]).map(x=>Array.isArray(x)?String(x[1]):typeof x==='string'?x:x.line??x.message??JSON.stringify(x));
+          const fail=ls.map((line,i)=>({line,i})).filter(x=>/✖|not ok|AssertionError|ERR_ASSERTION|failing tests|Error:|Failed:/.test(x.line));
+          const clean=s=>s.split(token).join('[REDACTED]').replace(/Bearer\s+\S+/gi,'Bearer [REDACTED]');
+          console.log('RAPNA_BUILD_FAILURE '+JSON.stringify({http:r.status,truncated:d.result?.truncated,cursor:d.result?.cursor,totalLines:ls.length,failures:fail.map(x=>({line:clean(x.line),context:ls.slice(Math.max(0,x.i-3),x.i+25).map(clean)})).slice(0,15)}));
           NODE
