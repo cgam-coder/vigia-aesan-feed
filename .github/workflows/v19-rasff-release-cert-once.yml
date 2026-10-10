@@ -1,4 +1,4 @@
-name: V19 RASFF read-only final production release gate
+name: V19 RASFF read-only postdeploy certification
 on:
   push:
     branches: [sec-f1/cloudflare-api-readonly-20261009]
