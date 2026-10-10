@@ -1,0 +1,108 @@
+name: RAPNA-MEDIA-F1 isolated Chrome proof once
+
+on:
+  push:
+    branches:
+      - sec-f1/cloudflare-api-readonly-20261009
+    paths:
+      - .github/workflows/rapna-media-browser-proof-once.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rapna-media-browser-proof-once-20261010
+  cancel-in-progress: false
+
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Install isolated pinned browser driver (no repository code/secrets)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/rapna-playwright" playwright@1.56.1 --ignore-scripts --no-audit --no-fund --silent
+          which google-chrome || which google-chrome-stable || which chromium
+      - name: Verify one real RAPNA image in isolated preview browser
+        shell: bash
+        run: |
+          node <<'NODE'
+          const path=require('node:path');
+          const crypto=require('node:crypto');
+          const {chromium}=require(path.join(process.env.RUNNER_TEMP,'rapna-playwright/node_modules/playwright'));
+          const preview='https://rapna-media-f1-direct-cors-proof-20261010-vigia-runtime.c-gamiz93.workers.dev';
+          const summary={phase:'RAPNA_MEDIA_BROWSER_PROOF',preview_commit:'2e39d81',http:{},browser:'Chrome',fixture:'one public RAPNA alert; in-memory API route only',no_d1_writes:true,no_builds_created:true};
+          let browser,context;
+          const output=()=>console.log('RAPNA_MEDIA_BROWSER '+JSON.stringify(summary));
+          (async()=>{
+            let res;
+            try{
+              res=await fetch('https://nagamealert.com/api/terminal/alerts?source=RAPNA&period=30d&pageSize=10',
+                {signal:AbortSignal.timeout(16000)});
+              if(!res.ok)throw new Error('public_api_http_'+res.status);
+              let data=await res.json();
+              const item=data?.items?.find(x=>x.source==='RAPNA'&&x.reference==='159/2026');
+              if(!item||typeof item.imageUrl!=='string'||!item.imageUrl.startsWith('/api/rapna/resource?'))throw new Error('missing_official_image_fixture');
+              data={...data,items:[item],total:1,pagination:{...data.pagination,returned:1,hasMore:false,nextCursor:null},
+                facets:{...data.facets,total:1,sources:{...data.facets?.sources,RAPNA:1}}};
+              summary.fixture_url_present=true;
+              const executable='/usr/bin/google-chrome';
+              browser=await chromium.launch({headless:true,executablePath:executable,args:['--no-sandbox','--disable-dev-shm-usage']});
+              context=await browser.newContext({viewport:{width:1440,height:900},locale:'es-ES',timezoneId:'Europe/Madrid',
+                serviceWorkers:'block'});
+              const page=await context.newPage();
+              let routeMocks=0,postRequests=0,proxyFallbackRequests=0,officialResponseCodes=[],jsErrors=[];
+              await page.route('**/api/terminal/alerts?**',async route=>{
+                routeMocks++;
+                await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
+              });
+              page.on('request',request=>{
+                if(request.url().startsWith('https://servicios.consumo.gob.es/rapnaBEPublic/listadoPublico/fichero'))postRequests++;
+                if(request.url().includes('/api/rapna/resource?'))proxyFallbackRequests++;
+              });
+              page.on('response',r=>{
+                if(r.url().startsWith('https://servicios.consumo.gob.es/rapnaBEPublic/listadoPublico/fichero'))officialResponseCodes.push(r.status());
+              });
+              page.on('pageerror',error=>{if(jsErrors.length<3)jsErrors.push(error?.name??'Error');});
+              const navigation=await page.goto(preview+'/es/alertas?source=RAPNA&period=30d',
+                {waitUntil:'domcontentloaded',timeout:30000});
+              summary.http.preview_navigation=navigation?.status()??null;
+              summary.http.official_response_codes=officialResponseCodes;
+              const card=page.locator('article.na-alert-card[data-source="RAPNA"]');
+              try{
+                await card.first().waitFor({state:'visible',timeout:20000});
+                summary.card_rendered=true;
+                const img=card.first().locator('figure.na-alert-card__media img').first();
+                await img.waitFor({state:'attached',timeout:8000});
+                await img.scrollIntoViewIfNeeded();
+                await page.waitForFunction(()=>{
+                  const i=document.querySelector('article.na-alert-card[data-source="RAPNA"] img');
+                  return !!i&&i.complete&&i.naturalWidth>0;
+                },null,{timeout:25000});
+                summary.card_image=await img.evaluate(i=>({rendered:i.complete&&i.naturalWidth>0,natural_width:i.naturalWidth,
+                  natural_height:i.naturalHeight,src_scheme:i.src.startsWith('blob:')?'blob':i.src.startsWith('http')?'http':'other',
+                  figure_hidden:i.parentElement?.hasAttribute('hidden')===true}));
+                const screenshot=await card.first().screenshot({timeout:5000});
+                summary.card_screenshot_sha256=crypto.createHash('sha256').update(screenshot).digest('hex').slice(0,18);
+              }catch(error){
+                summary.card_rendered=await card.count()>0;
+                summary.card_error_type=error?.name??'Error';
+                summary.card_error_summary=String(error?.message||'').split('\n')[0].slice(0,140);
+              }
+              summary.route_fixtures_served=routeMocks;
+              summary.official_post_requests=postRequests;
+              summary.proxy_fallback_requests=proxyFallbackRequests;
+              summary.http.official_response_codes=officialResponseCodes;
+              summary.page_error_kinds=jsErrors;
+              summary.pass=summary.card_image?.rendered===true&&summary.card_image?.src_scheme==='blob'&&
+                summary.card_image?.figure_hidden===false&&routeMocks>0&&postRequests>=1&&proxyFallbackRequests===0;
+              if(!summary.pass){
+                summary.result='HOLD_browser_card';process.exitCode=1;
+              }else summary.result='PASS_browser_card';
+            }catch(error){summary.result='HOLD_environment_or_fixture';summary.error_type=error?.name??'Error';
+              summary.error=String(error?.message??'').split('\n')[0].slice(0,160);process.exitCode=1;}
+            finally{if(context)await context.close().catch(()=>{});if(browser)await browser.close().catch(()=>{});output();}
+          })();
+          NODE
