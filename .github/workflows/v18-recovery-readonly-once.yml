@@ -1,4 +1,4 @@
-name: V18 reconcile proved metadata while retaining HOLD
+name: V18 post-reconciliation read-only verification
 
 on:
   push:
@@ -36,7 +36,7 @@ jobs:
           const cfbase='https://api.cloudflare.com/client/v4/accounts/'+acct;
           let rowsRead=0,queries=0;
           const query=async(label,sql,params=[])=>{
-           if(!/^SELECT\b/i.test(sql)||sql.includes(';')||queries>=32||rowsRead>100000)throw Error('READ_BUDGET_STOP');
+           if(!/^SELECT\b/i.test(sql)||sql.includes(';')||queries>=24||rowsRead>100000)throw Error('READ_BUDGET_STOP');
            queries++;
            const r=await req(cfbase+'/d1/database/'+dbid+'/query',process.env.CF_READ_TOKEN,{sql,params});
            if(r.http!==200||r.data?.success!==true){out({gate:label,http:r.http,success:false,codes:r.data?.errors?.map(e=>e.code)});throw Error('D1_READ_UNAVAILABLE');}
@@ -64,111 +64,12 @@ jobs:
           const meta=await req(cfbase+'/d1/database/'+dbid,process.env.CF_READ_TOKEN);
            out({gate:'database',http:meta.http,success:meta.data?.success,name:meta.data?.result?.name,uuid:meta.data?.result?.uuid,file_size:meta.data?.result?.file_size,num_tables:meta.data?.result?.num_tables});
            if(meta.data?.result?.uuid!==dbid||meta.data?.result?.name!=='nagamealert-staging-db')throw Error('DATABASE_BASELINE_MISMATCH');
-           await query('schema',"SELECT name,sql FROM sqlite_schema WHERE type IN ('table','index') AND (name LIKE 'source_reliability%' OR name IN ('source_sync_state','source_sync_locks','source_revision_certifications') OR name LIKE '%snapshot%') ORDER BY name LIMIT 50");
-           await query('control',"SELECT id,owner_id,expires_at,epoch,last_scheduled_time,json_extract(state_json,'$.lastWakeAt') AS wake,json_extract(state_json,'$.lastOutcome') AS outcome,json_extract(state_json,'$.revisionAttempts') AS revision_attempts FROM source_reliability_control WHERE id=1");
-           const suspect=Object.entries(st.revisionAttempts??{}).filter(([k,v])=>['unknown','failed','running'].includes(v?.outcome)).slice(0,6);
-           const ids=suspect.map(([k,v])=>v.id).filter(x=>typeof x==='string');
-           if(ids.length){
-            const slots=ids.map(()=>'?').join(',');
-            await query('jobs','SELECT id,source,mode,kind,epoch,started_at,deadline,finished_at,phase,write_intent_at,receipt_json FROM source_reliability_jobs WHERE id IN ('+slots+')',ids);
-            await query('effect_stats','SELECT job_id,COUNT(*) AS markers,SUM(committed_at IS NULL) AS uncommitted,SUM(result_json IS NULL) AS no_result,MIN(ordinal) AS first,MAX(ordinal) AS last FROM source_reliability_effects WHERE job_id IN ('+slots+') GROUP BY job_id',ids);
-            await query('effect_tail','SELECT effect_key,job_id,ordinal,committed_at,length(manifest_json) AS manifest_bytes,json_extract(manifest_json,\'$.kind\') AS kind,json_extract(result_json,\'$.checkpoint\') AS checkpoint,json_extract(result_json,\'$.statementCount\') AS statement_count FROM source_reliability_effects WHERE job_id IN ('+slots+') ORDER BY job_id,ordinal DESC LIMIT 35',ids);
-            await query('recoveries','SELECT old_job_id,recovery_id,manifest_hash,committed_at,json_extract(receipt_json,\'$.outcome\') AS outcome,json_extract(receipt_json,\'$.reason\') AS reason FROM source_reliability_recoveries WHERE old_job_id IN ('+slots+')',ids);
-           }
-           await query('source_states',"SELECT * FROM source_sync_state WHERE source IN ('AESAN','RAPNA','RASFF','SAFETY GATE','OECD') ORDER BY source,mode LIMIT 25");
-           await query('source_leases',"SELECT * FROM source_sync_locks WHERE source IN ('AESAN','RAPNA','RASFF','SAFETY GATE','OECD') LIMIT 5");
-           await query('certificates',"SELECT * FROM source_revision_certifications WHERE source IN ('AESAN','RAPNA','RASFF','SAFETY GATE','OECD') ORDER BY source,mode LIMIT 20");
-                     await query('snapshots',"SELECT id,source,purpose,created_at,alert_count,source_alert_count,version_count,checksum,source_data_checksum,status,backfill_started_at,restored_at FROM source_backfill_snapshots WHERE source IN ('RAPNA','OECD','RASFF') ORDER BY created_at DESC LIMIT 12");
-          const plans=[];const snapshots=[];
-          for(const [key,attempt] of suspect) {
-           const job=(await query('proof_job','SELECT * FROM source_reliability_jobs WHERE id=?',[attempt.id]))[0];
-           const state=(await query('proof_state','SELECT * FROM source_sync_state WHERE source=? AND mode=?',[job.source,job.mode]))[0];
-           const prefix=(await query('proof_prefix',"SELECT COUNT(*) AS n,COUNT(DISTINCT ordinal) AS distinct_n,MIN(ordinal) AS first,MAX(ordinal) AS last,SUM(committed_at IS NULL OR result_json IS NULL) AS pending,SUM(json_extract(manifest_json,'$.jobId') IS NOT ? OR json_extract(manifest_json,'$.source') IS NOT ? OR json_extract(manifest_json,'$.mode') IS NOT ? OR json_extract(manifest_json,'$.ordinal') IS NOT ordinal) AS invalid FROM source_reliability_effects WHERE job_id=? AND ordinal>0",[job.id,job.source,job.mode,job.id]))[0];
-           const marker=(await query('proof_last_state',"SELECT effect_key,ordinal,manifest_json,result_json,committed_at FROM source_reliability_effects AS e WHERE job_id=? AND committed_at IS NOT NULL AND EXISTS(SELECT 1 FROM json_each(e.manifest_json,'$.writes') AS w WHERE json_extract(w.value,'$.sql') LIKE '%INSERT INTO source_sync_state%') ORDER BY ordinal DESC LIMIT 1",[job.id]))[0];
-           const manifest=JSON.parse(marker.manifest_json);
-           const writes=manifest.writes.filter(w=>/^\s*INSERT\s+INTO\s+source_sync_state\b/i.test(w.sql));
-           const m=/INSERT\s+INTO\s+source_sync_state\s*\(([^)]+)\)\s*SELECT\s+((?:\?\s*,\s*)+\?)/i.exec(writes[0]?.sql??'');
-           const names=m?.[1].split(',').map(k=>k.trim())??[];
-           const expected=Object.fromEntries(names.map((k,i)=>[k,writes[0].params[i]]));
-           const pre=manifest.preimages?.find(p=>p.sql.includes('FROM "source_sync_state"'));
-           const preNames=pre?.sql.match(/FROM \(SELECT (.+?) FROM "source_sync_state"/)?.[1].split(',').map(k=>k.trim().replaceAll('"',''))??[];
-           const beforeRows=pre?JSON.parse(pre.value):[];
-           const before=beforeRows.length===1?Object.fromEntries(preNames.map((k,i)=>[k,beforeRows[0].flat()[i]])):null;
-           const preserveSkip=expected.last_skipped_at===null || before&&before.last_skipped_at!==null&&expected.last_skipped_at<before.last_skipped_at;
-           let skipRuleVerified=true;
-           for(const k of ['last_skipped_at','last_skip_reason','last_skipped_owner_id']){
-            const expectedCase=k+'=CASE WHEN excluded.last_skipped_at IS NOT NULL AND (source_sync_state.last_skipped_at IS NULL OR excluded.last_skipped_at >= source_sync_state.last_skipped_at) THEN excluded.'+k+' ELSE source_sync_state.'+k+' END';
-            if(!writes[0].sql.replace(/\s+/g,' ').includes(expectedCase))skipRuleVerified=false;
-            if(preserveSkip&&before)expected[k]=before[k];
-           }
-           const differences=Object.keys(state).filter(k=>state[k]!==expected[k]);
-           const currentExact=skipRuleVerified&&names.length===Object.keys(state).length&&differences.length===0;
-           out({gate:'effective_checkpoint',key,skipRuleVerified,preimageRows:beforeRows.length,preserveSkip,differences});
-           const receipt=JSON.parse(job.receipt_json);
-           const invalidNames=Object.keys(state).filter(k=>!names.includes(k));
-           const valid=prefix.first===1&&prefix.n===prefix.last&&prefix.distinct_n===prefix.n&&prefix.pending===0&&prefix.invalid===0&&currentExact&&job.phase==='finished'&&Boolean(job.finished_at)&&job.deadline<Date.now()&&receipt.id===job.id&&['unknown','failed'].includes(receipt.outcome)&&state.cursor>0&&state.detail_failures===0;
-           const digest=async x=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(x))))).map(n=>n.toString(16).padStart(2,'0')).join('');
-           const summary={key,jobId:job.id,valid,prefix,currentExact,stateEffect:marker.effect_key,stateEffectOrdinal:marker.ordinal,source:state.source,mode:state.mode,cursor:state.cursor,cursorKey:state.cursor_key,planVersion:state.plan_version,updatedAt:state.updated_at,receiptOutcome:receipt.outcome,receiptReason:receipt.reason,receiptStateError:receipt.state?.lastError,lastError:state.last_error,missingColumns:invalidNames,stateHash:await digest(state),jobHash:await digest(job),markerHash:await digest(marker),checkpoint:JSON.parse(marker.result_json)?.checkpoint??null};
-           snapshots.push({key,job,state,marker,prefix,receipt,summary});plans.push(summary);out(clean({gate:'plan_proof',...summary}));
-          }
-          out({gate:'plan_summary',allProved:plans.every(p=>p.valid),plans:plans.map(p=>({key:p.key,valid:p.valid,jobId:p.jobId,cursor:p.cursor,stateHash:p.stateHash,jobHash:p.jobHash,markerHash:p.markerHash}))});
-          
-          if(process.env.GITHUB_RUN_ATTEMPT!=='1')throw Error('NO_MUTATION_RERUN');
-          const expected={
-           'bb90ee24-dffa-4b25-9a03-8e994a29df64':{state:'a1e67909ca6b7aabe3d978fd262a70b25a7342f4c79c02ca73d553f9fb3400f0',job:'0e4899e3ba60f0b35be60c011982e14cc499a6628445e60350a2c321b6ab726a'},
-           '7d965614-eb79-468c-838a-249147a0fb58':{state:'f148686df8384cbe9befd826edbc915098b578d9fddfb3260090c9d1f1ef81ef',job:'37dd83baf3780e42c5997e988c78f457cca58f3d33f480bfc392d9244a5013cd'}
-          };
-          const selected=snapshots.filter(s=>Object.hasOwn(expected,s.job.id));
-          if(selected.length!==2||!selected.every(s=>s.summary.valid&&s.summary.stateHash===expected[s.job.id].state&&s.summary.jobHash===expected[s.job.id].job&&s.receipt.outcome==='unknown'))throw Error('FROZEN_PROOF_MISMATCH');
-          const control=(await query('proof_control_full','SELECT * FROM source_reliability_control WHERE id=1'))[0];
-          const at=new Date().toISOString();
-          if(control.owner_id!==null||control.expires_at!==null)throw Error('COORDINATOR_ACTIVE_HOLD');
-          if((await query('proof_prior_plans','SELECT old_job_id,part FROM source_reliability_recovery_plans WHERE old_job_id IN (?,?)',selected.map(s=>s.job.id))).length)throw Error('PRIOR_PLAN_RECONSTRUCT_READ_ONLY');
-          const quote=k=>'"'+k.replaceAll('"','""')+'"';
-          const rowCas=(table,row,where,args)=>{
-           const keys=Object.keys(row),expr=[],values=[];
-           for(let i=0;i<keys.length;i+=16){expr.push('json_array('+keys.slice(i,i+16).map(quote).join(',')+')');values.push(keys.slice(i,i+16).map(k=>row[k]));}
-           return {sql:'(SELECT json_array('+expr.join(',')+') FROM '+table+' WHERE '+where+') IS ?',params:[...args,JSON.stringify(values)]};
-          };
-          const eligible=s=>{
-           const a=rowCas('source_reliability_jobs',s.job,'id=?',[s.job.id]),b=rowCas('source_sync_state',s.state,'source=? AND mode=?',[s.job.source,s.job.mode]);
-           return {sql:a.sql+' AND '+b.sql+" AND EXISTS(SELECT 1 FROM source_reliability_control WHERE id=1 AND owner_id IS NULL AND expires_at IS NULL AND json_extract(state_json,?)=? AND json_extract(state_json,?)='unknown') AND NOT EXISTS(SELECT 1 FROM source_sync_locks WHERE source=? AND expires_at>?) AND NOT EXISTS(SELECT 1 FROM source_reliability_jobs WHERE source=? AND id!=? AND finished_at IS NULL AND deadline>?) AND NOT EXISTS(SELECT 1 FROM source_reliability_recoveries WHERE old_job_id=?) AND (SELECT COUNT(*) FROM source_reliability_effects WHERE job_id=? AND ordinal>0)=? AND NOT EXISTS(SELECT 1 FROM source_reliability_effects WHERE job_id=? AND ordinal>0 AND (committed_at IS NULL OR result_json IS NULL))",params:[...a.params,...b.params,'$.revisionAttempts.'+JSON.stringify(s.key)+'.id',s.job.id,'$.revisionAttempts.'+JSON.stringify(s.key)+'.outcome',s.job.source,at,s.job.source,s.job.id,Date.parse(at),s.job.id,s.job.id,s.prefix.n,s.job.id]};
-          };
-          let written=0,mutations=0;
-          const mutation=async(label,sql,params)=>{
-           if(++mutations>7||written>100||!/^(INSERT INTO source_reliability_(recovery_plans|recoveries)|UPDATE source_reliability_(jobs|control))\b/.test(sql))throw Error('MUTATION_SCOPE_STOP');
-           const r=await req(cfbase+'/d1/database/'+dbid+'/query',process.env.CF_READ_TOKEN,{sql,params});
-           if(r.http!==200||r.data?.success!==true){out({gate:'mutation_response_uncertain_STOP',label,http:r.http});throw Error('RECONSTRUCT_ONLY_NO_RETRY');}
-           const results=r.data.result??[],changed=results.flatMap(r=>r.results??[]).length;
-           written+=results.reduce((s,r)=>s+(r.meta?.rows_written??0),0);
-           rowsRead+=results.reduce((s,r)=>s+(r.meta?.rows_read??0),0);
-           out({gate:label,changedRows:changed,rowsWritten:results.reduce((s,r)=>s+(r.meta?.rows_written??0),0)});
-           if(changed!==1)throw Error('CAS_REJECTED_RECONSTRUCT_ONLY');
-          };
-          const digest=async x=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(x)))).map(n=>n.toString(16).padStart(2,'0')).join('');
-          for(const s of selected){const guard=eligible(s);await query('proof_all_quiet_before_writes',"SELECT CASE WHEN "+guard.sql+" THEN 1 ELSE json('metadata-recovery-guard-lost') END AS ok",guard.params);}
-          for(const s of selected){
-           const guard=eligible(s),recoveryId=crypto.randomUUID();
-           const actualState=Object.fromEntries(Object.entries(s.state).map(([k,v])=>[k.replace(/_([a-z])/g,(_,c)=>c.toUpperCase()),v]));
-           const recovered={...s.receipt,finishedAt:at,outcome:'failed',reason:'confirmed-effects-incomplete-revision-manual-HOLD',state:actualState,reconciliation:{recoveryId,noDomainReplay:true,cursorNotAdvanced:true,certificateUnchanged:true,originalOutcome:'unknown',markerCount:s.prefix.n,stateEffect:s.marker.effect_key,scope:'proved-committed-prefix-remains-quarantined',originalReceipt:s.receipt}};
-           const description=JSON.stringify({schemaVersion:1,kind:'v18-proved-prefix-metadata-HOLD',recoveryId,originalJob:s.job,originalState:s.state,originalControl:control,lastStateMarker:s.marker,prefix:s.prefix,proof:s.summary,receipt:recovered,at});
-           const hash=await digest(description),receiptText=JSON.stringify(recovered);
-           await mutation('snapshot_intent','INSERT INTO source_reliability_recovery_plans(old_job_id,part,manifest_hash,payload) SELECT ?,0,?,? WHERE '+guard.sql+' RETURNING old_job_id',[s.job.id,hash,description,...guard.params]);
-           await mutation('close_known_incomplete_job',"UPDATE source_reliability_jobs SET finished_at=?,receipt_json=?,phase='reconciled' WHERE id=? AND "+guard.sql+" AND EXISTS(SELECT 1 FROM source_reliability_recovery_plans WHERE old_job_id=? AND part=0 AND manifest_hash=? AND payload=?) RETURNING id",[at,receiptText,s.job.id,...guard.params,s.job.id,hash,description]);
-           await mutation('commit_recovery_receipt','INSERT INTO source_reliability_recoveries(old_job_id,recovery_id,manifest_hash,original_job_json,original_state_json,receipt_json,committed_at) SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM source_reliability_jobs WHERE id=? AND phase=\'reconciled\' AND receipt_json=?) AND EXISTS(SELECT 1 FROM source_reliability_recovery_plans WHERE old_job_id=? AND part=0 AND manifest_hash=? AND payload=?) RETURNING old_job_id',[s.job.id,recoveryId,hash,JSON.stringify(s.job),JSON.stringify(s.state),receiptText,at,s.job.id,receiptText,s.job.id,hash,description]);
-           s.recovered=recovered;s.hash=hash;
-          }
-          const current=(await query('proof_control_after_receipts','SELECT * FROM source_reliability_control WHERE id=1'))[0];
-          if(current.owner_id!==null||current.expires_at!==null)throw Error('RECEIPTS_COMMITTED_COORDINATOR_WILL_QUARANTINE');
-          const body=JSON.parse(current.state_json);
-          for(const s of selected){const attempt=body.revisionAttempts[s.key];if(attempt.id!==s.job.id)throw Error('SUCCESSOR_CONTROL_STOP');attempt.outcome='failed';attempt.reason=s.recovered.reason;attempt.nextEligibleAt='9999-01-01T00:00:00.000Z';}
-          const controlCas=rowCas('source_reliability_control',current,'id=1',[]);
-          await mutation('retain_control_quarantine','UPDATE source_reliability_control SET state_json=? WHERE id=1 AND '+controlCas.sql+' RETURNING id',[JSON.stringify(body),...controlCas.params]);
-          await query('post_receipts',"SELECT id,phase,json_extract(receipt_json,'$.outcome') AS outcome,json_extract(receipt_json,'$.reason') AS reason FROM source_reliability_jobs WHERE id IN (?,?)",selected.map(s=>s.job.id));
-          await query('post_quarantine',"SELECT json_extract(state_json,'$.revisionAttempts') AS revisions FROM source_reliability_control WHERE id=1");
-          for(const s of selected){const after=(await query('post_state_unchanged','SELECT * FROM source_sync_state WHERE source=? AND mode=?',[s.job.source,s.job.mode]))[0];if(JSON.stringify(after)!==JSON.stringify(s.state))throw Error('SOURCE_STATE_CHANGED_STOP');}
-          out({gate:'metadata_reconciled_HOLD',jobs:selected.map(s=>({id:s.job.id,source:s.job.source,cursor:s.state.cursor,recoveryHash:s.hash})),mutations,d1_rows_written:written,new_builds:0,new_crons:0,new_workers:0,domainWrites:0,expected_incremental_usd:0,write_headroom_last_verified:39440000,action:'historical-restart-still-prohibited'});
-
-          out({gate:'cost_actual',d1_queries:queries,d1_rows_read:rowsRead,d1_rows_written:written,estimated_read_usd_if_all_over_quota:rowsRead*0.001/1000000,expected_incremental_usd:0,included_read_headroom_last_verified:18400000000,new_builds:0,new_crons:0,new_workers:0});
+           
+           await query('recovery_commitments',"SELECT old_job_id,recovery_id,manifest_hash,committed_at,json_extract(receipt_json,'$.outcome') AS outcome,json_extract(receipt_json,'$.reason') AS reason FROM source_reliability_recoveries WHERE old_job_id IN (?,?)",['bb90ee24-dffa-4b25-9a03-8e994a29df64','7d965614-eb79-468c-838a-249147a0fb58']);
+           await query('preserved_revision_states',"SELECT source,mode,status,cursor,cursor_key,plan_version,updated_at,last_error FROM source_sync_state WHERE (source='RAPNA' AND mode='legacy-reconcile') OR (source='OECD' AND mode='historical-reconcile') OR (source='RASFF' AND mode='reconcile')");
+           const control=(await query('final_control',"SELECT json_extract(state_json,'$.revisionAttempts') AS revisions,json_extract(state_json,'$.attempts') AS recent,owner_id,expires_at,epoch FROM source_reliability_control WHERE id=1"))[0];
+           const revisions=JSON.parse(control.revisions),recent=JSON.parse(control.recent);
+           out({gate:'final_status',unknownRecent:Object.entries(recent).filter(([k,v])=>v.outcome==='unknown').map(([k])=>k),unknownRevision:Object.entries(revisions).filter(([k,v])=>v.outcome==='unknown').map(([k])=>k),revisionHold:Object.entries(revisions).filter(([k,v])=>v.nextEligibleAt?.startsWith('9999')).map(([k,v])=>({key:k,id:v.id,outcome:v.outcome,reason:v.reason})),recent:Object.fromEntries(Object.entries(recent).map(([k,v])=>[k,{id:v.id,outcome:v.outcome,startedAt:v.startedAt}])),certified:d.officialParityCertified,buildSha:d.buildSha,observedAt:d.observedAt});
+           out({gate:'cost_actual',d1_queries:queries,d1_rows_read:rowsRead,d1_rows_written:0,new_builds:0,new_crons:0,new_workers:0,expected_incremental_usd:0});
           }catch(e){out({gate:'STOP',reason:clean(e.message),queries,rowsRead});process.exitCode=1;}
           NODE
