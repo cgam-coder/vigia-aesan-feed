@@ -30,6 +30,17 @@ jobs:
             const n=await get(origin+'/api/source-reliability?observe=1',auth);
             const p=await get(origin+'/api/freshness?observe=1&policy=1',auth);
             const audits=n.body?.state?.lastAudit?.states??[];
+            const policyRows=Array.isArray(p.body?.policies)?p.body.policies:[];
+            const policyBySource=Object.fromEntries(policyRows.map(x=>[x.source,x]));
+            const freshness=['AESAN','RAPNA','RASFF','SAFETY GATE','OECD'].map(source=>{
+              const state=audits.find(x=>x.source===source);
+              const max=policyBySource[source]?.recent?.freshMaxAgeMinutes;
+              const at=state?.lastSyncSuccessAt?Date.parse(state.lastSyncSuccessAt):NaN;
+              const age=Number.isFinite(at)?Math.round((Date.now()-at)/60000):null;
+              return {source,recentAgeMinutes:age,recentMaxMinutes:typeof max==='number'?max:null,
+                recentFresh:typeof max==='number'&&age!==null&&age>=0&&age<=max,
+                parity:state?.latestIdentityParity===true};
+            });
             const att=n.body?.state??{};
             const recent=Object.entries(att.recentAttempts??{}).map(([key,v])=>({key,outcome:v?.outcome??null}));
             const unknownRecent=recent.filter(x=>x.outcome==='unknown').map(x=>x.key);
@@ -42,7 +53,7 @@ jobs:
               recent_completed:recent.filter(x=>x.outcome==='completed').length,
               recent_total:recent.length,unknown_recent:unknownRecent,unknown_revision:unknownRevision,
               quarantined_revision_attempts:quarantined,
-              lastAuditAt:att.lastAudit?.finishedAt,flags,
+              lastAuditAt:att.lastAudit?.finishedAt,flags,freshness,
               historical_5of5_certified:n.body?.officialParityCertified===true,
               policy_http:p.http,write_operations_performed:0});
           }catch(e){log({gate:'source-stability',error:e?.name??'Error'});process.exitCode=1;}
