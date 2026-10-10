@@ -40,51 +40,25 @@ jobs:
           };
           try{
           if(!token)throw Error('TOKEN_UNAVAILABLE');
-          const workers=arr(await get('workers','/workers/scripts'));
-          let bindingsOk=true,activeBuilds=0;
-          for(const name of ['vigia-runtime','vigia-source-runner']){
-          const s=await get(name+'_settings','/workers/scripts/'+name+'/settings');
-          const bindings=(s.bindings??[]).filter(b=>['d1','service'].includes(b.type)).map(b=>({name:b.name,type:b.type,id:b.id??null,service:b.service??null}));
-          out({gate:'effective_bindings',worker:name,bindings,limits:s.limits??null});
-          const found=bindings.find(b=>b.type==='d1'&&b.name==='DB');if(found?.id!==expectedDb)bindingsOk=false;else db=found.id;
-          const d=await get(name+'_deployments','/workers/scripts/'+name+'/deployments');
-          const deps=arr(d.deployments??d).slice(0,3);out({gate:'allocations',worker:name,deployments:deps.map(d=>({id:d.id,created:d.created_on,versions:d.versions}))});
-          for(const dep of deps.slice(0,2))for(const version of dep.versions??[]){
-          const id=version.version_id;if(!/^[a-f0-9-]{36}$/.test(id))throw Error('VERSION_REJECTED');
-          const v=await get(name+'_version','/workers/scripts/'+name+'/versions/'+id);
-          out(safe({gate:'version_available',worker:name,id,number:v.number??null,created:v.metadata?.created_on??null,tag:v.annotations?.['workers/tag']??null,message:v.annotations?.['workers/message']??null}));
-          const b=await get(name+'_provenance','/builds/builds?version_ids='+id);
-          out({gate:'version_build',worker:name,id,builds:flatBuilds(b).slice(0,3).map(x=>({id:x.build_uuid,status:x.status,outcome:x.build_outcome,created:x.created_on,commit:x.build_trigger_metadata?.commit_hash,branch:x.build_trigger_metadata?.branch,repo:x.build_trigger_metadata?.repo_name}))});
-          }
-          const w=workers.find(w=>w.id===name);if(!w?.tag)throw Error('WORKER_TAG_UNAVAILABLE');
-          const builds=arr(await get(name+'_builds','/builds/workers/'+encodeURIComponent(w.tag)+'/builds'));
-          const active=builds.filter(x=>!['success','failure','failed','cancelled','canceled','complete','completed','build_completed','skipped','stopped','fail'].includes(String(x.status??x.build_outcome??'').toLowerCase())&&!['success','failure','failed','cancelled','canceled','skipped','fail'].includes(String(x.build_outcome??'').toLowerCase()));
-          activeBuilds+=active.length;out({gate:'recent_builds',worker:name,count:builds.length,active_candidates:active.map(x=>({id:x.build_uuid,status:x.status,outcome:x.build_outcome})),items:builds.slice(0,5).map(x=>({id:x.build_uuid,status:x.status,outcome:x.build_outcome,commit:x.build_trigger_metadata?.commit_hash}))});
-          }
-          if(!bindingsOk||!db)throw Error('DB_BINDING_MISMATCH');
-          const detail=await get('database','/d1/database/'+db);
-          out({gate:'database_identity',binding:'DB',uuid:detail.uuid,name:detail.name,file_size:detail.file_size,num_tables:detail.num_tables});
-          if(detail.uuid!==db)throw Error('DB_IDENTITY_MISMATCH');
-          const limits=await get('build_limits','/builds/account/limits');const limitValues=x=>{if(Array.isArray(x))return x.map(limitValues);if(x&&typeof x==='object')return Object.fromEntries(Object.entries(x).filter(([k,v])=>typeof v==='object'||/minute|refresh|limit|remaining|used|reach/i.test(k)).map(([k,v])=>[k,limitValues(v)]));return typeof x==='number'||typeof x==='boolean'||typeof x==='string'?x:null;};out({gate:'build_availability',values:limitValues(limits)});
-          const gql='query { viewer { accounts(filter: {accountTag: "'+account+'"}) { d1AnalyticsAdaptiveGroups(limit: 1, filter: {date_geq: "2026-09-25", date_leq: "2026-10-10"}) { sum { rowsRead rowsWritten } } } } }';
-          const analytics=await request(base+'/graphql',{query:gql});
-          const aggregates=analytics.j?.data?.viewer?.accounts?.[0]?.d1AnalyticsAdaptiveGroups;
-          out(safe({gate:'d1_month_usage',http:analytics.http,errors:analytics.j?.errors?.map(e=>({message:String(e.message??'').slice(0,250)}))??[],period_start:'2026-09-25',period_end:'2026-10-10',aggregates:aggregates??null}));
-          if(analytics.http!==200||analytics.j?.errors?.length||!Array.isArray(aggregates)||aggregates.length!==1||!Number.isFinite(aggregates[0]?.sum?.rowsRead)||aggregates[0].sum.rowsRead>=24999000000)throw Error('D1_HEADROOM_UNVERIFIED');
-          if(activeBuilds)throw Error('ACTIVE_BUILDS_HOLD');
-          out({gate:'economic',included_read_headroom:25000000000-aggregates[0].sum.rowsRead,max_audit_reads:1000000,overage_usd_if_all_reads_billable:0.001,expected_incremental_usd:0,new_cloudflare_builds:0,customer_worker_invocations:0});
-          await query('schema',"SELECT name,sql FROM sqlite_schema WHERE (type='table' AND name='alerts') OR (type='index' AND tbl_name='alerts') ORDER BY name LIMIT 50");
-          await query('control',"SELECT id,owner_id,expires_at,epoch,json_extract(state_json,'$.revisionAttempts') AS revisions FROM source_reliability_control WHERE id=1");
-          const sources=['RASFF','SAFETY GATE','OECD'];const counts=await query('source_counts',"SELECT source,COUNT(*) AS n FROM alerts WHERE source IN (?,?,?) GROUP BY source",sources);
-          if(counts.length!==3||counts.reduce((s,r)=>s+r.n,0)>250000)throw Error('SOURCE_CARDINALITY_BUDGET_HOLD');
-          for(const source of sources){
-          await query('category_plan:'+source,"EXPLAIN QUERY PLAN SELECT product_class,COUNT(*) FROM alerts WHERE source=? GROUP BY product_class",[source]);
-          const rows=await query('categories:'+source,"SELECT product_class AS category,COUNT(*) AS n,MIN(published_at) AS first_date,MAX(published_at) AS last_date,SUM(published_at>=?) AS recent7,SUM(CASE WHEN json_valid(canonical_json) AND json_extract(canonical_json,'$.product.category.status')='known' THEN 1 ELSE 0 END) AS known,SUM(CASE WHEN json_valid(canonical_json) AND json_extract(canonical_json,'$.product.category.normalized')=product_class THEN 1 ELSE 0 END) AS canonical_match,GROUP_CONCAT(DISTINCT CASE WHEN json_valid(canonical_json) THEN json_extract(canonical_json,'$.product.category.provenance[0].sourceField') END) AS source_fields,MIN(id) AS sample_id FROM alerts WHERE source=? GROUP BY product_class ORDER BY n DESC,product_class LIMIT 1025",[new Date(Date.now()-7*86400000).toISOString(),source]);
-          if(rows.length>1024||rows.reduce((s,r)=>s+r.n,0)!==counts.find(r=>r.source===source)?.n)throw Error('CATEGORY_TRUNCATED_HOLD');
-          const samples=[...new Set([...rows.slice(0,6),...rows.filter(r=>r.known!==r.n||/product.type|unknown/i.test(r.source_fields??'')||/Sin clasificar|No alimentaci.n|Otros|OTHER/i.test(r.category??'')).slice(0,6),...rows.slice(-3)].map(r=>r.sample_id))].slice(0,15);
-          await query('samples:'+source,"SELECT id,source,reference,url,product_class AS category,published_at,json_extract(canonical_json,'$.identity.sourceRecordId') AS native_id,json_extract(canonical_json,'$.product.category') AS category_value,json_extract(canonical_json,'$.sourceRecord.detail.product.productCategory') AS native_product_category,substr(json_extract(canonical_json,'$.sourceRecord.detail.\"product.code\"'),1,1800) AS native_product_codes,substr(json_extract(canonical_json,'$.sourceRecord.detail.\"product.type\"'),1,400) AS native_product_type FROM alerts WHERE id IN ("+samples.map(()=>'?').join(',')+")",samples);
-          }
-          out({gate:'complete',queries,rows_read:reads,rows_written:0});
+          for(const name of ['vigia-runtime','vigia-source-runner']){const settings=await get(name+'_binding','/workers/scripts/'+name+'/settings');const b=settings.bindings?.find(b=>b.name==='DB'&&b.type==='d1');if(b?.id!==expectedDb)throw Error('DB_BINDING_MISMATCH');db=b.id;}
+          const usage=await request(base+'/graphql',{query:'query { viewer { accounts(filter: {accountTag: "'+account+'"}) { d1AnalyticsAdaptiveGroups(limit: 1, filter: {date_geq: "2026-09-25", date_leq: "2026-10-10"}) { sum { rowsRead rowsWritten } } } } }'});
+          const u=usage.j?.data?.viewer?.accounts?.[0]?.d1AnalyticsAdaptiveGroups?.[0]?.sum;out({gate:'d1_usage',http:usage.http,rowsRead:u?.rowsRead??null,rowsWritten:u?.rowsWritten??null,error_codes:usage.j?.errors?.map(e=>e.message)??[]});
+          if(usage.j?.errors?.length||!Number.isFinite(u?.rowsRead)||u.rowsRead>=24999000000)throw Error('D1_HEADROOM_UNVERIFIED');
+          const intro=await request(base+'/graphql',{query:'query { __type(name: "AccountWorkersInvocationsAdaptiveSum") { fields { name } } }'});
+          const fields=intro.j?.data?.__type?.fields?.map(x=>x.name)??[];out({gate:'worker_metric_fields',http:intro.http,fields,errors:intro.j?.errors?.map(e=>String(e.message).slice(0,180))??[]});
+          if(fields.includes('cpuTimeUs')){const cpu=await request(base+'/graphql',{query:'query { viewer { accounts(filter: {accountTag: "'+account+'"}) { workersInvocationsAdaptive(limit: 1, filter: {datetime_geq: "2026-09-25T00:00:00Z", datetime_leq: "'+new Date().toISOString()+'"}) { sum { requests errors cpuTimeUs } } } } }'});out({gate:'worker_account_usage',http:cpu.http,metrics:cpu.j?.data?.viewer?.accounts?.[0]?.workersInvocationsAdaptive??null,errors:cpu.j?.errors?.map(e=>String(e.message).slice(0,180))??[]});}
+          const limits=await get('build_limits_detail','/builds/account/limits');out({gate:'build_limit_shape',type:typeof limits,is_array:Array.isArray(limits),keys:Object.keys(limits??{}).slice(0,25),value:limits});
+          await query('rasff_native_fidelity',"SELECT COUNT(*) AS n,SUM(product_class=COALESCE(json_extract(canonical_json,'$.sourceRecord.detail.product.productCategory.description'),json_extract(canonical_json,'$.sourceRecord.index.productCategory.description'))) AS native_match,SUM(json_extract(canonical_json,'$.product.category.status')<>'known') AS not_known,MAX(length(product_class)) AS max_length,SUM(product_class<>TRIM(product_class)) AS surrounding_spaces FROM alerts WHERE source=? AND json_valid(canonical_json)",['RASFF']);
+          await query('sg_native_fidelity',"SELECT COUNT(*) AS n,SUM(product_class=json_extract(canonical_json,'$.sourceRecord.detail.product.productCategory.name')) AS native_match,SUM(json_extract(canonical_json,'$.sourceRecord.detail.product.productCategory.name') IS NULL) AS native_missing,MAX(length(product_class)) AS max_length,SUM(product_class<>TRIM(product_class)) AS surrounding_spaces FROM alerts WHERE source=? AND json_valid(canonical_json)",['SAFETY GATE']);
+          const levels=await query('oecd_provenance',"SELECT json_extract(canonical_json,'$.product.category.provenance[0].sourceField') AS field,json_extract(canonical_json,'$.product.category.status') AS status,COUNT(*) AS n,COUNT(DISTINCT product_class) AS labels,MIN(id) AS sample_id FROM alerts WHERE source=? AND json_valid(canonical_json) GROUP BY field,status",['OECD']);
+          const count=await query('oecd_cardinality',"SELECT COUNT(*) AS n,COUNT(DISTINCT product_class) AS labels,MAX(length(product_class)) AS max_length,SUM(product_class<>TRIM(product_class)) AS surrounding_spaces FROM alerts WHERE source=?",['OECD']);
+          if(count[0].labels>4096)throw Error('OECD_LABEL_CARDINALITY_HOLD');
+          const cats=await query('oecd_all_categories',"SELECT product_class AS category,COUNT(*) AS n,GROUP_CONCAT(DISTINCT json_extract(canonical_json,'$.product.category.provenance[0].sourceField')) AS fields,MIN(id) AS sample_id,MIN(published_at) AS first_date,MAX(published_at) AS last_date,SUM(published_at>=?) AS recent7 FROM alerts WHERE source=? GROUP BY product_class ORDER BY n DESC,category LIMIT 4097",[new Date(Date.now()-7*86400000).toISOString(),'OECD']);
+          if(cats.length!==count[0].labels||cats.reduce((s,r)=>s+r.n,0)!==count[0].n)throw Error('OECD_CATALOG_TRUNCATED');
+          const ids=[...new Set([...levels,...cats.slice(0,4),...cats.filter(r=>/Produits|TOYS|EP91|GC1|Sin clasificar/.test(r.category??'')).slice(0,6)].map(r=>r.sample_id))].slice(0,15);
+          await query('oecd_samples',"SELECT id,reference,url,product_class AS category,json_extract(canonical_json,'$.identity.sourceRecordId') AS native_id,json_extract(canonical_json,'$.product.category') AS category_value,substr(json_extract(canonical_json,'$.sourceRecord.detail.\"product.code\"'),1,1800) AS native_product_codes,substr(json_extract(canonical_json,'$.sourceRecord.detail.\"product.type\"'),1,400) AS native_product_type FROM alerts WHERE id IN ("+ids.map(()=>'?').join(',')+")",ids);
+          await query('oecd_label_variants',"SELECT lower(TRIM(product_class)) AS folded,COUNT(DISTINCT product_class) AS variants,GROUP_CONCAT(DISTINCT product_class) AS labels,COUNT(*) AS n FROM alerts WHERE source=? GROUP BY folded HAVING COUNT(DISTINCT product_class)>1 ORDER BY n DESC LIMIT 30",['OECD']);
+          out({gate:'complete_remaining',queries,rows_read:reads,rows_written:0,expected_incremental_usd:0});
           }catch(e){out({gate:'HOLD',reason:String(e.message??'Error'),queries,rows_read:reads,rows_written:0});process.exitCode=1;}
           
           NODE
