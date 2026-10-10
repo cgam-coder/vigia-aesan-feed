@@ -122,8 +122,9 @@ jobs:
             const imageDetail=await photo(page.locator('.na-alert-detail__media img').first());
             csp.push(...await page.evaluate(()=>window.__mediaCsp??[]));
             output({gate:'security_diagnostic',profile:profile.name,locale,jsErrors:errors,cspViolations:csp,officialRequests:official,card159:image159,card158:image158,detail159:imageDetail,nagameRequests});
-            if(errors.length||csp.length||official.some(x=>x.status!==200||x.cookie||x.referer)||!official.length)throw Error('BROWSER_SECURITY_OR_JS_GATE');
-            output({gate:'PASS',profile:profile.name,locale,listHttp:response.status(),detailHttp:detail.status(),detailUrl:page.url(),card159:image159,card158:image158,detail159:imageDetail,cardScreenshotSha256:screenshotHash,officialRequests:official,jsErrors:errors,cspViolations:csp,requestFailures:failures,fixtures:0,physicalSafari:false});
+            const relevantCsp=csp.filter(x=>!(x.directive==='script-src-elem'&&/^https:\/\/static\.cloudflareinsights\.com\/beacon\.min\.js\//.test(x.blocked)));
+            if(errors.length||relevantCsp.length||official.some(x=>x.status!==200||x.cookie||x.referer)||!official.length)throw Error('BROWSER_SECURITY_OR_JS_GATE');
+            output({gate:'PASS',profile:profile.name,locale,listHttp:response.status(),detailHttp:detail.status(),detailUrl:page.url(),card159:image159,card158:image158,detail159:imageDetail,cardScreenshotSha256:screenshotHash,officialRequests:official,jsErrors:errors,relevantCspViolations:relevantCsp,blockedTelemetry:csp.filter(x=>!relevantCsp.includes(x)),requestFailures:failures,fixtures:0,physicalSafari:false});
             passes++;await page.close();
            }
            }finally{await context.close();await browser.close();}
