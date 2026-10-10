@@ -1,4 +1,4 @@
-name: V18 recovery bounded read-only once
+name: V18 recovery effective checkpoint proof once
 
 on:
   push:
@@ -59,7 +59,7 @@ jobs:
            }
            const settings=await req(cfbase+'/workers/scripts/vigia-runtime/settings',process.env.CF_READ_TOKEN);
           const bindings=(settings.data?.result?.bindings??[]).filter(b=>b.type==='d1').map(b=>({name:b.name,type:b.type,id:b.id}));
-          out({gate:'effective_d1_binding',http:settings.http,success:settings.data?.success,bindings});
+          out({gate:'effective_d1_binding',http:settings.http,success:settings.data?.success,bindings,limits:settings.data?.result?.limits,observability:settings.data?.result?.observability});
           if(!bindings.some(b=>b.name==='DB'&&b.id===dbid))throw Error('EFFECTIVE_DATABASE_BINDING_MISMATCH');
           const meta=await req(cfbase+'/d1/database/'+dbid,process.env.CF_READ_TOKEN);
            out({gate:'database',http:meta.http,success:meta.data?.success,name:meta.data?.result?.name,uuid:meta.data?.result?.uuid,file_size:meta.data?.result?.file_size,num_tables:meta.data?.result?.num_tables});
@@ -89,7 +89,21 @@ jobs:
            const writes=manifest.writes.filter(w=>/^\s*INSERT\s+INTO\s+source_sync_state\b/i.test(w.sql));
            const m=/INSERT\s+INTO\s+source_sync_state\s*\(([^)]+)\)\s*SELECT\s+((?:\?\s*,\s*)+\?)/i.exec(writes[0]?.sql??'');
            const names=m?.[1].split(',').map(k=>k.trim())??[];
-           const currentExact=names.length===Object.keys(state).length&&names.every((k,i)=>state[k]===writes[0].params[i]);
+           const expected=Object.fromEntries(names.map((k,i)=>[k,writes[0].params[i]]));
+           const pre=manifest.preimages?.find(p=>p.sql.includes('FROM "source_sync_state"'));
+           const preNames=pre?.sql.match(/FROM \(SELECT (.+?) FROM "source_sync_state"/)?.[1].split(',').map(k=>k.trim().replaceAll('"',''))??[];
+           const beforeRows=pre?JSON.parse(pre.value):[];
+           const before=beforeRows.length===1?Object.fromEntries(preNames.map((k,i)=>[k,beforeRows[0].flat()[i]])):null;
+           const preserveSkip=expected.last_skipped_at===null || before&&before.last_skipped_at!==null&&expected.last_skipped_at<before.last_skipped_at;
+           let skipRuleVerified=true;
+           for(const k of ['last_skipped_at','last_skip_reason','last_skipped_owner_id']){
+            const expectedCase=k+'=CASE WHEN excluded.last_skipped_at IS NOT NULL AND (source_sync_state.last_skipped_at IS NULL OR excluded.last_skipped_at >= source_sync_state.last_skipped_at) THEN excluded.'+k+' ELSE source_sync_state.'+k+' END';
+            if(!writes[0].sql.replace(/\s+/g,' ').includes(expectedCase))skipRuleVerified=false;
+            if(preserveSkip&&before)expected[k]=before[k];
+           }
+           const differences=Object.keys(state).filter(k=>state[k]!==expected[k]);
+           const currentExact=skipRuleVerified&&names.length===Object.keys(state).length&&differences.length===0;
+           out({gate:'effective_checkpoint',key,skipRuleVerified,preimageRows:beforeRows.length,preserveSkip,differences});
            const receipt=JSON.parse(job.receipt_json);
            const invalidNames=Object.keys(state).filter(k=>!names.includes(k));
            const valid=prefix.first===1&&prefix.n===prefix.last&&prefix.distinct_n===prefix.n&&prefix.pending===0&&prefix.invalid===0&&currentExact&&job.phase==='finished'&&Boolean(job.finished_at)&&job.deadline<Date.now()&&receipt.id===job.id&&['unknown','failed'].includes(receipt.outcome)&&state.cursor>0&&state.detail_failures===0;
