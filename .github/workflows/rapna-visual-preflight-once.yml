@@ -1,0 +1,53 @@
+name: RAPNA visual publication read-only preflight
+on:
+  push:
+    branches: [sec-f1/cloudflare-api-readonly-20261009]
+    paths: [.github/workflows/rapna-visual-preflight-once.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Read production isolation and ordinary publication budget
+        env:
+          CF_READ_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SYNC_READ_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          BILLING_READ_TOKEN: ${{ secrets.CF_BILLING_AUDIT_READ_ONLY }}
+        run: |
+          node --input-type=module <<'NODE'
+          const base='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          const cf=process.env.CF_READ_TOKEN,sync=process.env.SYNC_READ_TOKEN,bill=process.env.BILLING_READ_TOKEN||cf;
+          const out=x=>console.log('MEDIA_PREFLIGHT '+JSON.stringify(x));
+          const req=async(path,token=cf,body)=>{const r=await fetch(path.startsWith('https:')?path:base+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},redirect:'error',...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(18000)});return {http:r.status,...await r.json()};};
+          if(!cf||!sync)throw Error('MISSING_EXISTING_AUTH');
+          const n=await req('https://vigia-runtime.c-gamiz93.workers.dev/api/source-reliability?observe=1',sync);
+          out({gate:'native',http:n.http,buildSha:n.buildSha,activeLease:n.activeLease,observedAt:n.observedAt,officialParityCertified:n.officialParityCertified,attempts:n.state?.attempts,revisions:n.state?.revisionAttempts,lastAudit:n.state?.lastAudit});
+          for(const name of ['vigia-runtime','vigia-source-runner']){
+           const d=await req('/workers/scripts/'+name+'/deployments');out({gate:'deployments',name,http:d.http,deployments:d.result?.deployments?.slice(0,3)});
+           const versions=await req('/workers/scripts/'+name+'/versions');out({gate:'versions',name,http:versions.http,versions:versions.result?.items?.slice(0,3).map(v=>({id:v.id,number:v.number,metadata:v.metadata,annotations:v.annotations}))});
+           const s=await req('/workers/scripts/'+name+'/schedules');out({gate:'schedules',name,http:s.http,result:s.result});
+          }
+          const settings=await req('/workers/scripts/vigia-runtime/settings');
+          out({gate:'bindings',http:settings.http,d1:settings.result?.bindings?.filter(x=>x.type==='d1'),limits:settings.result?.limits});
+          const db='55596003-1b90-4f66-aad8-decb21205f13';
+          if(!settings.result?.bindings?.some(x=>x.type==='d1'&&x.name==='DB'&&x.id===db))throw Error('BINDING_MISMATCH');
+          let rowsRead=0;
+          const q=async(gate,sql,params=[])=>{if(!/^SELECT\b/.test(sql)||sql.includes(';'))throw Error('READ_ONLY_STOP');const r=await req('/d1/database/'+db+'/query',cf,{sql,params});if(r.http!==200||!r.success)throw Error('D1_READ_FAILED_'+gate);for(const a of r.result){rowsRead+=a.meta?.rows_read||0;if(a.meta?.rows_written!==0)throw Error('UNEXPECTED_WRITE');}out({gate,rows:r.result.flatMap(x=>x.results),rowsRead});};
+          await q('coordinator',"SELECT owner_id,expires_at,epoch,json_extract(state_json,'$.revisionAttempts') AS revisions FROM source_reliability_control WHERE id=1");
+          await q('leases',"SELECT * FROM source_sync_locks LIMIT 10");
+          await q('unfinished_jobs',"SELECT id,source,mode,kind,phase,deadline,write_intent_at,finished_at FROM source_reliability_jobs WHERE finished_at IS NULL ORDER BY started_at DESC LIMIT 15");
+          const ids=['15ff9a7c-4094-4836-996b-b36591cab779','bb90ee24-dffa-4b25-9a03-8e994a29df64','7d965614-eb79-468c-838a-249147a0fb58'];
+          await q('historical_jobs',"SELECT id,source,mode,kind,phase,finished_at,json_extract(receipt_json,'$.outcome') AS outcome,json_extract(receipt_json,'$.reason') AS reason FROM source_reliability_jobs WHERE id IN (?,?,?)",ids);
+          await q('pending_historical_effects',"SELECT job_id,COUNT(*) AS markers,SUM(committed_at IS NULL OR result_json IS NULL) AS pending FROM source_reliability_effects WHERE job_id IN (?,?,?) GROUP BY job_id",ids);
+          await q('recovery_receipts',"SELECT old_job_id,recovery_id,manifest_hash,committed_at FROM source_reliability_recoveries WHERE old_job_id IN (?,?,?)",ids);
+          out({gate:'read_cost',rowsRead,rowsWritten:0});
+          for(const path of ['/subscriptions','/billable-usage','/builds/account/limits']){
+           const r=await req(path,path.startsWith('/builds')?cf:bill);
+           const result=r.result;
+           if(path==='/subscriptions')out({gate:'subscriptions',http:r.http,success:r.success,plans:Array.isArray(result)?result.map(x=>({plan:x.rate_plan?.public_name??x.rate_plan?.id,price:x.price,currency:x.currency,current_period_start:x.current_period_start,current_period_end:x.current_period_end})):null});
+           else if(path==='/billable-usage')out({gate:'billable_usage',http:r.http,success:r.success,keys:Array.isArray(result)?Object.keys(result[0]??{}):Object.keys(result??{}),usage:Array.isArray(result)?result.map(x=>Object.fromEntries(Object.entries(x).filter(([k,v])=>/cost|quantity|unit|metric|measure|usage|period|date|description|product|service|name/i.test(k)&&!(/id|email|account|customer/i.test(k))))):null});
+           else out({gate:'build_limits',http:r.http,success:r.success,result:r.result});
+          }
+                    NODE
