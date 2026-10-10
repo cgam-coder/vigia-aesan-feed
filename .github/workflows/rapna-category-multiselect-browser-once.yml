@@ -55,9 +55,15 @@ jobs:
                 const goto=await page.goto(preview+'/es/alertas?source=RAPNA&period=30d',{waitUntil:'domcontentloaded',timeout:20000});
                 if(goto?.status()!==200)throw Error(key+':bad_navigation_status');
                 if(mobile){
+                  await page.waitForFunction(()=>
+                    document.querySelectorAll('.na-terminal-rapna-categories__options label').length>=2,
+                    null,{timeout:20000});
                   const trigger=page.locator('button.na-terminal-filter-trigger').first();
                   await trigger.waitFor({state:'visible',timeout:18000});
                   await trigger.click();
+                  await page.waitForFunction(()=>
+                    document.querySelector('details.na-terminal-filters')?.open===true,
+                    null,{timeout:12000});
                 }
                 const f=page.locator('fieldset.na-terminal-rapna-categories');
                 await f.waitFor({state:'visible',timeout:18000});
