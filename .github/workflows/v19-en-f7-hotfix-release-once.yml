@@ -1,0 +1,50 @@
+name: V19 EN F7 hotfix production status read-only
+on:
+  push:
+    branches: [sec-f1/cloudflare-api-readonly-20261009]
+    paths: [.github/workflows/v19-en-f7-hotfix-release-once.yml]
+permissions:
+  contents: read
+concurrency:
+  group: v19-en-f7-hotfix-status
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.actor == 'cgam-coder'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Read Worker/Runner deployments and exact build through Cloudflare GET only
+        shell: bash
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const token=process.env.CF_TOKEN;
+          if(!token)throw Error('TOKEN_UNAVAILABLE');
+          const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          const read=async(path)=>{
+            if(!path.startsWith('/'))throw Error('UNSAFE_PATH');
+            const r=await fetch(root+path,{method:'GET',redirect:'error',
+              headers:{Authorization:'Bearer '+token,Accept:'application/json'},
+              signal:AbortSignal.timeout(15000)});
+            const j=await r.json().catch(()=>null);
+            if(r.status!==200||j?.success!==true){console.log('V19_EN_GET_HOLD '+JSON.stringify({path,http:r.status,errors:j?.errors?.map(e=>e.code)}));throw Error('GET_UNAVAILABLE');}
+            return j.result;
+          };
+          for(const script of ['vigia-runtime','vigia-source-runner']){
+            const result=await read('/workers/scripts/'+script+'/deployments');
+            console.log('V19_EN_DEPLOY '+JSON.stringify({script,deployments:(result.deployments??[]).slice(0,2).map(d=>({
+              deployment:d.id,created:d.created_on,versions:(d.versions??[]).map(v=>({id:v.version_id,percentage:v.percentage}))
+            }))}));
+          }
+          const scripts=await read('/workers/scripts');
+          const tag=(Array.isArray(scripts)?scripts:[]).find(s=>s.id==='vigia-runtime')?.tag;
+          if(!tag)throw Error('SCRIPT_TAG_UNAVAILABLE');
+          const buildResponse=await read('/builds/workers/'+encodeURIComponent(tag)+'/builds');
+          const list=Array.isArray(buildResponse)?buildResponse:(buildResponse?.builds??[]);
+          console.log('V19_EN_RELEASE_BUILD '+JSON.stringify(list.slice(0,3).map(b=>({
+            sha:b.build_trigger_metadata?.commit_hash??null,branch:b.build_trigger_metadata?.branch??null,
+            outcome:b.build_outcome??null,id:b.build_uuid??null
+          }))));
+          NODE
