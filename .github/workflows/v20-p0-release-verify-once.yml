@@ -17,7 +17,7 @@ jobs:
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VIGIA_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
-          AUDIT_STAGE: pre
+          AUDIT_STAGE: post
         shell: bash
         run: |
           node --input-type=module <<'NODE'
@@ -54,17 +54,32 @@ jobs:
           const row=Array.isArray(result)?result[0]?.results?.[0]:result?.results?.[0];
           output('d1',{http:query.http,success:query.body?.success===true,unfinished:row?.unfinished??null,
             unconfirmed:row?.unconfirmed??null,activeLocks:row?.activeLocks??null});
+          let runtimeDeployed=false,runnerUnchanged=false;
           for(const name of ['vigia-runtime','vigia-source-runner']){
             const d=await get(base+'/workers/scripts/'+name+'/deployments',cfToken);
             const entries=Array.isArray(d.payload?.result?.deployments)?d.payload.result.deployments:[];
+            if(name==='vigia-runtime')runtimeDeployed=d.http===200&&entries[0]?.versions?.length===1&&entries[0].versions[0].percentage===100&&entries[0].versions[0].version_id!=='282b63c9-6f2a-469d-b5d0-fe0067833a2b';
+            if(name==='vigia-source-runner')runnerUnchanged=d.http===200&&entries[0]?.versions?.length===1&&entries[0].versions[0].percentage===100&&entries[0].versions[0].version_id==='ba9f64ab-1615-4200-9cf5-da0b1d829638';
             output('worker',{name,http:d.http,versions:entries.slice(0,2).map(x=>({deployment:x.id,active:x.versions?.map(v=>({id:v.version_id,percentage:v.percentage}))}))});
           }
+          const home=await Promise.all(['https://nagamealert.com/','https://nagamealert.com/en'].map(async url=>{
+            try{const r=await fetch(url,{method:'GET',redirect:'error',signal:AbortSignal.timeout(12000)});return {http:r.status,contentType:r.headers.get('content-type')?.includes('text/html')===true};}
+            catch{return {http:0,contentType:false};}
+          }));
+          const url='https://nagamealert.com/api/terminal/alerts?source=AESAN&period=7d&pageSize=1';
+          const probes=await Promise.all([
+            fetch(url,{method:'GET',headers:{Accept:'application/json'},signal:AbortSignal.timeout(15000)}),
+            fetch(url,{method:'GET',headers:{Accept:'application/json','X-Nagame-P4-Audit':'1','X-Nagame-Perf':'1'},signal:AbortSignal.timeout(15000)})
+          ].map(p=>p.then(async r=>({status:r.status,p4:[...r.headers.keys()].some(k=>k.toLowerCase().startsWith('x-nagame-p4-')),
+            performance:r.headers.has('server-timing'),body:await r.json().catch(()=>null)})).catch(()=>({status:0,p4:false,performance:false,body:null}))));
+          const publicPass=home.every(x=>x.http===200&&x.contentType)&&probes.every(x=>x.status===200&&!x.p4&&x.body?.apiVersion===1&&Array.isArray(x.body?.items))&&probes[1].performance;
+          output('public',{pass:publicPass,home,api:probes.map(x=>({status:x.status,p4HeaderPresent:x.p4,perfHeaderPresent:x.performance,count:x.body?.items?.length??null,version:x.body?.apiVersion??null}))});
           const fromSha=n.buildSha;
-          const success=native.http===200&&n.mode==='five-source-coordinated'&&n.activeLease===false&&
+          const success=publicPass&&runtimeDeployed&&runnerUnchanged&&native.http===200&&n.mode==='five-source-coordinated'&&n.activeLease===false&&
             n.outcome==='observed'&&row?.unfinished===0&&row?.unconfirmed===0&&row?.activeLocks===0&&
             src.length===5&&src.every(x=>x.latestIdentityParity===true&&x.missingOfficialIdentities?.length===0&&x.revisionMismatches?.length===0)&&
             Object.values(s.attempts??{}).every(x=>x?.outcome==='completed')&&
-            fromSha==='90e9eb6d6f07bc89083334b8cac0c2e6ea06574f';
+            fromSha==='0c61589b485a1e40ab8728378e14b85631f89d36';
           output('decision',{safeToMerge:success,stage,reason:success?'isolated-historic-holds-known':'gate-failed'});
           if(!success)process.exitCode=1;
           NODE
