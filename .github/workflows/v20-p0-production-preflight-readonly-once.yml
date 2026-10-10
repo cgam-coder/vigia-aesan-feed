@@ -1,0 +1,116 @@
+name: V20 P0 one-shot release preflight GET-only
+on:
+  push:
+    branches: [audit/v20-p0-release-preflight-20261010]
+    paths: [.github/workflows/v20-p0-production-preflight-readonly-once.yml]
+permissions:
+  contents: read
+concurrency:
+  group: vigia-v20-p0-release-preflight-once
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: github.repository == 'cgam-coder/vigia-aesan-feed' && github.actor == 'cgam-coder' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Observe Cloudflare deployment, cron, D1 binding and source coordinator, GET ONLY
+        shell: bash
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_CONTROL_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const account='9c1807c68493f14259248b5f5782cc6f';
+          const cf='https://api.cloudflare.com/client/v4/accounts/'+account;
+          const cfToken=process.env.CF_TOKEN;
+          const controlToken=process.env.VIGIA_CONTROL_TOKEN;
+          const out=(kind,data)=>console.log('V20_PREFLIGHT '+JSON.stringify({kind,...data}));
+          if(!cfToken||!controlToken){out('tokens',{cloudflare:Boolean(cfToken),runtime:Boolean(controlToken),status:'HOLD'});process.exitCode=1;process.exit();}
+          const allowedSource=new Set(['AESAN','RAPNA','RASFF','SAFETY GATE','OECD']);
+          const safeTime=x=>typeof x==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(x)?x.slice(0,24):null;
+          const safeInt=x=>Number.isSafeInteger(x)&&x>=0?x:null;
+          const safeStatus=x=>typeof x==='string'&&/^(?:fresh|degraded|stale|unknown|not-required|completed|partial|failed|unknown|running|idle|skipped|observed|HOLD|disabled|passed|not-fresh)$/.test(x)?x:'other';
+          async function get(url,token) {
+            try {
+              const response=await fetch(url,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+token,Accept:'application/json'},signal:AbortSignal.timeout(13000)});
+              const body=await response.json().catch(()=>null);
+              return {http:response.status,ok:response.ok,success:body?.success===true,result:body?.result??null,body:body??null,errors:Array.isArray(body?.errors)?body.errors.map(x=>x?.code).filter(Number.isInteger).slice(0,3):[]};
+            } catch {return {http:0,ok:false,success:false,result:null,body:null,errors:[]};}
+          }
+          const native=await get('https://nagamealert.com/api/source-reliability?observe=1',controlToken);
+          const s=native.body?.state??{};
+          const revisions=s.revisionAttempts&&typeof s.revisionAttempts==='object'?Object.entries(s.revisionAttempts):[];
+          const audit=Array.isArray(s.lastAudit?.states)?s.lastAudit.states:[];
+          out('native',{
+            http:native.http,mode:native.body?.mode==='five-source-coordinated'?'five-source-coordinated':'other',
+            buildSha:typeof native.body?.buildSha==='string'&&/^[a-f0-9]{40}$/.test(native.body.buildSha)?native.body.buildSha:null,
+            observedAt:safeTime(native.body?.observedAt),outcome:safeStatus(native.body?.outcome),
+            ageMinutes:typeof native.body?.ageMinutes==='number'?Number(native.body.ageMinutes.toFixed(2)):null,
+            activeLease:native.body?.activeLease===true,
+            officialParityCertified:native.body?.officialParityCertified===true,
+            lastWakeAt:safeTime(s.lastWakeAt),lastScheduledTime:safeInt(s.lastScheduledTime),
+            lastOutcome:typeof s.lastOutcome==='string'&&s.lastOutcome.length<75?s.lastOutcome:null,
+            lastAuditFinishedAt:safeTime(s.lastAudit?.finishedAt),
+            lastAuditAllFresh:s.lastAudit?.allFresh===true,
+            auditSources:audit.filter(x=>allowedSource.has(x?.source)).map(x=>({
+              source:x.source,status:safeStatus(x.status),revisionStatus:safeStatus(x.revisionStatus),
+              recentAt:safeTime(x.lastSyncSuccessAt),revisionAt:safeTime(x.revisionLastSuccessAt),
+              parity:x.latestIdentityParity===true,
+              missing:Array.isArray(x.missingOfficialIdentities)?x.missingOfficialIdentities.length:null,
+              mismatches:Array.isArray(x.revisionMismatches)?x.revisionMismatches.length:null,
+              hasError:x.error!==null
+            })),
+            revisions:revisions.filter(([name])=>/^(AESAN|RAPNA|RASFF|SAFETY GATE|OECD):/.test(name)).slice(0,16).map(([key,r])=>({
+              lane:key,outcome:safeStatus(r?.outcome),hardBlocked:r?.nextEligibleAt==='9999-01-01T00:00:00.000Z',
+              pendingDetails:safeInt(r?.pendingDetails),startedAt:safeTime(r?.startedAt),
+              hasReason:Boolean(r?.reason)
+            })),
+            unknownRecent:Array.isArray(s.unknownRecent)?s.unknownRecent.length:null,
+            unknownRevision:Array.isArray(s.unknownRevision)?s.unknownRevision.length:null
+          });
+          const policy=await get('https://nagamealert.com/api/freshness?observe=1&policy=1',controlToken);
+          out('policy',{http:policy.http,version:policy.body?.policyVersion??null,sourceCount:Array.isArray(policy.body?.policies)?policy.body.policies.length:null});
+          for(const name of ['vigia-runtime','vigia-source-runner']){
+            const deployment=await get(cf+'/workers/scripts/'+name+'/deployments',cfToken);
+            const deployments=deployment.result?.deployments??[];
+            out('deployments',{worker:name,http:deployment.http,success:deployment.success,
+              last:Array.isArray(deployments)?deployments.slice(0,3).map(d=>({
+                id:typeof d.id==='string'&&/^[0-9a-f-]{36}$/.test(d.id)?d.id:null,
+                created:safeTime(d.created_on),
+                versions:(d.versions??[]).slice(0,5).map(v=>({
+                  id:typeof v.version_id==='string'&&/^[0-9a-f-]{36}$/.test(v.version_id)?v.version_id:null,
+                  percentage:typeof v.percentage==='number'?v.percentage:null
+                }))
+              })):[]});
+            const schedules=await get(cf+'/workers/scripts/'+name+'/schedules',cfToken);
+            const cronList=Array.isArray(schedules.result)?schedules.result:Array.isArray(schedules.result?.schedules)?schedules.result.schedules:[];
+            out('schedules',{worker:name,http:schedules.http,success:schedules.success,
+              crons:cronList.slice(0,8).map(x=>typeof x.cron==='string'&&/^[*0-9,/\-\s]{1,40}$/.test(x.cron)?x.cron:'unrecognized')});
+            const settings=await get(cf+'/workers/scripts/'+name+'/settings',cfToken);
+            const bindings=Array.isArray(settings.result?.bindings)?settings.result.bindings:[];
+            const db=bindings.find(x=>x.name==='DB'&&x.type==='d1');
+            out('bindings',{worker:name,http:settings.http,success:settings.success,
+              dbPresent:Boolean(db),dbMatchesExpected:db?.id==='55596003-1b90-4f66-aad8-decb21205f13',
+              serviceRunnerBound:name==='vigia-runtime'?bindings.some(x=>x.type==='service'&&x.name==='RELIABILITY_RUNNER'):null,
+              bindingTypes:bindings.slice(0,18).map(x=>typeof x.type==='string'&&/^[a-z_]{1,35}$/.test(x.type)?x.type:'other')});
+          }
+          const scripts=await get(cf+'/workers/scripts',cfToken);
+          const tag=Array.isArray(scripts.result)?scripts.result.find(x=>x.id==='vigia-runtime')?.tag:null;
+          if(tag&&/^[a-f0-9-]{16,64}$/i.test(tag)){
+            const builds=await get(cf+'/builds/workers/'+encodeURIComponent(tag)+'/triggers',cfToken);
+            const rows=Array.isArray(builds.result)?builds.result:Array.isArray(builds.result?.triggers)?builds.result.triggers:[];
+            out('build_trigger',{http:builds.http,success:builds.success,count:rows.length,
+              mainOnly:rows.length===1&&Array.isArray(rows[0].branch_includes)&&rows[0].branch_includes.length===1&&rows[0].branch_includes[0]==='main'});
+          } else out('build_trigger',{status:'HOLD',reason:'tag-unavailable'});
+          const limits=await get(cf+'/builds/account/limits',cfToken);
+          out('build_limits',{http:limits.http,success:limits.success,
+            // No raw account payload: API limit response shape requires independent interpretation.
+            resultIsArray:Array.isArray(limits.result),
+            resultType:limits.result===null?'null':typeof limits.result,
+            topKeys:limits.result&&typeof limits.result==='object'?Object.keys(limits.result).filter(x=>/^[a-z_]{1,40}$/i.test(x)).slice(0,15):[],
+            numericFields:limits.result&&typeof limits.result==='object'?Object.fromEntries(
+              Object.entries(limits.result).filter(([key,value])=>
+                /(?:minute|build|remaining|used|limit)/i.test(key)&&typeof value==='number'&&Number.isFinite(value)
+              ).slice(0,14)):{}});
+          NODE
