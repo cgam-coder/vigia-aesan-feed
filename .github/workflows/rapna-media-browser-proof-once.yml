@@ -96,8 +96,64 @@ jobs:
               summary.proxy_fallback_requests=proxyFallbackRequests;
               summary.http.official_response_codes=officialResponseCodes;
               summary.page_error_kinds=jsErrors;
+
+              // Fall back to the existing proxy if the official browser request fails.
+              const fallback=await context.newPage();
+              let fallbackProxy=0,blockedDirect=0;
+              await fallback.route('**/api/terminal/alerts?**',route=>route.fulfill({
+                status:200,contentType:'application/json',body:JSON.stringify(data)}));
+              await fallback.route('https://servicios.consumo.gob.es/rapnaBEPublic/listadoPublico/fichero',route=>{
+                blockedDirect++;return route.abort('failed');
+              });
+              const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGN4tq8JAAS0AieWIJc1AAAAAElFTkSuQmCC','base64');
+              await fallback.route('**/api/rapna/resource?**',route=>{
+                fallbackProxy++;return route.fulfill({status:200,contentType:'image/png',body:png});
+              });
+              await fallback.goto(preview+'/es/alertas?source=RAPNA&period=30d',{
+                waitUntil:'domcontentloaded',timeout:30000});
+              const fcard=fallback.locator('article.na-alert-card[data-source="RAPNA"]');
+              await fcard.first().waitFor({state:'visible',timeout:20000});
+              const fimg=fcard.first().locator('figure.na-alert-card__media img').first();
+              await fimg.scrollIntoViewIfNeeded();
+              await fallback.waitForFunction(()=>{
+                const i=document.querySelector('article.na-alert-card[data-source="RAPNA"] img');
+                return !!i&&i.complete&&i.naturalWidth>0;
+              },null,{timeout:24000});
+              summary.fallback={
+                direct_request_blocked:blockedDirect>=1,
+                same_origin_proxy_used:fallbackProxy===1,
+                proxy_image_visible:await fimg.evaluate(i=>i.naturalWidth===1&&!i.parentElement?.hasAttribute('hidden')),
+                src_scheme:await fimg.evaluate(i=>i.src.startsWith('https:')?'https':'other'),
+              };
+              await fallback.close();
+
+              // Repeat the original, unmodified production card at a mobile viewport.
+              const mobile=await browser.newContext({viewport:{width:390,height:844},deviceScaleFactor:2,isMobile:true,
+                hasTouch:true,locale:'es-ES',serviceWorkers:'block'});
+              const mp=await mobile.newPage();let mobileMock=0;
+              await mp.route('**/api/terminal/alerts?**',route=>{
+                mobileMock++;
+                return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
+              });
+              await mp.goto(preview+'/es/alertas?source=RAPNA&period=30d',{waitUntil:'domcontentloaded',timeout:30000});
+              const mcard=mp.locator('article.na-alert-card[data-source="RAPNA"]');
+              await mcard.first().waitFor({state:'visible',timeout:22000});
+              const mimg=mcard.first().locator('figure.na-alert-card__media img').first();
+              await mimg.scrollIntoViewIfNeeded();
+              await mp.waitForFunction(()=>{
+                const i=document.querySelector('article.na-alert-card[data-source="RAPNA"] img');
+                return !!i&&i.complete&&i.naturalWidth>0;
+              },null,{timeout:25000});
+              summary.mobile={viewport_width:390,fixture_intercepted:mobileMock>0,
+                photo:await mimg.evaluate(i=>({visible:i.naturalWidth>0&&!i.parentElement?.hasAttribute('hidden'),
+                  src_scheme:i.src.startsWith('blob:')?'blob':'other',natural_width:i.naturalWidth}))};
+              await mobile.close();
+
               summary.pass=summary.card_image?.rendered===true&&summary.card_image?.src_scheme==='blob'&&
-                summary.card_image?.figure_hidden===false&&routeMocks>0&&postRequests>=1&&proxyFallbackRequests===0;
+                summary.card_image?.figure_hidden===false&&routeMocks>0&&postRequests>=1&&proxyFallbackRequests===0&&
+                summary.fallback?.direct_request_blocked&&summary.fallback?.same_origin_proxy_used&&
+                summary.fallback?.proxy_image_visible&&summary.mobile?.photo?.visible&&
+                summary.mobile?.photo?.src_scheme==='blob';
               if(!summary.pass){
                 summary.result='HOLD_browser_card';process.exitCode=1;
               }else summary.result='PASS_browser_card';
