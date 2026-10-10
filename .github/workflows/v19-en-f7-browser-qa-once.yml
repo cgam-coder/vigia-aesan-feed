@@ -42,6 +42,10 @@ jobs:
               const response=await page.goto(base+"/en/",{waitUntil:"domcontentloaded",timeout:30000});
               assert.equal(response?.status(),200);
               await page.locator("h1").waitFor({timeout:20000});
+              await page.waitForFunction(() => {
+                const img=document.querySelector(".na-home-horizon picture img");
+                return !!img && img.complete && img.naturalWidth>0 && !!(img.currentSrc||img.src);
+              },undefined,{timeout:20000});
               const data=await page.evaluate(()=>{
                 const el=document.querySelector(".na-home-horizon");
                 const image=el?.querySelector("picture img");
@@ -49,7 +53,7 @@ jobs:
                 return {version:el?.getAttribute("data-home-version"),locale:el?.getAttribute("data-locale"),
                   title:el?.querySelector("h1")?.textContent,
                   h1Count:document.querySelectorAll("h1").length,
-                  imgSrc:image?.currentSrc||"",
+                  imgSrc:image?.currentSrc||image?.src||"",
                   imageReady:!!image?.naturalWidth,
                   css:cards?getComputedStyle(cards).backgroundImage:"",
                   containsLegacy:!!document.querySelector('[class*="_home_"]:not([data-home-version])'),
