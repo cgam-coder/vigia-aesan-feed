@@ -45,15 +45,21 @@ jobs:
               output({gate:'build_metadata',id,http:b.http,success:b.payload?.success===true,
                 fields:Object.keys(x).filter(k=>/branch|trigger|status|environment|deploy|commit|build|source|repo/i.test(k)).slice(0,25),
                 status:x.status??null,branch:x.branch??x.build_branch??null,
-                trigger_name:x.trigger_name??null,reason:x.reason??null,
-                result:x.result??null});
+                build_outcome:x.build_outcome??null,
+                trigger_fields:x.trigger&&typeof x.trigger==='object'?Object.keys(x.trigger):[],
+                metadata_fields:x.build_trigger_metadata&&typeof x.build_trigger_metadata==='object'?Object.keys(x.build_trigger_metadata):[],
+                metadata_branch:x.build_trigger_metadata?.branch??x.build_trigger_metadata?.git_branch??null,
+                metadata_commit:x.build_trigger_metadata?.commit_hash??x.build_trigger_metadata?.commit_sha??null,
+                deploy_hook_type:typeof x.deploy_hook,reason:x.reason??null});
               const logs=await get('/builds/builds/'+id+'/logs');
               const lines=Array.isArray(logs.payload?.result?.lines)?logs.payload.result.lines:[];
               const marked=lines.map(row=>Array.isArray(row)?String(row.at(-1)):String(row))
                 .filter(x=>/wrangler\s+(?:deploy|preview|versions upload)|Production|Preview|Deployment|deploy command|Success|Failed|Error/i.test(x))
                 .filter(x=>!/Bearer|token|secret|password|api_key/i.test(x));
               output({gate:'build_logs',id,http:logs.http,success:logs.payload?.success===true,
-                line_count:lines.length,sanitized_tail:marked.slice(-16).map(x=>x.slice(0,220))});
+                line_count:lines.length,
+                deploy_commands:lines.map(row=>Array.isArray(row)?String(row.at(-1)):String(row)).filter(line=>/^Executing user deploy command:|^Success: Deploy command completed|^Preview:|^Deploying.*vigia-runtime|^Deployed.*vigia-runtime/.test(line)).map(x=>x.slice(0,220)).slice(0,10),
+                sanitized_tail:marked.slice(-6).map(x=>x.slice(0,220))});
             }
           }catch(e){output({gate:'read_failed',error_type:e?.name??'Error'});process.exitCode=1;}
           NODE
