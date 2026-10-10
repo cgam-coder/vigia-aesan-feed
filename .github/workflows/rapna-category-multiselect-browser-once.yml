@@ -1,0 +1,96 @@
+name: RAPNA category multi-select preview browser proof once
+
+on:
+  push:
+    branches: [sec-f1/cloudflare-api-readonly-20261009]
+    paths: [.github/workflows/rapna-category-multiselect-browser-once.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Install pinned Playwright driver without logging credentials
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/rapna-multiselect-pw" playwright@1.56.1 --ignore-scripts --no-audit --no-fund --silent
+          which google-chrome
+      - name: Verify real preview desktop multi-select, reset, AESAN isolation and mobile
+        shell: bash
+        run: |
+          node <<'NODE'
+          const path=require('node:path');
+          const {chromium}=require(path.join(process.env.RUNNER_TEMP,'rapna-multiselect-pw/node_modules/playwright'));
+          const preview='https://feat-rapna-official-category-filter-20261010-vigia-runtime.c-gamiz93.workers.dev';
+          const summary={head:'c6f965924bca17a16c26d4ce418f18a33136cb46',checks:{},errors:[],requests:0,fixture:'public RAPNA API in memory; no D1 writes'};
+          let browser;
+          const log=x=>console.log('RAPNA_CATEGORY_MULTI '+JSON.stringify(x));
+          (async()=>{
+            try{
+              const a=await fetch('https://nagamealert.com/api/terminal/alerts?source=RAPNA&period=30d&pageSize=10',{signal:AbortSignal.timeout(13000)});
+              if(!a.ok)throw new Error('public_fixture_'+a.status);
+              const original=await a.json();
+              if(original.items?.length!==5)throw Error('missing_five_real_rapna_fixture');
+              browser=await chromium.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-dev-shm-usage']});
+              async function test(context,mobile){
+                const page=await context.newPage();
+                const key=mobile?'mobile':'desktop';
+                page.on('pageerror',e=>{summary.errors.push(key+':'+e.name)});
+                await page.route('**/api/terminal/alerts?**',async route=>{
+                  summary.requests++;
+                  const target=new URL(route.request().url());
+                  const source=target.searchParams.get('source');
+                  const categories=target.searchParams.getAll('rapnaCategory');
+                  const filtered=source==='RAPNA'&&categories.length
+                    ?original.items.filter(x=>categories.includes(x.productClass)):original.items;
+                  const response={...original,items:filtered,total:filtered.length,
+                    facets:{...original.facets,rapnaCategories:['Juguetes','Material eléctrico','Artículos del hogar']},
+                    pagination:{...original.pagination,returned:filtered.length,hasMore:false,nextCursor:null},
+                    query:{...original.query,source,rapnaCategories:categories}};
+                  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(response)});
+                });
+                const goto=await page.goto(preview+'/es/alertas?source=RAPNA&period=30d',{waitUntil:'domcontentloaded',timeout:20000});
+                if(goto?.status()!==200)throw Error(key+':bad_navigation_status');
+                if(mobile){
+                  const trigger=page.locator('button.na-terminal-filter-trigger').first();
+                  await trigger.waitFor({state:'visible',timeout:18000});
+                  await trigger.click();
+                }
+                const f=page.locator('fieldset.na-terminal-rapna-categories');
+                await f.waitFor({state:'visible',timeout:18000});
+                await f.locator('summary').click();
+                const options=f.locator('.na-terminal-rapna-categories__options label');
+                await f.locator('input[type="search"]').fill('juguet');
+                summary.checks[key+'_search_case_insensitive']=(await options.count())===1;
+                await f.locator('input[type="search"]').fill('');
+                const cat=label=>f.locator('.na-terminal-rapna-categories__options label').filter({hasText:label}).first().locator('input[type=checkbox]');
+                await cat('Juguetes').check({timeout:8000});
+                await page.waitForURL(u=>new URL(u).searchParams.getAll('rapnaCategory').includes('Juguetes'),{timeout:15000});
+                summary.checks[key+'_menu_stays_open_after_first']=await f.locator('details').evaluate(x=>x.open===true);
+                await cat('Material eléctrico').check({timeout:8000});
+                await page.waitForURL(u=>new URL(u).searchParams.getAll('rapnaCategory').length===2,{timeout:15000});
+                summary.checks[key+'_two_values']=new URL(page.url()).searchParams.getAll('rapnaCategory').sort().join('|')==='Juguetes|Material eléctrico';
+                summary.checks[key+'_menu_stays_open_after_second']=await f.locator('details').evaluate(x=>x.open===true);
+                await f.getByRole('button',{name:'Todas las categorías'}).click();
+                await page.waitForURL(u=>new URL(u).searchParams.getAll('rapnaCategory').length===0,{timeout:15000});
+                summary.checks[key+'_reset_cleared']=true;
+                if(!mobile){
+                  await page.getByRole('button',{name:/AESAN/u}).first().click();
+                  await page.waitForURL(u=>new URL(u).searchParams.get('source')==='AESAN',{timeout:15000});
+                  summary.checks['desktop_aesan_isolated']=(await page.locator('fieldset.na-terminal-rapna-categories').count())===0;
+                }
+                await page.close();
+              }
+              const desktop=await browser.newContext({viewport:{width:1440,height:900},locale:'es-ES',serviceWorkers:'block'});
+              await test(desktop,false);await desktop.close();
+              const mobile=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,locale:'es-ES',serviceWorkers:'block'});
+              await test(mobile,true);await mobile.close();
+              summary.pass=Object.values(summary.checks).every(Boolean)&&summary.errors.length===0&&summary.requests>0;
+              if(!summary.pass)process.exitCode=1;
+            }catch(e){summary.pass=false;summary.failure_type=e?.name??'Error';summary.failure=String(e.message||'').split('\n')[0].slice(0,140);process.exitCode=1;}
+            finally{await browser?.close().catch(()=>{});log(summary);}
+          })();
+          NODE
