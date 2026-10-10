@@ -21,7 +21,7 @@ jobs:
           const log=(v)=>console.log('RAPNA_MEDIA_F1 '+JSON.stringify(v));
           if(!token){log({outcome:'missing_token'});process.exitCode=1;process.exit();}
           const to=Date.now();
-          const attempts=[{label:'exact',needle:'RAPNA public resource proxy failed'},{label:'broad',needle:'RAPNA'}];
+          const attempts=[{label:'classified',needle:'RAPNA'}];
           function findKinds(value){
             const counts={};
             let nodes=0;
@@ -56,10 +56,32 @@ jobs:
               const counts={};
               for(const row of events)for(const [k,n] of Object.entries(findKinds(row)))counts[k]=(counts[k]??0)+n;
               const fallback=events.filter(e=>JSON.stringify(e).includes('RAPNA public resource proxy failed')).length;
+              const byKind={};const scriptGroups={};const routeGroups={};const hours={};
+              let directProxyMessages=0;
+              for(const e of events){
+                const serialized=JSON.stringify(e);
+                const info=e.$metadata??{};
+                const name=e.$workers?.scriptName??info.service??info.cloudService??'unknown';
+                const scope=name==='vigia-runtime'?'runtime':name==='vigia-source-runner'?'runner':'other';
+                scriptGroups[scope]=(scriptGroups[scope]??0)+1;
+                const route=serialized.includes('/api/rapna/resource')?'proxy-route':
+                  serialized.includes('/api/rapna/sync')?'sync-route':
+                  serialized.includes('/fichero')?'official-resource':'other';
+                routeGroups[route]=(routeGroups[route]??0)+1;
+                if(serialized.toLowerCase().includes('public resource proxy failed'))directProxyMessages++;
+                const rawKind=findKinds(e);
+                for(const [k,n] of Object.entries(rawKind)){
+                  const idx=scope+':'+route+':'+k;byKind[idx]=(byKind[idx]??0)+n;
+                  if(typeof e.timestamp==='number'){
+                    const hour=new Date(e.timestamp).toISOString().slice(0,13);
+                    hours[hour]=(hours[hour]??0)+n;
+                  }
+                }
+              }
               log({attempt:label,http:response.status,success,
                 run_status:result.run?.status??null,total_matched:typeof envelope?.count==='number'?envelope.count:null,
                 returned_events:events.length,rapna_proxy_message_events:fallback,
-                error_kinds:counts,has_nested_events:Array.isArray(envelope?.events),
+                error_kinds:counts,by_kind_route:byKind,by_worker:scriptGroups,by_route:routeGroups,matched_proxy_messages:directProxyMessages,kind_hours_utc:hours,has_nested_events:Array.isArray(envelope?.events),
                 envelope_fields:envelope&&typeof envelope==='object'?Object.keys(envelope).filter(k=>['count','events','fields','series'].includes(k)):[],
                 raw_logs_printed:false});
               if(events.length>0)break;
