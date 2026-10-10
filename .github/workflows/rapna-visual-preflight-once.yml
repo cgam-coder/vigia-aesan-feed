@@ -43,11 +43,9 @@ jobs:
           await q('pending_historical_effects',"SELECT job_id,COUNT(*) AS markers,SUM(committed_at IS NULL OR result_json IS NULL) AS pending FROM source_reliability_effects WHERE job_id IN (?,?,?) GROUP BY job_id",ids);
           await q('recovery_receipts',"SELECT old_job_id,recovery_id,manifest_hash,committed_at FROM source_reliability_recoveries WHERE old_job_id IN (?,?,?)",ids);
           out({gate:'read_cost',rowsRead,rowsWritten:0});
-          for(const path of ['/subscriptions','/billable-usage','/builds/account/limits']){
-           const r=await req(path,path.startsWith('/builds')?cf:bill);
-           const result=r.result;
-           if(path==='/subscriptions')out({gate:'subscriptions',http:r.http,success:r.success,plans:Array.isArray(result)?result.map(x=>({plan:x.rate_plan?.public_name??x.rate_plan?.id,price:x.price,currency:x.currency,current_period_start:x.current_period_start,current_period_end:x.current_period_end})):null});
-           else if(path==='/billable-usage')out({gate:'billable_usage',http:r.http,success:r.success,keys:Array.isArray(result)?Object.keys(result[0]??{}):Object.keys(result??{}),usage:Array.isArray(result)?result.map(x=>Object.fromEntries(Object.entries(x).filter(([k,v])=>/cost|quantity|unit|metric|measure|usage|period|date|description|product|service|name/i.test(k)&&!(/id|email|account|customer/i.test(k))))):null});
-           else out({gate:'build_limits',http:r.http,success:r.success,result:r.result});
-          }
-                    NODE
+          const b=await req('/builds/builds/2816547d-0d92-4b63-91a9-c230b3ac2a0c');
+          const meta=b.result?.build_trigger_metadata;
+          out({gate:'build_metadata',http:b.http,result:b.result});
+          const scripts=await req('/workers/scripts');
+          out({gate:'script_ids',http:scripts.http,result:scripts.result?.filter(x=>x.id==='vigia-runtime'||x.id==='vigia-source-runner').map(x=>({id:x.id,tag:x.tag}))});
+          NODE
