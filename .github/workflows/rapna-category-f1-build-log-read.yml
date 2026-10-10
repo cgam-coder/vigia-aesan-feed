@@ -28,7 +28,9 @@ jobs:
             const r=await fetch(endpoint,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+token,Accept:'application/json'},signal:AbortSignal.timeout(17000)});
             const data=await r.json().catch(()=>null);
             const rows=Array.isArray(data?.result?.lines)?data.result.lines:[];
-            const lines=rows.map(x=>Array.isArray(x)?String(x.at(-1)):String(x)).filter(x=>/error|fail|not found|test:|TS[0-9]{4}|undefined|cannot find/i.test(x));
+            const all=rows.map(x=>Array.isArray(x)?String(x.at(-1)):String(x));
+            const ix=all.findIndex(x=>x.includes('Build failed in'));
+            const lines=ix<0?all.slice(-25):all.slice(Math.max(0,ix-12),Math.min(all.length,ix+16));
             output({http:r.status,success:data?.success===true,error_codes:data?.errors?.map(x=>x.code)||[],
               matched_lines:lines.slice(-30).map(s=>s.slice(0,360)).map(x=>x.replace(/Bearer\s+\S+/g,'Bearer [REDACTED]')),
               raw_logs_discarded:true,log_line_count:rows.length,truncated:data?.result?.truncated??null});
