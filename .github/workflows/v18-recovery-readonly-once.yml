@@ -112,6 +112,24 @@ jobs:
            plans.push(summary);out(clean({gate:'plan_proof',...summary}));
           }
           out({gate:'plan_summary',allProved:plans.every(p=>p.valid),plans:plans.map(p=>({key:p.key,valid:p.valid,jobId:p.jobId,cursor:p.cursor,stateHash:p.stateHash,jobHash:p.jobHash,markerHash:p.markerHash}))});
+          
+          const samples=await query('proof_rapna_repeated_writes',"SELECT ordinal,manifest_json FROM source_reliability_effects WHERE job_id=? AND ordinal IN (54,55,56,57) AND committed_at IS NOT NULL",['7d965614-eb79-468c-838a-249147a0fb58']);
+          for(const sample of samples){
+           const m=JSON.parse(sample.manifest_json),write=m.writes.find(w=>/^UPDATE alerts SET/.test(w.sql));
+           const pre=m.preimages.find(p=>p.sql.includes('FROM "alerts"'));
+           const cols=pre?.sql.match(/FROM \(SELECT (.+?) FROM "alerts"/)?.[1].split(',').map(k=>k.trim().replaceAll('"',''))??[];
+           const before=pre?JSON.parse(pre.value)[0]?.flat():[];
+           const row=Object.fromEntries(cols.map((k,i)=>[k,before[i]]));
+           let canonicalIndex=-1;
+           if(write){const beforeCanonical=write.sql.slice(0,write.sql.indexOf('canonical_json = ?'));canonicalIndex=(beforeCanonical.match(/\?/g)??[]).length;}
+           const canonicalSame=write&&canonicalIndex>=0&&write.params[canonicalIndex]===row.canonical_json;
+           const hashSame=write&&write.params[canonicalIndex+1]===row.content_hash;
+           out({gate:'rapna_write_sample',ordinal:sample.ordinal,statements:m.writes.length,alertId:row.id,canonicalSame,hashSame});
+          }
+          const official=await fetch('https://webgate.ec.europa.eu/rasff-window/backend/public/notification/search/consolidated/en/',{method:'POST',redirect:'error',headers:{'content-type':'application/json'},body:JSON.stringify({parameters:{pageNumber:7,itemsPerPage:100,ordering:'notificationECValidationDate',sorting:'asc'}}),signal:AbortSignal.timeout(15000)}).then(async r=>({http:r.status,contentType:r.headers.get('content-type'),body:await r.json().catch(()=>null)})).catch(e=>({error:clean(e.message)}));
+          const officialRows=official.body?.content??official.body?.notifications??official.body?.results??[];
+          out({gate:'rasff_anchor_single_read',http:official.http,contentType:official.contentType,error:official.error,topKeys:Object.keys(official.body??{}),rows:Array.isArray(officialRows)?officialRows.length:null,anchorPresent:Array.isArray(officialRows)&&officialRows.some(r=>r.reference==='2020.0572')});
+
           out({gate:'cost_actual',d1_queries:queries,d1_rows_read:rowsRead,d1_rows_written:0,estimated_read_usd_if_all_over_quota:rowsRead*0.001/1000000,expected_incremental_usd:0,included_read_headroom_last_verified:18400000000,new_builds:0,new_crons:0,new_workers:0});
           }catch(e){out({gate:'STOP',reason:clean(e.message),queries,rowsRead});process.exitCode=1;}
           NODE
