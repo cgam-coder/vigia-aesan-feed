@@ -17,7 +17,7 @@ concurrency:
 jobs:
   browser:
     runs-on: ubuntu-24.04
-    timeout-minutes: 7
+    timeout-minutes: 10
     steps:
       - name: Install isolated pinned browser driver (no repository code/secrets)
         shell: bash
@@ -25,13 +25,14 @@ jobs:
           set -euo pipefail
           npm install --prefix "$RUNNER_TEMP/rapna-playwright" playwright@1.56.1 --ignore-scripts --no-audit --no-fund --silent
           which google-chrome || which google-chrome-stable || which chromium
+          timeout 240 "$RUNNER_TEMP/rapna-playwright/node_modules/.bin/playwright" install --with-deps webkit
       - name: Verify one real RAPNA image in isolated preview browser
         shell: bash
         run: |
           node <<'NODE'
           const path=require('node:path');
           const crypto=require('node:crypto');
-          const {chromium}=require(path.join(process.env.RUNNER_TEMP,'rapna-playwright/node_modules/playwright'));
+          const {chromium,webkit}=require(path.join(process.env.RUNNER_TEMP,'rapna-playwright/node_modules/playwright'));
           const preview='https://rapna-media-f1-direct-cors-proof-20261010-vigia-runtime.c-gamiz93.workers.dev';
           const summary={phase:'RAPNA_MEDIA_BROWSER_PROOF',preview_commit:'2e39d81',http:{},browser:'Chrome',fixture:'one public RAPNA alert; in-memory API route only',no_d1_writes:true,no_builds_created:true};
           let browser,context;
@@ -148,6 +149,33 @@ jobs:
                 photo:await mimg.evaluate(i=>({visible:i.naturalWidth>0&&!i.parentElement?.hasAttribute('hidden'),
                   src_scheme:i.src.startsWith('blob:')?'blob':'other',natural_width:i.naturalWidth}))};
               await mobile.close();
+
+              // Desktop WebKit is Safari-like; this does not certify physical iOS Safari.
+              try {
+                const wk=await webkit.launch({headless:true});
+                const wkc=await wk.newContext({viewport:{width:1280,height:800},locale:'es-ES',serviceWorkers:'block'});
+                const wp=await wkc.newPage();let webkitMock=0,webkitDirect=0;
+                await wp.route('**/api/terminal/alerts?**',route=>{
+                  webkitMock++;
+                  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
+                });
+                wp.on('request',r=>{
+                  if(r.url().startsWith('https://servicios.consumo.gob.es/rapnaBEPublic/listadoPublico/fichero'))webkitDirect++;
+                });
+                await wp.goto(preview+'/es/alertas?source=RAPNA&period=30d',{waitUntil:'domcontentloaded',timeout:30000});
+                const wc=wp.locator('article.na-alert-card[data-source="RAPNA"]');
+                await wc.first().waitFor({state:'visible',timeout:22000});
+                const wi=wc.first().locator('figure.na-alert-card__media img').first();
+                await wi.scrollIntoViewIfNeeded();
+                await wp.waitForFunction(()=>{
+                  const i=document.querySelector('article.na-alert-card[data-source="RAPNA"] img');
+                  return !!i&&i.complete&&i.naturalWidth>0;
+                },null,{timeout:25000});
+                summary.webkit={result:'PASS',fixture_intercepted:webkitMock>0,direct_posts:webkitDirect,
+                  image:await wi.evaluate(i=>({rendered:i.naturalWidth>0,src_scheme:i.src.startsWith('blob:')?'blob':'other',
+                    width:i.naturalWidth,hidden:i.parentElement?.hasAttribute('hidden')===true}))};
+                await wkc.close();await wk.close();
+              }catch(e){summary.webkit={result:'HOLD',error_name:e?.name??'Error',reason:String(e?.message||'').split('\n')[0].slice(0,160)};}
 
               summary.pass=summary.card_image?.rendered===true&&summary.card_image?.src_scheme==='blob'&&
                 summary.card_image?.figure_hidden===false&&routeMocks>0&&postRequests>=1&&proxyFallbackRequests===0&&
