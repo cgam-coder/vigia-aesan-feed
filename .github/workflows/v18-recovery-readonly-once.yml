@@ -57,9 +57,13 @@ jobs:
             const s=await req(cfbase+'/workers/scripts/'+name+'/schedules',process.env.CF_READ_TOKEN);
             out({gate:'schedules',worker:name,http:s.http,success:s.data?.success,items:s.data?.result});
            }
-           const meta=await req(cfbase+'/d1/database/'+dbid,process.env.CF_READ_TOKEN);
+           const settings=await req(cfbase+'/workers/scripts/vigia-runtime/settings',process.env.CF_READ_TOKEN);
+          const bindings=(settings.data?.result?.bindings??[]).filter(b=>b.type==='d1').map(b=>({name:b.name,type:b.type,id:b.id}));
+          out({gate:'effective_d1_binding',http:settings.http,success:settings.data?.success,bindings});
+          if(!bindings.some(b=>b.name==='DB'&&b.id===dbid))throw Error('EFFECTIVE_DATABASE_BINDING_MISMATCH');
+          const meta=await req(cfbase+'/d1/database/'+dbid,process.env.CF_READ_TOKEN);
            out({gate:'database',http:meta.http,success:meta.data?.success,name:meta.data?.result?.name,uuid:meta.data?.result?.uuid,file_size:meta.data?.result?.file_size,num_tables:meta.data?.result?.num_tables});
-           if(meta.data?.result?.uuid!==dbid||meta.data?.result?.name!=='nagamealert')throw Error('DATABASE_BASELINE_MISMATCH');
+           if(meta.data?.result?.uuid!==dbid||meta.data?.result?.name!=='nagamealert-staging-db')throw Error('DATABASE_BASELINE_MISMATCH');
            await query('schema',"SELECT name,sql FROM sqlite_schema WHERE type IN ('table','index') AND (name LIKE 'source_reliability%' OR name IN ('source_sync_state','source_sync_locks','source_revision_certifications') OR name LIKE '%snapshot%') ORDER BY name LIMIT 50");
            await query('control',"SELECT id,owner_id,expires_at,epoch,last_scheduled_time,json_extract(state_json,'$.lastWakeAt') AS wake,json_extract(state_json,'$.lastOutcome') AS outcome,json_extract(state_json,'$.revisionAttempts') AS revision_attempts FROM source_reliability_control WHERE id=1");
            const suspect=Object.entries(st.revisionAttempts??{}).filter(([k,v])=>['unknown','failed','running'].includes(v?.outcome)).slice(0,6);
