@@ -1,0 +1,70 @@
+name: V20 P0 release gate verification (GET + SELECT only)
+on:
+  push:
+    branches: [audit/v20-p0-release-20261010]
+    paths: [.github/workflows/v20-p0-release-verify-once.yml]
+permissions: { contents: read }
+concurrency:
+  group: v20-p0-release-verify-20261010
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.actor == 'cgam-coder' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Bounded authenticated Cloudflare GET, D1 SELECT and public API check
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          AUDIT_STAGE: pre
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const cfToken=process.env.CF_TOKEN, token=process.env.VIGIA_TOKEN, stage=process.env.AUDIT_STAGE;
+          const base='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          const db='55596003-1b90-4f66-aad8-decb21205f13';
+          const output=(what,body)=>console.log('V20_RELEASE '+JSON.stringify({stage,what,...body}));
+          const get=async(url,auth)=>{
+            try{const r=await fetch(url,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+auth,Accept:'application/json'},signal:AbortSignal.timeout(12000)});
+              const body=await r.json().catch(()=>null);return {http:r.status,ok:r.ok,payload:body};}
+            catch{return {http:0,ok:false,payload:null}};
+          };
+          if(!token||!cfToken){output('gate',{pass:false,reason:'credentials-unavailable'});process.exitCode=1;process.exit();}
+          const native=await get('https://nagamealert.com/api/source-reliability?observe=1',token);
+          const n=native.payload??{},s=n.state??{},fresh=s.lastAudit??{},src=Array.isArray(fresh.states)?fresh.states:[];
+          const isValid=(v)=>typeof v==='string'&&/^[0-9a-f]{40}$/.test(v);
+          output('native',{http:native.http,buildSha:isValid(n.buildSha)?n.buildSha:null,mode:n.mode==='five-source-coordinated'?'five-source-coordinated':'other',
+            observedAt:n.observedAt??null,outcome:n.outcome==='observed'?'observed':'HOLD',activeLease:n.activeLease===true,
+            parityCertified:n.officialParityCertified===true,ageMinutes:typeof n.ageMinutes==='number'?Math.round(n.ageMinutes*10)/10:null,
+            lastOutcome:typeof s.lastOutcome==='string'&&s.lastOutcome.length<65?s.lastOutcome:'other',
+            auditAllFresh:fresh.allFresh===true,
+            sources:src.filter(x=>['AESAN','RAPNA','RASFF','SAFETY GATE','OECD'].includes(x.source)).map(x=>({source:x.source,
+              recentAt:x.lastSyncSuccessAt??null,parity:x.latestIdentityParity===true,
+              missing:x.missingOfficialIdentities?.length??null,mismatches:x.revisionMismatches?.length??null,
+              revisionStatus:['fresh','stale','unknown','not-required'].includes(x.revisionStatus)?x.revisionStatus:'other'})),
+            recentAttempts:Object.entries(s.attempts??{}).map(([k,v])=>({source:k,outcome:v?.outcome})),
+            revisionHolds:['RASFF:reconcile','RAPNA:legacy-reconcile','OECD:historical-reconcile'].map(k=>({lane:k,
+              outcome:s.revisionAttempts?.[k]?.outcome,blocked:s.revisionAttempts?.[k]?.nextEligibleAt==='9999-01-01T00:00:00.000Z'}))});
+          const sql='SELECT (SELECT COUNT(*) FROM source_reliability_jobs WHERE finished_at IS NULL) AS unfinished, (SELECT COUNT(*) FROM source_reliability_effects WHERE committed_at IS NULL OR result_json IS NULL) AS unconfirmed, (SELECT COUNT(*) FROM source_sync_locks WHERE expires_at > CURRENT_TIMESTAMP) AS activeLocks';
+          const query=await fetch(base+'/d1/database/'+db+'/query',{method:'POST',redirect:'error',
+            headers:{Authorization:'Bearer '+cfToken,'Content-Type':'application/json',Accept:'application/json'},
+            body:JSON.stringify({sql}),signal:AbortSignal.timeout(16000)}).then(async r=>({http:r.status,body:await r.json().catch(()=>null)})).catch(()=>({http:0,body:null}));
+          const result=query.body?.result;
+          const row=Array.isArray(result)?result[0]?.results?.[0]:result?.results?.[0];
+          output('d1',{http:query.http,success:query.body?.success===true,unfinished:row?.unfinished??null,
+            unconfirmed:row?.unconfirmed??null,activeLocks:row?.activeLocks??null});
+          for(const name of ['vigia-runtime','vigia-source-runner']){
+            const d=await get(base+'/workers/scripts/'+name+'/deployments',cfToken);
+            const entries=Array.isArray(d.payload?.result?.deployments)?d.payload.result.deployments:[];
+            output('worker',{name,http:d.http,versions:entries.slice(0,2).map(x=>({deployment:x.id,active:x.versions?.map(v=>({id:v.version_id,percentage:v.percentage}))}))});
+          }
+          const fromSha=n.buildSha;
+          const success=native.http===200&&n.mode==='five-source-coordinated'&&n.activeLease===false&&
+            n.outcome==='observed'&&row?.unfinished===0&&row?.unconfirmed===0&&row?.activeLocks===0&&
+            src.length===5&&src.every(x=>x.latestIdentityParity===true&&x.missingOfficialIdentities?.length===0&&x.revisionMismatches?.length===0)&&
+            Object.values(s.attempts??{}).every(x=>x?.outcome==='completed')&&
+            fromSha==='90e9eb6d6f07bc89083334b8cac0c2e6ea06574f';
+          output('decision',{safeToMerge:success,stage,reason:success?'isolated-historic-holds-known':'gate-failed'});
+          if(!success)process.exitCode=1;
+          NODE
