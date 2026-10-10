@@ -24,6 +24,8 @@ jobs:
           if(!cf||!sync)throw Error('MISSING_EXISTING_AUTH');
           const n=await req('https://vigia-runtime.c-gamiz93.workers.dev/api/source-reliability?observe=1',sync);
           out({gate:'native',http:n.http,buildSha:n.buildSha,activeLease:n.activeLease,observedAt:n.observedAt,officialParityCertified:n.officialParityCertified,attempts:n.state?.attempts,revisions:n.state?.revisionAttempts,lastAudit:n.state?.lastAudit});
+          if(n.http!==200||n.buildSha!=='11e21985160c0e29cb61b58ff1226d178618a1fb')throw Error('PRODUCTION_COMMIT_GATE');
+          if(Object.values(n.state?.attempts??{}).some(x=>x.outcome==='unknown')||Object.values(n.state?.revisionAttempts??{}).some(x=>x.outcome==='unknown'))throw Error('UNKNOWN_GATE');
           for(const name of ['vigia-runtime','vigia-source-runner']){
            const d=await req('/workers/scripts/'+name+'/deployments');out({gate:'deployments',name,http:d.http,deployments:d.result?.deployments?.slice(0,3)});
            const versions=await req('/workers/scripts/'+name+'/versions');out({gate:'versions',name,http:versions.http,versions:versions.result?.items?.slice(0,3).map(v=>({id:v.id,number:v.number,metadata:v.metadata,annotations:v.annotations}))});
@@ -61,10 +63,80 @@ jobs:
           }
           out({gate:'build_budget',workerTags:tags.length,calls,buildCount:count,conservativeRoundedMinutes:minutes,active,unknownTimes,includedMinutes:6000,reservedProductionBuildMinutes:20,remainingAfterReserve:6000-minutes-20});
           if(active||unknownTimes||minutes+20>=6000)throw Error('BUILD_BUDGET_HOLD');
-          const query='query { viewer { accounts(filter:{accountTag:"9c1807c68493f14259248b5f5782cc6f"}) { workersInvocationsAdaptive(limit:10,filter:{scriptName:"vigia-runtime",datetime_geq:"2026-10-10T08:00:00Z",datetime_leq:"2026-10-10T08:31:00Z"}) { sum { requests errors subrequests } quantiles { cpuTimeP50 cpuTimeP99 } dimensions { status } } } } }';
+          const query='query { viewer { accounts(filter:{accountTag:"9c1807c68493f14259248b5f5782cc6f"}) { workersInvocationsAdaptive(limit:10,filter:{scriptName:"vigia-runtime",datetime_geq:"2026-10-10T08:38:00Z",datetime_leq:"2026-10-10T08:50:00Z"}) { sum { requests errors subrequests } quantiles { cpuTimeP50 cpuTimeP99 } dimensions { status } } } } }';
           const metrics=await req('https://api.cloudflare.com/client/v4/graphql',cf,{query});
           out({gate:'pre_metrics',http:metrics.http,data:metrics.data,errors:metrics.errors?.map(x=>x.message)});
           const pub=await fetch('https://nagamealert.com/api/terminal/alerts?source=RASFF&period=30d&pageSize=20',{signal:AbortSignal.timeout(15000)});
           const p=await pub.json();out({gate:'rasff_latest_public',http:pub.status,references:p.items?.slice(0,4).map(x=>x.reference),updated:p.lastUpdatedAt});
           for(const tag of ['c16d1153847b48f7ba2245915cfd97ab','970603d17e814ae191c510624f9200bf']){const t=await req('/builds/workers/'+tag+'/triggers');out({gate:'existing_build_triggers',tag,http:t.http,triggers:t.result?.map(x=>({uuid:x.trigger_uuid,branch_includes:x.branch_includes,branch_excludes:x.branch_excludes,build_command:x.build_command,deploy_command:x.deploy_command,deleted_on:x.deleted_on}))});}
+          const b=await req('/builds/builds/4e105ba5-de31-4492-9730-6d8158e55041');
+          out({gate:'production_build',http:b.http,result:{id:b.result?.build_uuid,status:b.result?.status,outcome:b.result?.build_outcome,created:b.result?.created_on,running:b.result?.running_on,stopped:b.result?.stopped_on,commit:b.result?.build_trigger_metadata?.commit_hash,branch:b.result?.build_trigger_metadata?.branch,command:b.result?.build_trigger_metadata?.build_command,deploy:b.result?.build_trigger_metadata?.deploy_command}});
+          const logs=await req('/builds/builds/4e105ba5-de31-4492-9730-6d8158e55041/logs');
+          const lines=Array.isArray(logs.result)?logs.result:logs.result?.lines??[];
+          out({gate:'production_quality_logs',http:logs.http,keys:Object.keys(logs.result??{}).slice(0,8),proof:lines.map(x=>typeof x==='string'?x:x.line??x.message??x.text??JSON.stringify(x)).filter(x=>/Running Cloudflare CI|tests \d|pass \d|fail \d|duration_ms|artifact.*valid|Validation|typecheck|lint/i.test(x)).slice(-35)});
+          NODE
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Install existing pinned browser harness without secrets or checkout
+        run: |
+          npm install --prefix "$RUNNER_TEMP/rapna-playwright" playwright@1.56.1 --ignore-scripts --no-audit --no-fund --silent
+          timeout 240 "$RUNNER_TEMP/rapna-playwright/node_modules/.bin/playwright" install --with-deps webkit
+      - name: Verify production cards and details in both languages
+        run: |
+          node <<'NODE'
+          const path=require('node:path'),crypto=require('node:crypto');
+          const {chromium,webkit}=require(path.join(process.env.RUNNER_TEMP,'rapna-playwright/node_modules/playwright'));
+          const origin='https://nagamealert.com';
+          const output=x=>console.log('RAPNA_PRODUCTION_BROWSER '+JSON.stringify(x));
+          (async()=>{
+          const api=await fetch(origin+'/api/terminal/alerts?source=RAPNA&period=30d&pageSize=10',{signal:AbortSignal.timeout(15000)});
+          const data=await api.json();if(api.status!==200||!data.items?.find(x=>x.reference==='159/2026'&&x.imageUrl))throw Error('REAL_PRODUCTION_RECORD_MISSING');
+          output({gate:'real_records',http:api.status,refs:data.items.map(x=>({reference:x.reference,hasImage:!!x.imageUrl})),fixtures:0,interceptedResponses:0});
+          let nagameRequests=1,passes=0;
+          const profiles=[{name:'Chrome desktop',engine:chromium,mobile:false},{name:'Chrome mobile emulation',engine:chromium,mobile:true},{name:'WebKit Linux desktop',engine:webkit,mobile:false}];
+          for(const profile of profiles){
+           const browser=await profile.engine.launch(profile.engine===chromium?{headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-dev-shm-usage']}:{headless:true});
+           const context=await browser.newContext({viewport:profile.mobile?{width:390,height:844}:{width:1440,height:900},...(profile.mobile?{isMobile:true,hasTouch:true,deviceScaleFactor:2}:{}),serviceWorkers:'block',locale:'es-ES'});
+           try {
+           for(const locale of ['es','en']){
+            const page=await context.newPage();const errors=[],csp=[],official=[],failures=[];
+            await page.addInitScript(()=>{window.__mediaCsp=[];document.addEventListener('securitypolicyviolation',e=>window.__mediaCsp.push({directive:e.violatedDirective,blocked:e.blockedURI}));});
+            page.on('request',r=>{if(r.url().startsWith(origin)){nagameRequests++;if(nagameRequests>500)throw Error('ORDINARY_SMOKE_REQUEST_CAP');}});
+            page.on('pageerror',e=>errors.push(String(e.message).slice(0,180)));
+            page.on('requestfailed',r=>{if(r.url().includes('rapna')||r.url().includes('consumo.gob.es'))failures.push({url:r.url().split('?')[0],reason:r.failure()?.errorText});});
+            page.on('response',async r=>{if(r.url()==='https://servicios.consumo.gob.es/rapnaBEPublic/listadoPublico/fichero'){const h=await r.request().allHeaders();official.push({status:r.status(),cookie:!!h.cookie,referer:!!h.referer,origin:h.origin});}});
+            const response=await page.goto(origin+'/'+locale+'/'+(locale==='es'?'alertas':'alerts')+'?source=RAPNA&period=30d',{waitUntil:'domcontentloaded',timeout:30000});
+            if(response.status()!==200)throw Error('LIST_HTTP_'+response.status());
+            const policy=response.headers()['content-security-policy']??'';if(!policy.includes('https://servicios.consumo.gob.es')||!policy.includes('blob:'))throw Error('PRODUCTION_CSP_MISSING');
+            const cards=page.locator('article.na-alert-card[data-source="RAPNA"]');
+            await cards.first().waitFor({state:'visible',timeout:22000});
+            const photo=async(element)=>{
+             await element.waitFor({state:'attached',timeout:10000});await element.scrollIntoViewIfNeeded();
+             await element.evaluate(i=>new Promise((resolve,reject)=>{if(i.complete&&i.naturalWidth>0)return resolve(true);const t=setTimeout(()=>reject(Error('IMAGE_LOAD_TIMEOUT')),25000);i.addEventListener('load',()=>{clearTimeout(t);resolve(true);},{once:true});i.addEventListener('error',()=>{clearTimeout(t);reject(Error('IMAGE_LOAD_ERROR'));},{once:true});}));
+             const value=await element.evaluate(i=>({complete:i.complete,width:i.naturalWidth,height:i.naturalHeight,blob:i.src.startsWith('blob:'),hidden:!!i.closest('[hidden]'),visible:i.getBoundingClientRect().width>0&&i.getBoundingClientRect().height>0}));
+             if(!value.blob||value.hidden||!value.visible||value.width<10||value.height<10)throw Error('PHOTO_CRITICAL_GATE');
+             return value;
+            };
+            const card159=cards.filter({hasText:'159/2026'}).first();await card159.waitFor({state:'visible',timeout:15000});
+            const image159=await photo(card159.locator('figure.na-alert-card__media img').first());
+            const screenshotHash=crypto.createHash('sha256').update(await card159.screenshot()).digest('hex');
+            let image158=null;
+            if(data.items.some(x=>x.reference==='158/2026'&&x.imageUrl)){const card158=cards.filter({hasText:'158/2026'}).first();image158=await photo(card158.locator('figure.na-alert-card__media img').first());}
+            const href=await card159.locator('a[href*="/rapna/"]').first().getAttribute('href');if(!href)throw Error('REAL_DETAIL_LINK_MISSING');
+            csp.push(...await page.evaluate(()=>window.__mediaCsp??[]));
+          const detail=await page.goto(new URL(href,origin).href,{waitUntil:'domcontentloaded',timeout:30000});
+            if(detail.status()!==200)throw Error('DETAIL_HTTP_'+detail.status());
+            const imageDetail=await photo(page.locator('.na-alert-detail__media img').first());
+            csp.push(...await page.evaluate(()=>window.__mediaCsp??[]));
+            if(errors.length||csp.length||official.some(x=>x.status!==200||x.cookie||x.referer)||!official.length)throw Error('BROWSER_SECURITY_OR_JS_GATE');
+            output({gate:'PASS',profile:profile.name,locale,listHttp:response.status(),detailHttp:detail.status(),detailUrl:page.url(),card159:image159,card158:image158,detail159:imageDetail,cardScreenshotSha256:screenshotHash,officialRequests:official,jsErrors:errors,cspViolations:csp,requestFailures:failures,fixtures:0,physicalSafari:false});
+            passes++;await page.close();
+           }
+           }finally{await context.close();await browser.close();}
+          }
+          output({gate:'SUMMARY',result:passes===6?'PASS':'FAIL',passes,nagameRequests,requestCap:500,noFixtures:true,noD1Writes:true,noNewBuild:true});
+          if(passes!==6)process.exitCode=1;
+          })().catch(e=>{output({gate:'FAIL',name:e.name,reason:String(e.message).slice(0,220)});process.exitCode=1;});
           NODE
