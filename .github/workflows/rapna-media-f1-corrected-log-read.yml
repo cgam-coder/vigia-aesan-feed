@@ -1,0 +1,68 @@
+name: RAPNA-MEDIA-F1 corrected existing logs read once
+on:
+  push:
+    branches: [sec-f1/cloudflare-api-readonly-20261009]
+    paths: [.github/workflows/rapna-media-f1-corrected-log-read.yml]
+permissions:
+  contents: read
+jobs:
+  read_logs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Read existing telemetry using correct response envelope; never print raw logs
+        shell: bash
+        env:
+          CF_DIAGNOSTIC_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const token=process.env.CF_DIAGNOSTIC_TOKEN;
+          const endpoint='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/workers/observability/telemetry/query';
+          const log=(v)=>console.log('RAPNA_MEDIA_F1 '+JSON.stringify(v));
+          if(!token){log({outcome:'missing_token'});process.exitCode=1;process.exit();}
+          const to=Date.now();
+          const attempts=[{label:'exact',needle:'RAPNA public resource proxy failed'},{label:'broad',needle:'RAPNA'}];
+          function findKinds(value){
+            const counts={};
+            let nodes=0;
+            function walk(v,d){
+              if(++nodes>400||d>7||!v||typeof v!=='object')return;
+              if(Array.isArray(v)){for(const x of v.slice(0,100))walk(x,d+1);return;}
+              for(const [k,x] of Object.entries(v)){
+                if(k==='kind'&&typeof x==='string'&&['network','timeout','http','invalid-response','too-large','type-mismatch'].includes(x))counts[x]=(counts[x]??0)+1;
+                if(x&&typeof x==='object')walk(x,d+1);
+              }
+            }
+            walk(value,0);
+            return counts;
+          }
+          for(const {label,needle} of attempts){
+            try{
+              const body={queryId:'rapna-media-20261010-'+label,view:'events',dry:true,limit:25,
+                timeframe:{from:to-36*60*60*1000,to},
+                parameters:{datasets:[],needle:{value:needle,isRegex:false,matchCase:false}}};
+              const response=await fetch(endpoint,{method:'POST',redirect:'error',
+                headers:{Authorization:'Bearer '+token,Accept:'application/json','Content-Type':'application/json'},
+                body:JSON.stringify(body),signal:AbortSignal.timeout(23000)});
+              const data=await response.json().catch(()=>null);
+              const success=response.ok&&data?.success===true;
+              if(!success){
+                log({attempt:label,http:response.status,success:false,error_codes:Array.isArray(data?.errors)?data.errors.map(e=>e.code).filter(Number.isInteger):[]});
+                break;
+              }
+              const result=data.result??{};
+              const envelope=result.events;
+              const events=Array.isArray(envelope?.events)?envelope.events:Array.isArray(envelope)?envelope:[];
+              const counts={};
+              for(const row of events)for(const [k,n] of Object.entries(findKinds(row)))counts[k]=(counts[k]??0)+n;
+              const fallback=events.filter(e=>JSON.stringify(e).includes('RAPNA public resource proxy failed')).length;
+              log({attempt:label,http:response.status,success,
+                run_status:result.run?.status??null,total_matched:typeof envelope?.count==='number'?envelope.count:null,
+                returned_events:events.length,rapna_proxy_message_events:fallback,
+                error_kinds:counts,has_nested_events:Array.isArray(envelope?.events),
+                envelope_fields:envelope&&typeof envelope==='object'?Object.keys(envelope).filter(k=>['count','events','fields','series'].includes(k)):[],
+                raw_logs_printed:false});
+              if(events.length>0)break;
+            }catch(e){log({attempt:label,outcome:'transport_error',error_name:e?.name??'Error'});break;}
+          }
+          NODE
