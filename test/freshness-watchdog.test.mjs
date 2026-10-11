@@ -260,3 +260,75 @@ test('V20 channels: healthy recent and historical is only observed, never a new 
   assert.equal(report.channels.historical.verdict,'OBSERVED');
   assert.equal(report.channels.recent.officialFreshnessCertified,false);
 });
+
+test('V20 F1: HTTP 503 with valid native data or valid policy cannot certify either channel', async()=>{
+  const native={mode:'five-source-coordinated',outcome:'observed',activeLease:false,officialParityCertified:true,
+    state:{ownershipVerifiedAt:stamp(-30*60_000),lastWakeAt:stamp(-60_000),
+      attempts:Object.fromEntries(SOURCES.map(source=>[source,{outcome:'completed'}])),
+      revisionAttempts:{},lastAudit:{finishedAt:stamp(-60_000),allFresh:true,states:SOURCES.map(fresh)}}};
+  for (const failure of ['native-503','policy-503']){
+    const calls=[];
+    const report=await runWatchdog({url:'https://local.invalid/api/freshness',token:'fixture-secret',
+      clock:()=>NOW,monotonic:()=>0,log:()=>{},fetchImpl:async(url,options)=>{
+        assert.equal(options.method,'GET');
+        const isPolicy=new URL(url).searchParams.has('policy');
+        calls.push({method:options.method,isPolicy});
+        return response((failure==='native-503'&&!isPolicy)||(failure==='policy-503'&&isPolicy)?503:200,isPolicy?policy:native);
+      }});
+    assert.equal(report.allFresh,false,failure);
+    assert.equal(report.channels.coordinator.verdict,'UNKNOWN',failure);
+    assert.equal(report.channels.recent.verdict,'UNKNOWN',failure);
+    assert.equal(report.channels.historical.verdict,'UNKNOWN',failure);
+    assert.ok(report.channels.recent.sources.every(x=>x.verdict==='UNKNOWN'),failure);
+    assert.equal(report.zeroWrite,true,failure);
+    assert.equal(report.channels.recoveryAuthorized,false,failure);
+    assert.deepEqual(calls.map(x=>x.method),['GET','GET'],failure);
+  }
+});
+
+test('V20 F1: ambiguous 503 with disabled legacy payload must not trigger POST fallback',async()=>{
+  const calls=[];
+  const report=await runWatchdog({url:'https://local.invalid/api/freshness',token:'fixture-secret',
+    clock:()=>NOW,monotonic:()=>0,log:()=>{},fetchImpl:async(url,options)=>{
+      calls.push(options.method);
+      if(new URL(url).searchParams.has('policy'))return response(200,policy);
+      return response(503,{mode:'disabled',outcome:'disabled'});
+    }});
+  assert.equal(report.allFresh,false);
+  assert.equal(report.channels.coordinator.verdict,'UNKNOWN');
+  assert.equal(report.channels.recent.verdict,'UNKNOWN');
+  assert.equal(report.channels.recoveryAuthorized,false);
+  assert.deepEqual(calls,['GET','GET']);
+});
+
+test('V20 F1: failed, unknown and pending historical attempts prevent historical observation despite fresh timestamp',async()=>{
+  for(const [outcome,pendingDetails] of [
+    ['failed',[]],['unknown',[]],['running',[]],['partial',[{reference:'test',notifId:1}]]
+  ]){
+    const native={mode:'five-source-coordinated',outcome:'observed',activeLease:false,officialParityCertified:false,
+      state:{ownershipVerifiedAt:stamp(-30*60_000),lastWakeAt:stamp(-60_000),
+        attempts:Object.fromEntries(SOURCES.map(source=>[source,{outcome:'completed'}])),
+        revisionAttempts:{'RASFF:reconcile':{outcome,pendingDetails}},
+        lastAudit:{finishedAt:stamp(-60_000),allFresh:false,states:SOURCES.map(fresh)}}};
+    const calls=[];
+    const report=await runWatchdog({url:'https://local.invalid/api/freshness',token:'fixture-secret',
+      clock:()=>NOW,monotonic:()=>0,log:()=>{},fetchImpl:async(url,options)=>{
+        calls.push(options.method);
+        return response(200,new URL(url).searchParams.has('policy')?policy:native);
+      }});
+    assert.equal(report.channels.recent.verdict,'OBSERVED',outcome);
+    assert.equal(report.channels.historical.verdict,'HOLD',outcome);
+    assert.equal(report.channels.historical.sources.find(s=>s.source==='RASFF').verdict,'HOLD',outcome);
+    assert.equal(report.allFresh,false,outcome);
+    assert.deepEqual(calls,['GET','GET'],outcome);
+  }
+});
+
+test('V20 F1: native watchdog code preserves 15-minute schedule and global failure exit',()=>{
+  const workflow=readFileSync(new URL('../.github/workflows/freshness-watchdog.yml',import.meta.url),'utf8');
+  const script=readFileSync(new URL('../scripts/freshness-watchdog.mjs',import.meta.url),'utf8');
+  assert.match(workflow,/cron: "13,28,43,58 \* \* \* \*"/);
+  assert.match(workflow,/timeout-minutes: 35/);
+  assert.match(script,/if \(!report\.allFresh\) process\.exitCode = 1;/);
+  assert.match(script,/const legacyKnown=native\.http===404\|\|\(native\.ok&&native\.http===200&&native\.body\?\.outcome==='disabled'\)/);
+});
