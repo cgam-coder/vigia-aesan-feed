@@ -1,0 +1,97 @@
+name: V22 PR90 production preflight (read only)
+on:
+  push:
+    branches: [audit/v22-pr90-prod-readonly-20261011]
+    paths: [.github/workflows/v22-watchdog-prod-readonly-once.yml]
+permissions: { contents: read }
+concurrency:
+  group: v22-pr90-prod-readonly-once
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: github.repository == 'cgam-coder/vigia-aesan-feed' && github.actor == 'cgam-coder' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Bounded GET observation plus one static D1 SELECT, no mutation
+        shell: bash
+        env:
+          RUNTIME_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const runtime=process.env.RUNTIME_TOKEN,cf=process.env.CF_TOKEN;
+          const account='9c1807c68493f14259248b5f5782cc6f';
+          const database='55596003-1b90-4f66-aad8-decb21205f13';
+          const expected='0c61589b485a1e40ab8728378e14b85631f89d36';
+          const sources=['AESAN','RAPNA','RASFF','SAFETY GATE','OECD'];
+          const say=(label,p)=>console.log('V22_PREFLIGHT '+JSON.stringify({label,...p}));
+          const now=Date.now();
+          const age=v=>typeof v==='string'&&Number.isFinite(Date.parse(v))&&Date.parse(v)<=now?(now-Date.parse(v))/60000:null;
+          const clean=x=>typeof x==='string'?x.slice(0,90):null;
+          async function request(url,token,method='GET',payload=null){
+            if(!token)return {status:0,body:null,error:'secret-unavailable'};
+            try {
+              const r=await fetch(url,{method,redirect:'error',
+                headers:{Authorization:'Bearer '+token,Accept:'application/json',
+                  ...(payload?{'Content-Type':'application/json'}:{})},
+                ...(payload?{body:JSON.stringify(payload)}:{}),signal:AbortSignal.timeout(16000)});
+              return {status:r.status,body:await r.json().catch(()=>null),error:null};
+            } catch(e) {return {status:0,body:null,error:e?.name==='TimeoutError'?'timeout':'transport-or-json'};}
+          }
+          const coordinator=await request('https://nagamealert.com/api/source-reliability?observe=1',runtime);
+          const policies=await request('https://nagamealert.com/api/freshness?observe=1&policy=1',runtime);
+          const c=coordinator.body||{},state=c.state||{},audit=state.lastAudit||{},records=Array.isArray(audit.states)?audit.states:[];
+          const policyRows=Array.isArray(policies.body?.policies)?policies.body.policies:[];
+          const lastWake=age(state.lastWakeAt),lastAudit=age(audit.finishedAt);
+          const revisionEntries=Object.entries(state.revisionAttempts||{}).map(([key,val])=>({
+            key, outcome:clean(val?.outcome),pending:Number.isInteger(val?.pendingDetails?.length)?val.pendingDetails.length:null,
+            blockedUntil:val?.nextEligibleAt==='9999-01-01T00:00:00Z'?'indefinite':val?.nextEligibleAt? 'scheduled-or-future':'none'
+          }));
+          const sourceRows=sources.map(source=>{
+            const r=records.find(v=>v?.source===source),p=policyRows.find(v=>v?.source===source),a=state.attempts?.[source];
+            const rec=age(r?.lastSyncSuccessAt),checked=age(r?.checkedAt),rev=age(r?.revisionLastSuccessAt);
+            const recentFresh=Boolean(r&&p&&rec!==null&&checked!==null&&
+              rec<=p.recent?.freshMaxAgeMinutes&&checked<=p.recent?.freshMaxAgeMinutes&&
+              r.error===null&&r.latestIdentityParity===true&&
+              r.missingOfficialIdentities?.length===0&&r.revisionMismatches?.length===0&&a?.outcome==='completed');
+            const historicalFresh=Boolean(r&&p&&(!p.revision?.required?r.revisionStatus==='not-required':
+              r.revisionStatus==='fresh'&&rev!==null&&rev<=p.revision.maxAgeMinutes));
+            return {source,recentFresh,historicalFresh,status:clean(r?.status),revisionStatus:clean(r?.revisionStatus),
+              recentMinutes:rec,revisionMinutes:rev,recentAttempt:clean(a?.outcome)};
+          });
+          say('native',{http:coordinator.status,policyHttp:policies.status,mode:clean(c.mode),outcome:clean(c.outcome),
+            buildMatches:c.buildSha===expected,buildSha:clean(c.buildSha),
+            wakeMinutes:lastWake,auditMinutes:lastAudit,activeLease:c.activeLease===true,
+            officialParityCertified:c.officialParityCertified===true,
+            sourceCount:records.length,policyCount:policyRows.length,sources:sourceRows,revisionAttempts:revisionEntries});
+          const deployments=[];
+          for(const script of ['vigia-runtime','vigia-source-runner']){
+            const response=await request('https://api.cloudflare.com/client/v4/accounts/'+account+'/workers/scripts/'+script+'/deployments',cf);
+            const all=Array.isArray(response.body?.result?.deployments)?response.body.result.deployments:
+              Array.isArray(response.body?.result)?response.body.result:[];
+            deployments.push({script,http:response.status,success:response.body?.success===true,
+              entries:all.length,active:all.slice(0,2).map(d=>({id:clean(d.id),
+                versions:Array.isArray(d.versions)?d.versions.map(v=>({id:clean(v.version_id),percent:v.percentage})):[]}))});
+          }
+          say('deployments',{deployments});
+          const sql='SELECT EXISTS(SELECT 1 FROM source_reliability_jobs WHERE finished_at IS NULL) AS unfinished_jobs, EXISTS(SELECT 1 FROM source_sync_locks WHERE expires_at>?) AS active_source_locks, EXISTS(SELECT 1 FROM source_reliability_control WHERE expires_at>?) AS active_control_lease';
+          const iso=new Date().toISOString();
+          const d1=await request('https://api.cloudflare.com/client/v4/accounts/'+account+'/d1/database/'+database+'/query',
+            cf,'POST',{sql,params:[iso,iso]});
+          const raw=Array.isArray(d1.body?.result)?d1.body.result[0]?.results?.[0]:null;
+          const leaseInfo=raw?{unfinishedJobs:raw.unfinished_jobs===1,activeSourceLocks:raw.active_source_locks===1,
+            activeControlLease:raw.active_control_lease===1}:null;
+          say('d1_readonly_select',{http:d1.status,success:d1.body?.success===true,recognized:Boolean(raw),leaseInfo,
+            sqlKind:'SELECT/EXISTS only',noMutation:true});
+          const nativeOk=coordinator.status===200&&policies.status===200&&c.mode==='five-source-coordinated'&&
+            c.buildSha===expected&&c.outcome==='observed'&&c.activeLease===false&&lastWake!==null&&lastWake<=15&&
+            lastAudit!==null&&lastAudit<=15&&records.length===5&&policyRows.length===5&&
+            sourceRows.every(v=>v.recentFresh);
+          const deployOk=deployments.every(d=>d.http===200&&d.success&&d.entries>0);
+          const dbOk=d1.status===200&&d1.body?.success===true&&leaseInfo&&!leaseInfo.unfinishedJobs&&!leaseInfo.activeSourceLocks&&!leaseInfo.activeControlLease;
+          say('decision',{nativeObserved:nativeOk,deploymentsReadable:deployOk,leasesClear:dbOk,
+            globalHistoricalCertification:c.officialParityCertified===true,scope:'preflight only, never authorizes merge or historical recovery',
+            verdict:nativeOk&&deployOk&&dbOk?'PASS_OBSERVATION':'HOLD'});
+          if(!nativeOk||!deployOk||!dbOk)process.exitCode=1;
+          NODE
