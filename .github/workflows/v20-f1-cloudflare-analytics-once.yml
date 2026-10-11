@@ -1,4 +1,4 @@
-name: V20 F1 one-shot D1 expensive-query shapes (GraphQL read only)
+name: V20 F1 final SQL-family ranking (read-only GraphQL)
 on:
   push:
     branches: [audit/v20-f1-consumption-readonly-20261011]
@@ -13,54 +13,49 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     steps:
-      - name: Read only top D1 query-shape analytics, no SQL or params in logs
+      - name: Categorize top query families without printing SQL or parameters
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        shell: bash
         run: |
           node --input-type=module <<'NODE'
-          const cf=process.env.CF_TOKEN;
-          const out=(kind,props)=>console.log('V20_HOT_SQL '+JSON.stringify({kind,...props}));
-          if(!cf){out('auth',{status:'HOLD'});process.exitCode=1;process.exit();}
-          const query='query CostHotQueries($accountTag: string!, $db: string, $day: Date) {viewer {accounts(filter:{accountTag:$accountTag}) {d1QueriesAdaptiveGroups(limit:25,filter:{date:$day,databaseId:$db},orderBy:[sum_rowsRead_DESC]) {count sum {rowsRead rowsWritten queryDurationMs rowsReturned} dimensions {query databaseId}}}}}';
+          const token=process.env.CF_TOKEN,emit=x=>console.log('V20_SQL_FAMILY '+JSON.stringify(x));
+          if(!token){emit({status:'HOLD',reason:'missing-token'});process.exitCode=1;process.exit();}
+          const query='query TopD1($accountTag: string!, $db: string, $day: Date) {viewer {accounts(filter:{accountTag:$accountTag}) {d1QueriesAdaptiveGroups(limit:12,filter:{date:$day,databaseId:$db},orderBy:[sum_rowsRead_DESC]) {count sum {rowsRead rowsReturned rowsWritten} dimensions {query}}}}}';
           try{
             const r=await fetch('https://api.cloudflare.com/client/v4/graphql',{method:'POST',redirect:'error',
-              headers:{Authorization:'Bearer '+cf,'Content-Type':'application/json',Accept:'application/json'},
+              headers:{Authorization:'Bearer '+token,Accept:'application/json','Content-Type':'application/json'},
               body:JSON.stringify({query,variables:{accountTag:'9c1807c68493f14259248b5f5782cc6f',db:'55596003-1b90-4f66-aad8-decb21205f13',day:'2026-10-10'}}),
-              signal:AbortSignal.timeout(18000)});
+              signal:AbortSignal.timeout(16000)});
             const j=await r.json().catch(()=>null);
-            const data=j?.data?.viewer?.accounts?.[0]?.d1QueriesAdaptiveGroups;
-            if(r.status!==200||!Array.isArray(data)){
-              out('result',{http:r.status,available:false,errors:Array.isArray(j?.errors)?j.errors.map(e=>String(e.message??'').slice(0,120)).slice(0,4):[]});
-              process.exitCode=1;process.exit();
-            }
-            const safeNum=n=>typeof n==='number'&&Number.isFinite(n)?n:null;
-            const families=s=>{
-              const x=s.toLowerCase();
-              if(x.includes('source_reliability_')||x.includes('source_sync_'))return 'coordination';
-              if(x.includes('alert_geographies'))return 'geography';
-              if(x.includes('alert_dimension_state'))return 'dimensions';
-              if(x.includes('alert_versions'))return 'versions';
-              if(x.includes('alerts'))return 'alerts';
-              return 'other';
-            };
-            const rows=[];
-            for(const x of data){
+            const rows=j?.data?.viewer?.accounts?.[0]?.d1QueriesAdaptiveGroups;
+            if(r.status!==200||!Array.isArray(rows)){emit({status:'HOLD',http:r.status});process.exitCode=1;process.exit();}
+            const groups=[
+              ['core-alerts',/\balerts\b/iu],
+              ['alias-and-identities',/\b(?:alert_aliases|alert_source_identities)\b/iu],
+              ['geographies',/\balert_geographies\b/iu],
+              ['dimensions-and-taxonomy',/\b(?:alert_dimension_state|alert_categories|alert_hazards|alert_actors)\b/iu],
+              ['versions',/\balert_versions\b/iu],
+              ['source-observations',/\b(?:source_checks|source_freshness)\b/iu],
+              ['source-sync',/\b(?:source_sync_state|source_sync_locks)\b/iu],
+              ['historical-certificates',/\bsource_revision_certifications\b/iu],
+              ['journals-and-recovery',/\bsource_reliability_\w+\b/iu],
+              ['snapshots',/\bsource_backfill_\w+\b/iu],
+              ['metadata',/\b(?:sqlite_schema|sqlite_master|d1_migrations)\b/iu],
+            ];
+            const result=[];
+            for(const x of rows){
               const sql=typeof x.dimensions?.query==='string'?x.dimensions.query:'';
+              const match=groups.filter(([_,re])=>re.test(sql)).map(([name])=>name);
               const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(sql));
-              const hex=[...new Uint8Array(digest)].slice(0,6).map(n=>n.toString(16).padStart(2,'0')).join('');
-              rows.push({fingerprint:hex,family:families(sql),length:sql.length,count:safeNum(x.count),
-                rowsRead:safeNum(x.sum?.rowsRead),rowsWritten:safeNum(x.sum?.rowsWritten),
-                rowsReturned:safeNum(x.sum?.rowsReturned),durationMs:safeNum(x.sum?.queryDurationMs),
-                sqlShape:{
-                  count:/\bCOUNT\s*\(/iu.test(sql),distinct:/\bDISTINCT\b/iu.test(sql),
-                  jsonEach:/\bjson_each\b/iu.test(sql),groupBy:/\bGROUP\s+BY\b/iu.test(sql),
-                  orderBy:/\bORDER\s+BY\b/iu.test(sql),fullText:/\bLIKE\b/iu.test(sql),
-                  joins:/\bJOIN\b/iu.test(sql),materialized:/\bMATERIALIZED\b/iu.test(sql),
-                  update:/^\s*UPDATE\b/iu.test(sql),insert:/^\s*INSERT\b/iu.test(sql),delete:/^\s*DELETE\b/iu.test(sql)
-                }});
+              const hash=[...new Uint8Array(digest)].slice(0,6).map(v=>v.toString(16).padStart(2,'0')).join('');
+              result.push({hash,category:match,sqlLength:sql.length,
+                reads:Number.isFinite(x.sum?.rowsRead)?x.sum.rowsRead:null,
+                returned:Number.isFinite(x.sum?.rowsReturned)?x.sum.rowsReturned:null,
+                count:Number.isFinite(x.count)?x.count:null,
+                shape:{count:/\bCOUNT\s*\(/iu.test(sql),distinct:/\bDISTINCT\b/iu.test(sql),
+                  where:/\bWHERE\b/iu.test(sql),join:/\bJOIN\b/iu.test(sql),
+                  select:/^\s*(?:SELECT|WITH)\b/iu.test(sql),limit:/\bLIMIT\b/iu.test(sql)}});
             }
-            out('result',{http:r.status,available:true,date:'2026-10-10',returned:data.length,
-              rows, note:'Aggregated sampled query groups; no SQL text, bound values or IDs emitted'});
-          }catch(e){out('result',{status:'HOLD',reason:e?.name??'transport'});process.exitCode=1;}
+            emit({status:'PASS',date:'2026-10-10',ranking:result,note:'GraphQL adaptive sampling, no raw query/params'});
+          }catch(e){emit({status:'HOLD',reason:e?.name??'transport'});process.exitCode=1;}
           NODE
