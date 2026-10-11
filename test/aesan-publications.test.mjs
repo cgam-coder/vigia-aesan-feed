@@ -355,6 +355,11 @@ test("real recent CLI: duplicated older pages cannot roll back the preserved amp
   assert.equal(result.feed.alerts.length, seed.alerts.length);
   assert.deepEqual(materialState(result.feed.alerts.find((r) => r.reference === later.reference)), materialState(later));
   assert.equal(result.called.filter((url) => new URL(url).pathname === "/alertas/2026_26").length, 1);
+  // The search index and public landing are each fetched once, not again
+  // after the taxonomy validator has read exactly the same official URL.
+  assert.equal(result.called.filter((url) => new URL(url).pathname === "/alertas/buscador-alertas" &&
+    new URL(url).search === "").length, 1);
+  assert.equal(result.called.filter((url) => new URL(url).pathname === "/alertas/alertas-alimentarias").length, 1);
   const replay = await cliRun(result.feed, recentRoutes(Array(20).fill(earlier)));
   assert.equal(replay.status, 0, replay.stderr);
   assert.equal(replay.bytes, result.bytes);
@@ -385,6 +390,13 @@ test("real full CLI: scans the declared paginator and retains both publication s
   assert.equal(result.feed.alerts[0].publicationHistory.length, 2);
   assert.equal(result.called.filter((url) => new URL(url).pathname === "/alertas/2026_26").length, 1);
   assert.equal(result.called.filter((url) => new URL(url).pathname === "/alertas/2026_26_amp").length, 1);
+  // The full filtered archive page is distinct from the taxonomy search
+  // entry; only the shared landing page can be memoized in full-history.
+  assert.equal(result.called.filter((url) => new URL(url).pathname === "/alertas/alertas-alimentarias").length, 1);
+  assert.equal(result.called.filter((url) => new URL(url).pathname === "/alertas/buscador-alertas" &&
+    new URL(url).search === "").length, 1);
+  assert.equal(result.called.filter((url) => new URL(url).pathname === "/alertas/buscador-alertas" &&
+    new URL(url).searchParams.has("filter-initDate")).length, 1);
 });
 
 test("real CLI: ambiguous chronology fails before writing OUTPUT_PATH", async () => {
