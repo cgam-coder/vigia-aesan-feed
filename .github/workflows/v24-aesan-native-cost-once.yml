@@ -1,0 +1,50 @@
+name: V24 AESAN native history receipts one-shot
+on:
+  push:
+    branches: [audit/v24-aesan-native-history-cost-20261011]
+    paths: [.github/workflows/v24-aesan-native-cost-once.yml]
+permissions:
+  contents: read
+jobs:
+  audit:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Single native GET and bounded D1 SELECT only
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIGIA_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const print=(stage,data)=>console.log('V24_AESAN_COST '+JSON.stringify({stage,...data}));
+          const cf=process.env.CF_TOKEN, vigia=process.env.VIGIA_TOKEN;
+          if(!cf||!vigia){print('verdict',{state:'HOLD',reason:'existing-secrets-missing',selects:0});process.exit(2);}
+          const expected='d5fcd11cbeb563258b4bbdc9482a80b8684c81d3';
+          const root='https://vigia-runtime.c-gamiz93.workers.dev';
+          const pre=await fetch(root+'/api/source-reliability?observe=1',{
+            method:'GET',headers:{Authorization:'Bearer '+vigia,Accept:'application/json'},
+            redirect:'error',signal:AbortSignal.timeout(15000)
+          }).then(async r=>({http:r.status,data:await r.json().catch(()=>null)})).catch(()=>({http:0,data:null}));
+          const admit=pre.http===200&&pre.data?.buildSha===expected&&pre.data?.mode==='five-source-coordinated';
+          print('preflight',{http:pre.http,exactProductionSha:pre.data?.buildSha===expected,coordinated:pre.data?.mode==='five-source-coordinated',admitted:admit});
+          if(!admit){print('verdict',{state:'HOLD',selects:0,sourceWrites:0,deploys:0});process.exit(2);}
+          const sql="SELECT started_at AS startedAt, json_extract(receipt_json,'$.finishedAt') AS finishedAt, json_extract(receipt_json,'$.outcome') AS outcome, json_extract(receipt_json,'$.requests') AS requests, json_extract(receipt_json,'$.batches') AS batches, json_extract(receipt_json,'$.state.completedAt') AS completedAt, json_extract(receipt_json,'$.state.status') AS sourceStatus, json_extract(receipt_json,'$.state.planVersion') AS planVersion FROM source_reliability_jobs WHERE source='AESAN' AND mode='historical-reconcile' AND kind='revision' AND started_at >= '2026-10-04T00:00:00.000Z' AND started_at < '2026-10-12T00:00:00.000Z' AND receipt_json IS NOT NULL ORDER BY started_at LIMIT 160";
+          if(!/^SELECT\s/u.test(sql)||sql.includes(';')||/\b(UPDATE|DELETE|INSERT|ALTER|DROP|PRAGMA|REPLACE|ATTACH|DETACH|CREATE)\b/u.test(sql))throw Error('SELECT-policy');
+          const endpoint='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/d1/database/55596003-1b90-4f66-aad8-decb21205f13/query';
+          const query=await fetch(endpoint,{method:'POST',headers:{Authorization:'Bearer '+cf,'Content-Type':'application/json'},body:JSON.stringify({sql}),redirect:'error',signal:AbortSignal.timeout(20000)}).then(async r=>({http:r.status,j:await r.json().catch(()=>null)})).catch(()=>({http:0,j:null}));
+          const result=query.j?.result?.[0],rows=Array.isArray(result?.results)?result.results:[],countByOutcome={},finished=[],req=[],secs=[],daily={};
+          for(const x of rows){
+            const key=String(x.outcome??'null');countByOutcome[key]=(countByOutcome[key]||0)+1;
+            const calls=Number(x.requests),start=Date.parse(String(x.startedAt||'')),end=Date.parse(String(x.finishedAt||''));
+            if(Number.isFinite(calls)&&calls>=0)req.push(calls);
+            if(Number.isFinite(start)&&Number.isFinite(end)&&end>=start)secs.push((end-start)/1000);
+            if(key==='completed'&&x.completedAt&&Number.isFinite(Date.parse(x.completedAt)))finished.push(new Date(x.completedAt).toISOString());
+            const day=String(x.startedAt||'').slice(0,10);if(/^2026-10-\d\d$/.test(day)){daily[day]??={jobs:0,requests:0,complete:0};daily[day].jobs++;daily[day].requests+=Number.isFinite(calls)?calls:0;daily[day].complete+=key==='completed'?1:0;}
+          }
+          const sorted=finished.slice().sort(),intervalHours=sorted.slice(1).map((x,i)=>(Date.parse(x)-Date.parse(sorted[i]))/3600000),sum=x=>x.reduce((n,a)=>n+a,0),median=x=>x.length?x.slice().sort((a,b)=>a-b)[Math.floor(x.length/2)]:null;
+          const pass=query.http===200&&query.j?.success===true&&Array.isArray(result?.results)&&result.meta?.rows_written===0&&rows.length<160;
+          print('measure',{http:query.http,pass,recordedJobs:rows.length,truncated:rows.length>=160,rowsRead:result?.meta?.rows_read??null,rowsWritten:result?.meta?.rows_written??null,outcomes:countByOutcome,requestsTotal:sum(req),requestsMedianPerJob:median(req),requestsMaxPerJob:req.length?Math.max(...req):null,jobWallMedianSeconds:median(secs),completedCycles:sorted.length,completedAt:sorted.slice(-12),completedGapsHours:intervalHours.slice(-11).map(x=>+x.toFixed(3)),perDay:daily,notBilledWorkerInbound:true,notDollarSavings:true});
+          print('verdict',{state:pass?'PASS_OBSERVATION':'HOLD',getCalls:1,d1Selects:1,d1RowsWritten:result?.meta?.rows_written??null,workerWrites:0,sourceJobs:0,cloudflareSettingsChanges:0,deploys:0,productionFeatureChanges:0});
+          if(!pass)process.exitCode=1;
+          NODE
