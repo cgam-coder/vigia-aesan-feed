@@ -188,3 +188,75 @@ test('unknown native ownership never falls through to legacy audit or ingestion 
   const calls=[];const report=await runWatchdog({url:'https://local.invalid/api/freshness',token:'fixture-secret',clock:()=>NOW,monotonic:()=>0,log:()=>{},fetchImpl:async(url,options)=>{calls.push(options.method);if(new URL(url).searchParams.has('policy'))return response(200,policy);throw Error('lost control read');}});
   assert.equal(report.allFresh,false);assert.deepEqual(calls,['GET','GET']);
 });
+
+
+test('V20 channels: recent observed separately while three historical holds remain and global still fails',async()=>{
+  const calls=[],states=SOURCES.map(fresh);
+  for(const name of ['RAPNA','RASFF','OECD']){
+    const i=SOURCES.indexOf(name);
+    states[i]={...states[i],status:'stale',revisionStatus:'stale',revisionLastSuccessAt:stamp(-400*60_000)};
+  }
+  const native={mode:'five-source-coordinated',outcome:'observed',officialParityCertified:false,activeLease:false,
+    state:{ownershipVerifiedAt:stamp(-30*60_000),lastWakeAt:stamp(-60_000),
+      attempts:Object.fromEntries(SOURCES.map(s=>[s,{outcome:'completed'}])),
+      lastAudit:{finishedAt:stamp(-60_000),allFresh:false,states}}};
+  const report=await runWatchdog({url:'https://local.invalid/api/freshness',token:'fixture-secret',
+    clock:()=>NOW,monotonic:()=>0,log:()=>{},fetchImpl:async(url,options)=>{
+      calls.push({url:String(url),method:options.method});
+      assert.equal(options.method,'GET');
+      return response(200,new URL(url).searchParams.has('policy')?policy:native);
+    }});
+  assert.equal(report.allFresh,false);
+  assert.equal(report.channels.coordinator.verdict,'OBSERVED');
+  assert.equal(report.channels.recent.verdict,'OBSERVED');
+  assert.equal(report.channels.historical.verdict,'HOLD');
+  assert.deepEqual(report.channels.historical.sources.filter(s=>s.verdict==='HOLD').map(s=>s.source),['RAPNA','RASFF','OECD']);
+  assert.equal(report.channels.recent.officialFreshnessCertified,false);
+  assert.equal(report.channels.historical.officialFreshnessCertified,false);
+  assert.equal(report.channels.recoveryAuthorized,false);
+  assert.equal(report.channels.zeroWrite,true);
+  assert.equal(calls.length,2);
+});
+
+test('V20 channels: stale coordinator, missing recent completion, active lease and invalid parity fail closed',async()=>{
+  const base={mode:'five-source-coordinated',outcome:'observed',officialParityCertified:false,activeLease:false,
+    state:{ownershipVerifiedAt:stamp(-30*60_000),lastWakeAt:stamp(-60_000),
+      attempts:Object.fromEntries(SOURCES.map(s=>[s,{outcome:'completed'}])),
+      lastAudit:{finishedAt:stamp(-60_000),allFresh:false,states:SOURCES.map(fresh)}}};
+  for(const [name,update,expectedRecent] of [
+    ['stale-heartbeat', n=>{n.state.lastWakeAt=stamp(-16*60_000);},'HOLD'],
+    ['missing-attempt', n=>{delete n.state.attempts.AESAN;},'UNKNOWN'],
+    ['unfinished-attempt', n=>{n.state.attempts.RASFF.outcome='unknown';},'HOLD'],
+    ['active-control-lease', n=>{n.activeLease=true;},'HOLD'],
+    ['identity-mismatch', n=>{n.state.lastAudit.states[4].latestIdentityParity=false;},'HOLD'],
+    ['duplicate-source', n=>{n.state.lastAudit.states[4]=n.state.lastAudit.states[0];},'UNKNOWN'],
+    ['expired-official-audit', n=>{n.state.lastAudit.finishedAt=stamp(-16*60_000);},'HOLD'],
+  ]){
+    const native=structuredClone(base);update(native);
+    const report=await runWatchdog({url:'https://local.invalid/api/freshness',token:'fixture-secret',
+      clock:()=>NOW,monotonic:()=>0,log:()=>{},fetchImpl:async(url,options)=>{
+        assert.equal(options.method,'GET');
+        return response(200,new URL(url).searchParams.has('policy')?policy:native);
+      }});
+    assert.equal(report.allFresh,false,name);
+    assert.equal(report.channels.recent.verdict,expectedRecent,name);
+    assert.equal(report.channels.recoveryAuthorized,false,name);
+    assert.equal(report.calls.length,2,name);
+  }
+});
+
+test('V20 channels: healthy recent and historical is only observed, never a new official certificate',async()=>{
+  const native={mode:'five-source-coordinated',outcome:'observed',officialParityCertified:true,activeLease:false,
+    state:{ownershipVerifiedAt:stamp(-30*60_000),lastWakeAt:stamp(-60_000),
+      attempts:Object.fromEntries(SOURCES.map(s=>[s,{outcome:'completed'}])),
+      lastAudit:{finishedAt:stamp(-60_000),allFresh:true,states:SOURCES.map(fresh)}}};
+  const report=await runWatchdog({url:'https://local.invalid/api/freshness',token:'fixture-secret',
+    clock:()=>NOW,monotonic:()=>0,log:()=>{},fetchImpl:async(url,options)=>{
+      assert.equal(options.method,'GET');
+      return response(200,new URL(url).searchParams.has('policy')?policy:native);
+    }});
+  assert.equal(report.allFresh,true);
+  assert.equal(report.channels.recent.verdict,'OBSERVED');
+  assert.equal(report.channels.historical.verdict,'OBSERVED');
+  assert.equal(report.channels.recent.officialFreshnessCertified,false);
+});

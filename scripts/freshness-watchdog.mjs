@@ -42,6 +42,59 @@ export function assess(state, source, policy, now) {
     recentFresh, revisionFresh, parity, reason:state.error === null ? null : 'runtime-source-error' };
 }
 
+
+// Observation-only channel split. It never authorizes recovery or replaces allFresh.
+// OBSERVED means current evidence was checked, NOT official five-source certification.
+export function summarizeNativeChannels(nativeBody, policies, now) {
+  const audit=nativeBody?.state?.lastAudit;
+  const wakeAge=age(nativeBody?.state?.lastWakeAt,now);
+  const auditAge=age(audit?.finishedAt,now);
+  const validPolicy=policies instanceof Map && policies.size===SOURCES.length;
+  const raw=Array.isArray(audit?.states)?audit.states:[];
+  const evidenceComplete=raw.length===SOURCES.length &&
+    new Set(raw.map(s=>s?.source)).size===SOURCES.length &&
+    SOURCES.every(s=>raw.some(row=>row?.source===s));
+  const connected=nativeBody?.mode==='five-source-coordinated' && nativeBody?.outcome==='observed' &&
+    nativeBody?.activeLease===false && validPolicy && evidenceComplete &&
+    age(nativeBody?.state?.ownershipVerifiedAt,now)!==null &&
+    wakeAge!==null && wakeAge<=15 && auditAge!==null && auditAge<=15;
+  const coordinatorVerdict=!nativeBody||!validPolicy||!evidenceComplete||wakeAge===null||auditAge===null
+    ? 'UNKNOWN' : connected?'OBSERVED':'HOLD';
+  const recent=[],historical=[];
+  for(const source of SOURCES){
+    const state=raw.find(row=>row?.source===source);
+    const policy=policies?.get(source);
+    const assessment=state&&policy?assess(state,source,policy,now):null;
+    const checkedAge=age(state?.checkedAt,now);
+    const attempt=nativeBody?.state?.attempts?.[source];
+    const reliable=assessment&&assessment.verdict!=='UNKNOWN'&&
+      checkedAge!==null&&checkedAge<=policy.recent.freshMaxAgeMinutes &&
+      assessment.recentFresh===true&&assessment.parity===true&&state?.error===null&&
+      state.activeLease===false && ['fresh','stale'].includes(state.status) &&
+      (state.status!=='stale'||state.revisionStatus==='stale') &&
+      attempt?.outcome==='completed';
+    const missing=!assessment||assessment.verdict==='UNKNOWN'||checkedAge===null||!attempt;
+    recent.push({source,verdict:missing?'UNKNOWN':reliable?'OBSERVED':'HOLD'});
+    const revisionVerdict=!policy||!assessment||assessment.verdict==='UNKNOWN'
+      ? 'UNKNOWN' : !policy.revision.required
+        ? state.revisionStatus==='not-required'?'NOT_REQUIRED':'HOLD'
+        : state.revisionStatus==='unknown'?'UNKNOWN':assessment.revisionFresh?'OBSERVED':'HOLD';
+    historical.push({source,verdict:revisionVerdict});
+  }
+  const combine=(entries,allowed)=>entries.some(x=>x.verdict==='UNKNOWN')?'UNKNOWN'
+    :entries.every(x=>allowed.includes(x.verdict))?'OBSERVED':'HOLD';
+  const recentVerdict=coordinatorVerdict==='UNKNOWN'?'UNKNOWN'
+    :coordinatorVerdict==='HOLD'?'HOLD':combine(recent,['OBSERVED']);
+  const historicalVerdict=coordinatorVerdict==='UNKNOWN'?'UNKNOWN'
+    :coordinatorVerdict==='HOLD'?'HOLD':combine(historical,['OBSERVED','NOT_REQUIRED']);
+  return {
+    coordinator:{verdict:coordinatorVerdict,wakeAgeMinutes:wakeAge,auditAgeMinutes:auditAge},
+    recent:{verdict:recentVerdict,officialFreshnessCertified:false,sources:recent},
+    historical:{verdict:historicalVerdict,officialFreshnessCertified:false,sources:historical},
+    recoveryAuthorized:false,zeroWrite:true,
+  };
+}
+
 export function assessSilence(runs, now, maxSilenceMinutes) {
   if (!Number.isFinite(now) || !Number.isFinite(maxSilenceMinutes) || maxSilenceMinutes <= 0 || !Array.isArray(runs))
     return { verdict:'UNKNOWN', reason:'invalid-observation' };
@@ -116,7 +169,8 @@ export async function runWatchdog({ url, token, fetchImpl=fetch, clock=Date.now,
       states.push(policies&&state?assess(state,source,policies.get(source),clock()):{source,verdict:'UNKNOWN',reason:'missing-native-official-evidence'});
     }
     const allFresh=Boolean(nativeMode&&native.http===200&&native.body.outcome==='observed'&&native.body.officialParityCertified===true&&native.body.activeLease===false&&recentAudit&&seen.size===5&&states.every(s=>s.verdict==='PASS'));
-    const report={states,policyVersion:policies?1:null,allFresh,zeroWrite:true,supervisor:'github-observes-cloudflare',recoveryOutcomeUncertain:false,auditOutcomeUncertain:false,authBlocked,elapsedMs:monotonic()-started,calls};
+    const channels=summarizeNativeChannels(native.body,policies,clock());
+    const report={states,channels,policyVersion:policies?1:null,allFresh,zeroWrite:true,supervisor:'github-observes-cloudflare',recoveryOutcomeUncertain:false,auditOutcomeUncertain:false,authBlocked,elapsedMs:monotonic()-started,calls};
     log({phase:'summary',...report});return report;
   }
   const policyResult = await request(freshnessUrl({ observe:'1', policy:'1' }), 'GET', 'policy', null, BUDGET.read);
