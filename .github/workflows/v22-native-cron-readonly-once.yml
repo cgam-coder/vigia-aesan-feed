@@ -1,4 +1,4 @@
-name: V22 native Cloudflare scheduled-event continuity (GET/GraphQL-only)
+name: V22 native scheduled-slot coverage audit (read only)
 on:
   push:
     branches: [audit/v22-native-cron-scheduled-read-20261011]
@@ -13,67 +13,69 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     steps:
-      - name: Read Worker schedule and exact scheduled invocations only
+      - name: Aggregate five-minute Cron slots from exact scheduled event dataset
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         shell: bash
         run: |
           node --input-type=module <<'NODE'
           const token=process.env.CF_TOKEN,account='9c1807c68493f14259248b5f5782cc6f';
-          const out=(label,values)=>console.log('V22_NATIVE_CRON '+JSON.stringify({label,...values}));
-          const base='https://api.cloudflare.com/client/v4/accounts/'+account+'/workers/scripts/';
-          if(!token){out('gate',{ok:false,reason:'missing-token'});process.exitCode=1;process.exit();}
-          async function api(url,body){
+          const out=(label,values)=>console.log('V22_CRON_SLOTS '+JSON.stringify({label,...values}));
+          if(!token){out('error',{reason:'missing-token'});process.exitCode=1;process.exit();}
+          const req=async(url,body)=>{
             try{const r=await fetch(url,{method:body?'POST':'GET',redirect:'error',
               headers:{Authorization:'Bearer '+token,Accept:'application/json',...(body?{'Content-Type':'application/json'}:{})},
-              ...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(14000)});
-              const j=await r.json().catch(()=>null);
-              return {http:r.status,ok:r.ok&&j?.success!==false,body:j};
-            }catch{return{http:0,ok:false,body:null};}
+              ...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(12000)});
+              return {status:r.status,j:await r.json().catch(()=>null)};
+            }catch{return {status:0,j:null};}
+          };
+          const resp=await req('https://api.cloudflare.com/client/v4/accounts/'+account+'/workers/scripts/vigia-runtime/schedules');
+          const cron=Array.isArray(resp.j?.result?.schedules)?resp.j.result.schedules.map(x=>x.cron):null;
+          out('schedule',{http:resp.status,crons:cron});
+          const from=Date.parse('2026-10-04T02:00:00Z'),to=Date.parse('2026-10-11T02:00:00Z');
+          const mature=Date.parse('2026-10-10T00:00:00Z');
+          const query='query Inv($a:string,$script:string,$start:string,$end:string){viewer{accounts(filter:{accountTag:$a}){workersInvocationsScheduled(limit:400,filter:{scriptName:$script,datetime_geq:$start,datetime_lt:$end}){cron scriptName datetime scheduledDatetime status}}}}';
+          let all=[],ok=true;
+          for(let s=from;s<to;){
+            const next=Math.min(to,Math.floor(s/86400000)*86400000+86400000);
+            const vals={a:account,script:'vigia-runtime',start:new Date(s).toISOString(),end:new Date(next).toISOString()};
+            const r=await req('https://api.cloudflare.com/client/v4/graphql',{query,variables:vals});
+            const data=r.j?.data?.viewer?.accounts?.[0]?.workersInvocationsScheduled,errors=r.j?.errors?.map(x=>String(x.message||'graphql').slice(0,90))||[];
+            const valid=r.status===200&&Array.isArray(data)&&data.length<400&&errors.length===0;
+            out('window',{start:vals.start,end:vals.end,http:r.status,rows:data?.length??null,valid,errors});
+            if(!valid){ok=false;break;}all.push(...data);s=next;
           }
-          let scheduleVerified=false;
-          for (const script of ['vigia-runtime','vigia-source-runner']){
-            const r=await api(base+script+'/schedules');
-            const cron=Array.isArray(r.body?.result?.schedules)?r.body.result.schedules.map(x=>x.cron):null;
-            const ok=r.http===200&&r.body?.success===true&&Array.isArray(cron);
-            if(script==='vigia-runtime')scheduleVerified=ok&&cron.length===1&&cron[0]==='*/5 * * * *';
-            out('schedule',{script,http:r.http,available:ok,crons:cron,expected:script==='vigia-runtime'?'*/5 * * * *':'none'});
+          const matched=all.filter(x=>x.scriptName==='vigia-runtime'&&x.cron==='*/5 * * * *'&&
+            Number.isFinite(Date.parse(x.scheduledDatetime)));
+          const buckets=new Map(),time=[];
+          for(const x of matched){
+            const ms=Date.parse(x.scheduledDatetime),slot=Math.floor(ms/300000)*300000;
+            if(slot<from||slot>=to)continue;
+            const a=buckets.get(slot)??[];a.push(x.status);buckets.set(slot,a);
+            if(Number.isFinite(Date.parse(x.datetime)))time.push((Date.parse(x.datetime)-ms)/60000);
           }
-          const from=Date.parse('2026-10-04T02:00:00.000Z'),to=Date.parse('2026-10-11T02:00:00.000Z');
-          const query='query Chron($a: string,$script: string,$start: string,$end: string){ viewer { accounts(filter:{accountTag:$a}) { workersInvocationsScheduled(limit:400,filter:{scriptName:$script,datetime_geq:$start,datetime_lt:$end}) { scriptName cron scheduledDatetime datetime status } } } }';
-          let all=[],complete=true,errors=[],windowStart=from,requests=0;
-          while(windowStart<to){
-            const windowEnd=Math.min(to,Date.parse(new Date(windowStart).toISOString().slice(0,10)+'T00:00:00.000Z')+86400000);
-            if(windowEnd<=windowStart)break;
-            const start=new Date(windowStart).toISOString(),end=new Date(windowEnd).toISOString();
-            const v={a:account,script:'vigia-runtime',start,end};
-            const r=await api('https://api.cloudflare.com/client/v4/graphql',{query,variables:v});
-            requests++;
-            const data=r.body?.data?.viewer?.accounts?.[0]?.workersInvocationsScheduled;
-            const errs=(r.body?.errors||[]).map(x=>String(x?.message??'graphql-error').slice(0,130)).slice(0,3);
-            const ok=r.http===200&&Array.isArray(data)&&errs.length===0&&data.length<400;
-            out('window',{start,end,http:r.http,valid:ok,rows:Array.isArray(data)?data.length:null,errors:errs});
-            if(!ok){complete=false;errors.push(...errs);break;}
-            all.push(...data);
-            windowStart=windowEnd;
-          }
-          const valid=all.filter(x=>x.scriptName==='vigia-runtime'&&x.cron==='*/5 * * * *'&&
-            Number.isFinite(Date.parse(x.scheduledDatetime))&&Number.isFinite(Date.parse(x.datetime)));
-          const keys=new Set(valid.map(x=>x.scheduledDatetime));
-          const sorted=[...keys].sort((a,b)=>Date.parse(a)-Date.parse(b));
-          const delays=valid.map(x=>(Date.parse(x.datetime)-Date.parse(x.scheduledDatetime))/60000).sort((a,b)=>a-b);
-          const gaps=sorted.slice(1).map((x,i)=>(Date.parse(x)-Date.parse(sorted[i]))/60000).sort((a,b)=>a-b);
-          const mid=a=>a.length?a[Math.floor((a.length-1)/2)]:null;
-          const statuses={};for(const x of valid)statuses[String(x.status)]=(statuses[String(x.status)]||0)+1;
-          const dates={};for(const x of sorted){const day=x.slice(0,10);dates[day]=(dates[day]||0)+1;}
-          const offGrid=sorted.filter(x=>{const d=new Date(x);return d.getUTCMinutes()%5!==0||d.getUTCSeconds()!==0}).length;
-          const outcome=complete&&scheduleVerified&&all.length===valid.length&&sorted.length===2016&&offGrid===0;
-          out('summary',{scheduleVerified,graphqlAvailable:complete,requests,rowsReturned:all.length,
-            expected:2016,uniqueScheduled:sorted.length,duplicated:valid.length-sorted.length,offGrid,
-            first:sorted[0]??null,last:sorted.at(-1)??null,statuses,perUtcDate:dates,
-            medianDelayMinutes:mid(delays),maxDelayMinutes:delays.at(-1)??null,
-            medianGapMinutes:mid(gaps),maxGapMinutes:gaps.at(-1)??null,
-            verdict:outcome?'FULL_COVERAGE_OBSERVED':complete?'PARTIAL_OR_MISSING_SCHEDULED_INVOCATIONS':'HOLD_DATASET_UNAVAILABLE',
-            noWrites:true});
-          if(!outcome)process.exitCode=1;
+          const summarize=(start,end)=>{
+            const missing=[],errors=[],byDate={};let successSlots=0,duplicates=0,covered=0;
+            for(let t=start;t<end;t+=300000){
+              const date=new Date(t).toISOString().slice(0,10);
+              byDate[date]??={covered:0,missing:0,duplicates:0,errorOnly:0};
+              const status=buckets.get(t)||[];
+              if(status.length===0){missing.push(new Date(t).toISOString());byDate[date].missing++;continue;}
+              covered++;byDate[date].covered++;duplicates+=Math.max(0,status.length-1);byDate[date].duplicates+=Math.max(0,status.length-1);
+              if(status.includes('success'))successSlots++;else{errors.push({slot:new Date(t).toISOString(),statuses:status.slice(0,3)});byDate[date].errorOnly++;}
+            }
+            return {expected:(end-start)/300000,covered,missing:missing.length,successSlots,errorOnly:errors.length,
+              duplicateEvents:duplicates,longestGapMinutes:(()=>{
+                let best=0,cur=0;for(let t=start;t<end;t+=300000){if(!buckets.has(t)){cur+=5;best=Math.max(best,cur);}else cur=0;}return best;
+              })(),firstMissing:missing.slice(0,10),firstErrors:errors.slice(0,10),perUtcDate:byDate};
+          };
+          time.sort((a,b)=>a-b);
+          const status={};for(const x of matched)status[x.status]=(status[x.status]||0)+1;
+          out('analysis',{apiComplete:ok,cronVerified:cron?.length===1&&cron[0]==='*/5 * * * *',
+            matchedEvents:matched.length,latestScheduledAt:matched.length?matched.map(x=>x.scheduledDatetime).sort().at(-1):null,
+            status,medianDispatchMinutes:time.length?time[Math.floor((time.length-1)/2)]:null,
+            matureCutoff:new Date(mature).toISOString(),mature:summarize(from,mature),full:summarize(from,to),
+            note:'Scheduled rows can arrive late in Analytics; missing slots near window end must not be called skipped cron events without ingestion-lag exclusion',
+            zeroWrite:true});
+          if(!ok||!Array.isArray(cron))process.exitCode=1;
           NODE
