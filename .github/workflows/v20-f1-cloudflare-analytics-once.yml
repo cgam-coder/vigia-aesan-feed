@@ -1,0 +1,78 @@
+name: V20 F1 one-shot Cloudflare consumption analytics (read only)
+on:
+  push:
+    branches: [audit/v20-f1-consumption-readonly-20261011]
+    paths: [.github/workflows/v20-f1-cloudflare-analytics-once.yml]
+permissions: { contents: read }
+concurrency:
+  group: vigia-v20-f1-analytics-20261011
+  cancel-in-progress: false
+jobs:
+  analytics:
+    if: github.repository == 'cgam-coder/vigia-aesan-feed' && github.actor == 'cgam-coder' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: GET billing and read-only GraphQL metrics, no D1 writes
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_BILLING_READ_TOKEN: ${{ secrets.CF_BILLING_AUDIT_READ_ONLY }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const cf=process.env.CF_TOKEN, billing=process.env.CF_BILLING_READ_TOKEN;
+          const account='9c1807c68493f14259248b5f5782cc6f';
+          const database='55596003-1b90-4f66-aad8-decb21205f13';
+          const output=(label,props)=>console.log('V20_F1_METRIC '+JSON.stringify({label,...props}));
+          const valid=n=>typeof n==='number'&&Number.isFinite(n)?n:null;
+          async function gql(query,variables,token){
+            if(!token)return {http:0,errors:['missing-token'],data:null};
+            try{
+              const r=await fetch('https://api.cloudflare.com/client/v4/graphql',{method:'POST',redirect:'error',
+                headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',Accept:'application/json'},
+                body:JSON.stringify({query,variables}),signal:AbortSignal.timeout(18000)});
+              const j=await r.json().catch(()=>null);
+              return {http:r.status,errors:Array.isArray(j?.errors)?j.errors.map(e=>String(e?.message??'').slice(0,90)).slice(0,3):[],data:r.ok?j?.data??null:null};
+            }catch{return {http:0,errors:['transport-or-timeout'],data:null};}
+          }
+          const d1Query='query D1Metrics($accountTag: string!, $db: string, $from: Date, $to: Date) { viewer { accounts(filter: {accountTag: $accountTag}) { d1AnalyticsAdaptiveGroups(limit: 15, filter: {date_geq:$from,date_leq:$to,databaseId:$db},orderBy:[date_DESC]) { sum {readQueries writeQueries rowsRead rowsWritten} dimensions {date databaseId} } } } }';
+          const d1Vars={accountTag:account,db:database,from:'2026-10-04',to:'2026-10-10'};
+          const d1=await gql(d1Query,d1Vars,cf);
+          const d1Rows=d1.data?.viewer?.accounts?.[0]?.d1AnalyticsAdaptiveGroups;
+          output('d1_daily',{http:d1.http,errors:d1.errors,available:Array.isArray(d1Rows),dateRange:['2026-10-04','2026-10-10'],
+            rows:Array.isArray(d1Rows)?d1Rows.slice(0,9).map(row=>({
+              date:typeof row.dimensions?.date==='string'?row.dimensions.date:null,
+              readQueries:valid(row.sum?.readQueries),writeQueries:valid(row.sum?.writeQueries),
+              rowsRead:valid(row.sum?.rowsRead),rowsWritten:valid(row.sum?.rowsWritten)
+            })):[]});
+          const workerQuery='query WorkerMetrics($accountTag: string, $from: string, $to: string, $script: string) {viewer {accounts(filter:{accountTag:$accountTag}) {workersInvocationsAdaptive(limit:500,filter:{scriptName:$script,datetime_geq:$from,datetime_leq:$to}) {sum {requests errors subrequests} quantiles {cpuTimeP50 cpuTimeP99} dimensions {datetime scriptName status} }}}}';
+          const window={accountTag:account,from:'2026-10-10T00:00:00.000Z',to:'2026-10-11T02:00:00.000Z'};
+          for(const script of ['vigia-runtime','vigia-source-runner']){
+            const w=await gql(workerQuery,{...window,script},cf);
+            const rows=w.data?.viewer?.accounts?.[0]?.workersInvocationsAdaptive;
+            const ordered=Array.isArray(rows)?rows.slice().sort((a,b)=>String(a.dimensions?.datetime).localeCompare(String(b.dimensions?.datetime))):[];
+            const sums=ordered.reduce((o,r)=>({requests:o.requests+(valid(r.sum?.requests)??0),errors:o.errors+(valid(r.sum?.errors)??0),subrequests:o.subrequests+(valid(r.sum?.subrequests)??0)}),{requests:0,errors:0,subrequests:0});
+            output('worker_sample',{http:w.http,errors:w.errors,script,rowsReturned:ordered.length,limit:500,notBillingTotal:true,
+              period:[window.from,window.to],firstTimestamp:ordered[0]?.dimensions?.datetime??null,
+              lastTimestamp:ordered.at(-1)?.dimensions?.datetime??null,observedSum:sums,
+              lastCpuP50:valid(ordered.at(-1)?.quantiles?.cpuTimeP50),lastCpuP99:valid(ordered.at(-1)?.quantiles?.cpuTimeP99)});
+          }
+          if(billing){
+            try{
+              const r=await fetch('https://api.cloudflare.com/client/v4/accounts/'+account+'/billable-usage',{
+                method:'GET',redirect:'error',headers:{Authorization:'Bearer '+billing,Accept:'application/json'},signal:AbortSignal.timeout(15000)});
+              const j=await r.json().catch(()=>null),a=Array.isArray(j?.result)?j.result:[];
+              const data=new Map();
+              for(const x of a){
+                const label=String(x.ServiceName??x.ProductName??x.Service??x.Product??'').toLowerCase();
+                const type=/d1|database/.test(label)?'D1':/worker/.test(label)?'Workers':'other';
+                const day=String(x.BillingPeriodStart??x.ChargePeriodStart??'').slice(0,10);
+                if(!/^2026-(?:09|10)-\d\d$/.test(day))continue;
+                const sum=data.get(type)??{rows:0,billedSample:0};sum.rows++;sum.billedSample+=(valid(x.BilledCost)??0);data.set(type,sum);
+              }
+              output('billing_sample',{http:r.status,success:r.ok&&j?.success===true,items:a.length,
+                grouped:[...data.entries()].map(([type,v])=>({type,rows:v.rows,billedCostSample:Number(v.billedSample.toFixed(6))})),
+                note:'Sample may span periods, NOT invoice'});
+            }catch{output('billing_sample',{http:0,available:false});}
+          }
+          NODE
