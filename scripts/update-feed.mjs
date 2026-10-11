@@ -230,7 +230,13 @@ async function main() {
   // The search cards do not carry idAlert. Cross-check every preserved identity
   // against the official publication page, including archived members.
   const members = new Map(enriched.alerts.flatMap(publicationMembers).map((member) => [member.url, member]));
-  await mapLimit([...members.values()], 3, async (member) => {
+  // Pages observed in this recent cycle have already been fetched and parsed.
+  // Defer identity-only fetches for unobserved historical pages to FULL_HISTORY,
+  // which retains its complete official URL-to-UUID cross-check unchanged.
+  const observedPaths = new Set(cards.map((card) => officialPagePath(card.url)));
+  const identityChecks = FULL_HISTORY ? [...members.values()]
+    : [...members.values()].filter((member) => observedPaths.has(officialPagePath(member.url)));
+  await mapLimit(identityChecks, 3, async (member) => {
     const official = sourceIdentityForHtml(await loadDetailHtml(member.url), member.url);
     if (official.sourceRecordId !== member.sourceRecordId || official.sourceRecordIdType !== member.sourceRecordIdType)
       throw new Error(`AESAN_TAXONOMY_DRIFT URL↔UUID conflict ${member.url}`);
@@ -246,7 +252,8 @@ async function main() {
     await rm(temporary, { force:true });
   }
   console.log(`AESAN_TAXONOMY ${JSON.stringify({ metrics:taxonomy.metrics, diagnostics,
-    pages:taxonomy.provenance.length - 2, publications:members.size })}`);
+    pages:taxonomy.provenance.length - 2, publications:members.size,
+    identityChecks:identityChecks.length, archiveChecksDeferred:members.size - identityChecks.length })}`);
   console.log(JSON.stringify({
     source:AESAN_LIST_URL,
     mode:FULL_HISTORY ? "full-history" : "recent",

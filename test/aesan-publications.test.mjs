@@ -421,3 +421,31 @@ test("real CLI: incomplete landing card hydration reuses the same fetched detail
   assert.equal(result.called.filter((url) => new URL(url).pathname === "/alertas/2026_26").length, 1);
   assert.equal(result.feed.alerts[0].reference, earlier.reference);
 });
+
+
+test("recent producer defers unobserved identity-only archive fetches, full-history retains complete checks",async()=>{
+  const seed=JSON.parse(await readFile(new URL("../feed.json",import.meta.url),"utf8"));
+  const routes=recentRoutes(Array(20).fill(earlier));
+  const observedPath=new URL(earlier.url).pathname;
+  const old=seed.alerts.find(x=>new URL(x.url).pathname!==observedPath &&
+    new URL(x.url).pathname!==new URL(later.url).pathname);
+  assert.ok(old,"seed contains an older publication not in the recent cards");
+  const archivePath=new URL(old.url).pathname;
+  const recent=await cliRun(seed,routes);
+  assert.equal(recent.status,0,recent.stderr);
+  assert.deepEqual(recent.feed.alerts.find(x=>x.id===old.id),old);
+  assert.equal(recent.called.filter(url=>new URL(url).pathname===archivePath).length,0);
+  assert.equal(recent.called.filter(url=>new URL(url).pathname===observedPath).length,1);
+  const full=await cliRun(seed,routes,true);
+  assert.equal(full.status,0,full.stderr);
+  assert.equal(full.called.filter(url=>new URL(url).pathname===archivePath).length,1);
+  assert.deepEqual(full.feed.alerts.find(x=>x.id===old.id),old);
+  for(const result of [recent,full]){
+    const matched=result.stdout.match(/AESAN_TAXONOMY (\{[^\n]+\})/u);
+    assert.ok(matched,"mode-specific identity check counts are emitted");
+    const stats=JSON.parse(matched[1]);
+    assert.equal(stats.identityChecks+stats.archiveChecksDeferred,stats.publications);
+    if(result===full){assert.equal(stats.archiveChecksDeferred,0);assert.equal(stats.identityChecks,stats.publications);}
+    else assert.ok(stats.archiveChecksDeferred>0);
+  }
+});
