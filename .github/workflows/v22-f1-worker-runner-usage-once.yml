@@ -1,4 +1,4 @@
-name: V22 F1 bounded Workers + Runner resource audit (read only)
+name: V22 F1 Workers CPU daily attribution (read only)
 on:
   push:
     branches: [audit/v22-f1-worker-runner-cpu-20261011]
@@ -13,45 +13,42 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     steps:
-      - name: Query account and per-script CPU, requests and subrequests; no D1 access
+      - name: Aggregate Worker CPU by UTC date and script, no runtime/D1 queries
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         shell: bash
         run: |
           node --input-type=module <<'NODE'
           const token=process.env.CF_TOKEN,account='9c1807c68493f14259248b5f5782cc6f';
-          const out=x=>console.log('V22_F1_CPU '+JSON.stringify(x));
-          if(!token){out({kind:'gate',state:'HOLD',reason:'token-unavailable'});process.exitCode=1;process.exit();}
-          const q='query Usage($accountTag:string,$start:string,$end:string){viewer{accounts(filter:{accountTag:$accountTag}){all:workersInvocationsAdaptive(limit:1,filter:{datetime_geq:$start,datetime_lt:$end}){sum{requests errors subrequests cpuTimeUs} quantiles{cpuTimeP50 cpuTimeP99}}runtime:workersInvocationsAdaptive(limit:1,filter:{datetime_geq:$start,datetime_lt:$end,scriptName:"vigia-runtime"}){sum{requests errors subrequests cpuTimeUs} quantiles{cpuTimeP50 cpuTimeP99}}runner:workersInvocationsAdaptive(limit:1,filter:{datetime_geq:$start,datetime_lt:$end,scriptName:"vigia-source-runner"}){sum{requests errors subrequests cpuTimeUs} quantiles{cpuTimeP50 cpuTimeP99}}}}}';
-          const periods=[['2026-09-25T00:00:00Z','2026-10-01T00:00:00Z'],
-                         ['2026-10-01T00:00:00Z','2026-10-11T00:00:00Z']];
-          let complete=true;
-          for(const [start,end] of periods){
-            try {
-              const r=await fetch('https://api.cloudflare.com/client/v4/graphql',{method:'POST',redirect:'error',
-                headers:{Authorization:'Bearer '+token,Accept:'application/json','Content-Type':'application/json'},
-                body:JSON.stringify({query:q,variables:{accountTag:account,start,end}}),signal:AbortSignal.timeout(20000)});
-              const j=await r.json().catch(()=>null),row=j?.data?.viewer?.accounts?.[0];
-              const errors=(j?.errors??[]).map(x=>String(x?.message||'').slice(0,110)).slice(0,4);
-              const valid=r.status===200&&row&&errors.length===0&&
-                ['all','runtime','runner'].every(k=>Array.isArray(row[k])&&row[k].length<=1);
-              const metrics={};
-              if(valid)for(const k of ['all','runtime','runner']){
-                const item=row[k]?.[0],sum=item?.sum??{},qt=item?.quantiles??{};
-                metrics[k]={requests:Number.isFinite(sum.requests)?sum.requests:null,
-                  errors:Number.isFinite(sum.errors)?sum.errors:null,
-                  subrequests:Number.isFinite(sum.subrequests)?sum.subrequests:null,
-                  cpuTimeUs:Number.isFinite(sum.cpuTimeUs)?sum.cpuTimeUs:null,
-                  cpuTimeP50:typeof qt.cpuTimeP50==='number'?qt.cpuTimeP50:null,
-                  cpuTimeP99:typeof qt.cpuTimeP99==='number'?qt.cpuTimeP99:null};
-              }
-              out({kind:'period',start,end,http:r.status,valid,metrics,errors,
-                adaptiveSample:true,source:'workersInvocationsAdaptive',noWrites:true});
-              if(!valid)complete=false;
-            }catch {out({kind:'period',start,end,valid:false,reason:'transport',noWrites:true});complete=false;}
-          }
-          out({kind:'gate',state:complete?'PASS':'HOLD',graphqlCalls:2,
-            noDeploy:true,noD1Writes:true,noRuntimeRequests:true,
-            note:'CPU us estimate and Adaptive sampled metrics, not monthly invoice; scheduled events and HTTP share per-script requests'});
-          if(!complete)process.exitCode=1;
+          const out=o=>console.log('V22_CPU_DAILY '+JSON.stringify(o));
+          if(!token){out({gate:'HOLD',reason:'token-unavailable'});process.exitCode=1;process.exit();}
+          const q='query Daily($a:string,$start:string,$end:string){viewer{accounts(filter:{accountTag:$a}){workersInvocationsAdaptive(limit:80,filter:{datetime_geq:$start,datetime_lt:$end}){dimensions{date scriptName status}sum{requests errors subrequests cpuTimeUs}}}}}';
+          const start='2026-10-01T00:00:00Z',end='2026-10-11T00:00:00Z';
+          try{
+            const r=await fetch('https://api.cloudflare.com/client/v4/graphql',{method:'POST',redirect:'error',
+              headers:{Authorization:'Bearer '+token,Accept:'application/json','Content-Type':'application/json'},
+              body:JSON.stringify({query:q,variables:{a:account,start,end}}),signal:AbortSignal.timeout(15000)});
+            const j=await r.json().catch(()=>null),rows=j?.data?.viewer?.accounts?.[0]?.workersInvocationsAdaptive;
+            const errors=(j?.errors??[]).map(x=>String(x.message||'').slice(0,130)).slice(0,3);
+            const ok=r.status===200&&Array.isArray(rows)&&rows.length>0&&rows.length<80&&errors.length===0;
+            const buckets={},byStatus={};
+            if(ok)for(const x of rows){
+              const day=String(x.dimensions?.date||''),script=String(x.dimensions?.scriptName||''),status=String(x.dimensions?.status||'');
+              if(!/^2026-10-(0[1-9]|10)$/.test(day))continue;
+              if(!['vigia-runtime','vigia-source-runner'].includes(script))continue;
+              const key=day+'|'+script,b=buckets[key]??{day,script,requests:0,errors:0,cpuMs:0,subrequests:0};
+              b.requests+=Number(x.sum?.requests??0);
+              b.errors+=Number(x.sum?.errors??0);
+              b.cpuMs+=Number(x.sum?.cpuTimeUs??0)/1000;
+              b.subrequests+=Number(x.sum?.subrequests??0);
+              buckets[key]=b;
+              byStatus[status]=(byStatus[status]??0)+Number(x.sum?.requests??0);
+            }
+            const data=Object.values(buckets).sort((a,b)=>a.day.localeCompare(b.day)||a.script.localeCompare(b.script));
+            const total=data.reduce((z,v)=>({requests:z.requests+v.requests,cpuMs:z.cpuMs+v.cpuMs,errors:z.errors+v.errors,subrequests:z.subrequests+v.subrequests}),{requests:0,cpuMs:0,errors:0,subrequests:0});
+            out({state:ok?'PASS':'HOLD',http:r.status,rawRows:rows?.length??null,errors,byDayScript:data,byStatus,totals:total,
+              note:'Adaptive estimates and possibly incomplete daily groups; do not attribute CPU to specific endpoints without independent data',
+              noD1Writes:true,noRuntimeCalls:true,graphqlRequests:1});
+            if(!ok)process.exitCode=1;
+          }catch {out({state:'HOLD',reason:'transport-error',noWrites:true});process.exitCode=1;}
           NODE
