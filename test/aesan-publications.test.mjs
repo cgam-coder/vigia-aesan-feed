@@ -433,13 +433,15 @@ test("recent producer defers unobserved identity-only archive fetches, full-hist
   const archivePath=new URL(old.url).pathname;
   const recent=await cliRun(seed,routes);
   assert.equal(recent.status,0,recent.stderr);
-  assert.deepEqual(recent.feed.alerts.find(x=>x.id===old.id),old);
+  // Taxonomy may independently relabel archived records; source material and
+  // durable publication identity/history must remain byte-equivalent.
+  assert.deepEqual(materialState(recent.feed.alerts.find(x=>x.id===old.id)),materialState(old));
   assert.equal(recent.called.filter(url=>new URL(url).pathname===archivePath).length,0);
   assert.equal(recent.called.filter(url=>new URL(url).pathname===observedPath).length,1);
   const full=await cliRun(seed,routes,true);
   assert.equal(full.status,0,full.stderr);
   assert.equal(full.called.filter(url=>new URL(url).pathname===archivePath).length,1);
-  assert.deepEqual(full.feed.alerts.find(x=>x.id===old.id),old);
+  assert.deepEqual(materialState(full.feed.alerts.find(x=>x.id===old.id)),materialState(old));
   for(const result of [recent,full]){
     const matched=result.stdout.match(/AESAN_TAXONOMY (\{[^\n]+\})/u);
     assert.ok(matched,"mode-specific identity check counts are emitted");
