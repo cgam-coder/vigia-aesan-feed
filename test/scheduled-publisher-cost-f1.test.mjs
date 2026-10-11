@@ -43,7 +43,7 @@ test("recent cadence and full-history data mode remain unchanged after bounded a
 
 test("full archive checks have exactly four UTC days/week and at most 48h nominal gap",()=>{
   const full=read(".github/workflows/update-full-feed.yml");
-  const match=full.match(/cron: "27 3 \\* \\* ([0-6](?:,[0-6])*)"/u);
+  const match=full.match(/cron: "27 3 \* \* ([0-6](?:,[0-6])*)"/u);
   assert.ok(match,"exact bounded weekly Cron schedule");
   const days=match[1].split(",").map(Number).sort((a,b)=>a-b);
   assert.deepEqual(days,[0,1,3,5]); // Sun, Mon, Wed, Fri
@@ -51,5 +51,5 @@ test("full archive checks have exactly four UTC days/week and at most 48h nomina
   assert.ok(gaps.every(d=>d>0&&d<=2),"no planned gap longer than two days");
   assert.equal(days.length,4);
   assert.match(full,/workflow_dispatch:/u);
-  assert.match(full,/    paths:\n      - "\\.github\/workflows\/update-full-feed.yml"/u);
+  assert.ok(full.includes('    paths:\n      - ".github/workflows/update-full-feed.yml"'));
 });
