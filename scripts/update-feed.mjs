@@ -227,15 +227,19 @@ async function main() {
     legacyIndexesScanned:listing.legacyPages.length,
   });
   const { feed:enriched, diagnostics } = enrichFeedTaxonomy(base, taxonomy, { reviewed });
-  // The search cards do not carry idAlert. Cross-check every preserved identity
-  // against the official publication page, including archived members.
+  // Index cards do not carry idAlert. In recent mode cross-check only the
+  // observed pages; full-history mode cross-checks every retained publication.
   const members = new Map(enriched.alerts.flatMap(publicationMembers).map((member) => [member.url, member]));
   // Pages observed in this recent cycle have already been fetched and parsed.
   // Defer identity-only fetches for unobserved historical pages to FULL_HISTORY,
   // which retains its complete official URL-to-UUID cross-check unchanged.
   const observedPaths = new Set(cards.map((card) => officialPagePath(card.url)));
   const identityChecks = FULL_HISTORY ? [...members.values()]
-    : [...members.values()].filter((member) => observedPaths.has(officialPagePath(member.url)));
+    : [...members.values()].filter((member) => {
+      const path = officialPagePath(member.url);
+      if (!path) throw new Error("AESAN_INVALID_ARCHIVED_PUBLICATION_URL");
+      return observedPaths.has(path);
+    });
   await mapLimit(identityChecks, 3, async (member) => {
     const official = sourceIdentityForHtml(await loadDetailHtml(member.url), member.url);
     if (official.sourceRecordId !== member.sourceRecordId || official.sourceRecordIdType !== member.sourceRecordIdType)
