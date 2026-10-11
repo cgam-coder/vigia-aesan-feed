@@ -6,7 +6,8 @@ on:
     paths:
       - ".github/workflows/update-full-feed.yml"
   schedule:
-    - cron: "27 3 * * *"
+    # Full historical archive 4x/week, max nominal gap 48h; recent feed remains frequent.
+    - cron: "27 3 * * 0,1,3,5"
   workflow_dispatch:
   # A main-branch edit to this workflow is also the bounded recovery trigger when dispatch is unavailable to the operator.
 
