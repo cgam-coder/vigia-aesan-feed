@@ -1,0 +1,70 @@
+name: V22 F1 one-shot HTTP route traffic profile (read only)
+on:
+  push:
+    branches: [audit/v22-f1-traffic-routes-20261011]
+    paths: [.github/workflows/v22-f1-http-paths-readonly-once.yml]
+permissions: { contents: read }
+concurrency:
+  group: v22-f1-http-paths
+  cancel-in-progress: false
+jobs:
+  profile:
+    if: github.repository == 'cgam-coder/vigia-aesan-feed' && github.actor == 'cgam-coder' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Observe only aggregate public HTTP route counts
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const token=process.env.CF_TOKEN,account='9c1807c68493f14259248b5f5782cc6f';
+          const emit=x=>console.log('V22_ROUTES '+JSON.stringify(x));
+          if(!token){emit({stage:'gate',state:'HOLD',reason:'missing-read-token'});process.exitCode=1;process.exit();}
+          let zone;
+          try {
+            const u='https://api.cloudflare.com/client/v4/zones?name=nagamealert.com&per_page=5';
+            const r=await fetch(u,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+token,Accept:'application/json'},signal:AbortSignal.timeout(10000)});
+            const j=await r.json().catch(()=>null),zones=j?.result??[];
+            zone=r.status===200&&j?.success&&Array.isArray(zones)?
+              zones.find(x=>x.name==='nagamealert.com'&&x.account?.id===account)?.id:null;
+            emit({stage:'zone',http:r.status,success:j?.success===true,ownedZone:!!zone,count:Array.isArray(zones)?zones.length:null,permissionsOnly:true});
+          }catch{emit({stage:'zone',http:0,success:false,reason:'transport'});}
+          if(!zone){emit({stage:'gate',state:'HOLD',reason:'zone-not-authorized-or-unavailable',readOnly:true});process.exit(0);}
+          const query='query Routes($z:string,$start:Time,$end:Time) { viewer { zones(filter:{zoneTag:$z}) { groups:httpRequestsAdaptiveGroups(limit:40,orderBy:[count_DESC],filter:{datetime_geq:$start,datetime_lt:$end,requestSource:"eyeball"}) { count dimensions {clientRequestPath clientRequestHTTPHost} } api:httpRequestsAdaptiveGroups(limit:30,orderBy:[count_DESC],filter:{datetime_geq:$start,datetime_lt:$end,requestSource:"eyeball",clientRequestPath_like:"/api/%"}) {count dimensions{clientRequestPath clientRequestHTTPHost}} } } }';
+          const periods=[['2026-10-04T00:00:00Z','2026-10-05T00:00:00Z'],['2026-10-09T00:00:00Z','2026-10-10T00:00:00Z']];
+          const cat=s=>s==='/api/terminal/alerts'?'terminal-alerts':
+            s.startsWith('/api/terminal/')?'terminal-other':
+            s.startsWith('/api/v2/')?'api-v2':
+            s.startsWith('/api/')?'api-other':
+            s.startsWith('/_next/')||s.startsWith('/assets/')?'static-assets':
+            s==='/en'||s==='/en/'||s==='/'?'homepage':
+            s.startsWith('/en/')?'english-pages':
+            s.startsWith('/alertas/')||s.startsWith('/alerta/')?'alert-pages':
+            s.startsWith('/sitemaps/')||s==='/sitemap.xml'?'sitemaps':'other-public';
+          for(const [start,end]of periods) {
+            try{
+              const r=await fetch('https://api.cloudflare.com/client/v4/graphql',{method:'POST',redirect:'error',
+                headers:{Authorization:'Bearer '+token,Accept:'application/json','Content-Type':'application/json'},
+                body:JSON.stringify({query,variables:{z:zone,start,end}}),signal:AbortSignal.timeout(18000)});
+              const j=await r.json().catch(()=>null),row=j?.data?.viewer?.zones?.[0];
+              const err=(j?.errors??[]).map(x=>String(x.message||'').slice(0,140)).slice(0,3);
+              const good=r.status===200&&row&&Array.isArray(row.groups)&&Array.isArray(row.api)&&err.length===0;
+              const summarise=records=>{
+                const sum={};for(const x of records) {
+                  const path=String(x.dimensions?.clientRequestPath||''),host=String(x.dimensions?.clientRequestHTTPHost||'');
+                  if(host!=='nagamealert.com'&&host!=='www.nagamealert.com')continue;
+                  const type=cat(path),n=Number(x.count??0);sum[type]=(sum[type]||0)+n;
+                }return sum;
+              };
+              emit({stage:'query',start,end,http:r.status,ok:!!good,errors:err,
+                groups:good?row.groups.length:0,apiGroups:good?row.api.length:0,
+                byCategoryTop40:good?summarise(row.groups):{},
+                byCategoryApiTop30:good?summarise(row.api):{},
+                note:'Top-N adaptive HTTP groups are not a full zone count, and zone HTTP != Workers invocations; no individual paths or identifiers logged',
+                noRuntimeCalls:true,noD1Operations:true});
+            }catch{emit({stage:'query',start,end,http:0,ok:false,reason:'transport'});}
+          }
+          emit({stage:'gate',readOnly:true,apiCallsMax:3,noD1Writes:true,noDeploy:true});
+          NODE
