@@ -45,7 +45,11 @@ export function assess(state, source, policy, now) {
 
 // Observation-only channel split. It never authorizes recovery or replaces allFresh.
 // OBSERVED means current evidence was checked, NOT official five-source certification.
-export function summarizeNativeChannels(nativeBody, policies, now) {
+export function summarizeNativeChannels(nativeBody, policies, now, transportOk=true) {
+  if(!transportOk)return {coordinator:{verdict:'UNKNOWN',wakeAgeMinutes:null,auditAgeMinutes:null},
+    recent:{verdict:'UNKNOWN',officialFreshnessCertified:false,sources:SOURCES.map(source=>({source,verdict:'UNKNOWN'}))},
+    historical:{verdict:'UNKNOWN',officialFreshnessCertified:false,sources:SOURCES.map(source=>({source,verdict:'UNKNOWN'}))},
+    recoveryAuthorized:false,zeroWrite:true};
   const audit=nativeBody?.state?.lastAudit;
   const wakeAge=age(nativeBody?.state?.lastWakeAt,now);
   const auditAge=age(audit?.finishedAt,now);
@@ -75,10 +79,13 @@ export function summarizeNativeChannels(nativeBody, policies, now) {
       attempt?.outcome==='completed';
     const missing=!assessment||assessment.verdict==='UNKNOWN'||checkedAge===null||!attempt;
     recent.push({source,verdict:missing?'UNKNOWN':reliable?'OBSERVED':'HOLD'});
+    const revisionBlocked=Object.entries(nativeBody?.state?.revisionAttempts??{}).some(([key,attempt])=>
+      key.startsWith(source+':') && (['failed','running','unknown'].includes(attempt?.outcome) ||
+        (Array.isArray(attempt?.pendingDetails)&&attempt.pendingDetails.length>0)));
     const revisionVerdict=!policy||!assessment||assessment.verdict==='UNKNOWN'
       ? 'UNKNOWN' : !policy.revision.required
         ? state.revisionStatus==='not-required'?'NOT_REQUIRED':'HOLD'
-        : state.revisionStatus==='unknown'?'UNKNOWN':assessment.revisionFresh?'OBSERVED':'HOLD';
+        : state.revisionStatus==='unknown'?'UNKNOWN':revisionBlocked?'HOLD':assessment.revisionFresh?'OBSERVED':'HOLD';
     historical.push({source,verdict:revisionVerdict});
   }
   const combine=(entries,allowed)=>entries.some(x=>x.verdict==='UNKNOWN')?'UNKNOWN'
@@ -156,10 +163,10 @@ export async function runWatchdog({ url, token, fetchImpl=fetch, clock=Date.now,
   // This provider observes Cloudflare without invoking ingestion or its watchdog.
   const native=await request(new URL('/api/source-reliability?observe=1',endpoint),'GET','native-heartbeat',null,BUDGET.read);
   const nativeMode=native.ok&&native.body?.mode==='five-source-coordinated';
-  const legacyKnown=native.http===404||native.ok&&native.body?.outcome==='disabled';
+  const legacyKnown=native.http===404||(native.ok&&native.http===200&&native.body?.outcome==='disabled');
   if(nativeMode||!legacyKnown){
     const policyResult=await request(freshnessUrl({observe:'1',policy:'1'}),'GET','policy',null,BUDGET.read);
-    const policies=policyResult.ok?parsePolicy(policyResult.body):null;
+    const policies=policyResult.ok&&policyResult.http===200?parsePolicy(policyResult.body):null;
     const audit=native.body?.state?.lastAudit,seen=new Set(),states=[];
     const recentAudit=audit&&age(audit.finishedAt,clock())!==null&&age(audit.finishedAt,clock())<=15;
     for(const source of SOURCES){
@@ -169,7 +176,7 @@ export async function runWatchdog({ url, token, fetchImpl=fetch, clock=Date.now,
       states.push(policies&&state?assess(state,source,policies.get(source),clock()):{source,verdict:'UNKNOWN',reason:'missing-native-official-evidence'});
     }
     const allFresh=Boolean(nativeMode&&native.http===200&&native.body.outcome==='observed'&&native.body.officialParityCertified===true&&native.body.activeLease===false&&recentAudit&&seen.size===5&&states.every(s=>s.verdict==='PASS'));
-    const channels=summarizeNativeChannels(native.body,policies,clock());
+    const channels=summarizeNativeChannels(native.body,policies,clock(),native.ok&&native.http===200&&policyResult.ok&&policyResult.http===200&&!authBlocked);
     const report={states,channels,policyVersion:policies?1:null,allFresh,zeroWrite:true,supervisor:'github-observes-cloudflare',recoveryOutcomeUncertain:false,auditOutcomeUncertain:false,authBlocked,elapsedMs:monotonic()-started,calls};
     log({phase:'summary',...report});return report;
   }
