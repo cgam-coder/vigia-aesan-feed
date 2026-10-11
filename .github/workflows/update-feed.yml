@@ -3,12 +3,14 @@ name: Update AESAN feed
 on:
   push:
     branches: [main]
+    # Regenerate only when runtime feed inputs or this publisher change.
+    # The independent ci.yml still tests scripts/** and test/** on push/PR.
     paths:
-      - "scripts/**"
-      - "!scripts/revision-control.mjs"
-      - "test/**"
-      - "!test/revision-control.test.mjs"
-      - "!test/revision-control-workflow.test.mjs"
+      - "scripts/update-feed.mjs"
+      - "scripts/aesan.mjs"
+      - "scripts/aesan-publications.mjs"
+      - "scripts/aesan-taxonomy.mjs"
+      - "test/fixtures/aesan-taxonomy-f0-reviewed.json"
       - "package.json"
       - ".github/workflows/update-feed.yml"
   schedule:

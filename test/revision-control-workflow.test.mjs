@@ -34,9 +34,10 @@ test("F4A consumes the shared reliability endpoint and source observe contracts"
 });
 
 test("F4A control-plane-only changes do not trigger AESAN feed regeneration", () => {
-  for (const exclusion of [
-    "!scripts/revision-control.mjs",
-    "!test/revision-control.test.mjs",
-    "!test/revision-control-workflow.test.mjs",
-  ]) assert.match(aesanUpdateWorkflow, new RegExp(exclusion.replaceAll(".", "\\."), "u"));
+  const pushPaths = aesanUpdateWorkflow.split("  push:")[1]?.split("  schedule:")[0] || "";
+  for (const unrelated of [
+    "scripts/revision-control.mjs",
+    "test/revision-control.test.mjs",
+    "test/revision-control-workflow.test.mjs",
+  ]) assert.ok(!pushPaths.includes('"' + unrelated + '"'), unrelated);
 });
