@@ -35,6 +35,9 @@ jobs:
         with:
           node-version: 22
       - run: npm test
+        # Source code and workflows are independently regression-tested by ci.yml.
+        # Avoid repeating immutable offline tests in each scheduled producer run.
+        if: github.event_name != 'schedule'
       - run: npm run update
         env:
           AESAN_FULL_HISTORY: "1"
