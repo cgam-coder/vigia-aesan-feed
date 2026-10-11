@@ -1,0 +1,57 @@
+name: V22 F1 bounded Workers + Runner resource audit (read only)
+on:
+  push:
+    branches: [audit/v22-f1-worker-runner-cpu-20261011]
+    paths: [.github/workflows/v22-f1-worker-runner-usage-once.yml]
+permissions: { contents: read }
+concurrency:
+  group: v22-f1-worker-runner-cpu-20261011
+  cancel-in-progress: false
+jobs:
+  observe:
+    if: github.repository == 'cgam-coder/vigia-aesan-feed' && github.actor == 'cgam-coder' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Query account and per-script CPU, requests and subrequests; no D1 access
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const token=process.env.CF_TOKEN,account='9c1807c68493f14259248b5f5782cc6f';
+          const out=x=>console.log('V22_F1_CPU '+JSON.stringify(x));
+          if(!token){out({kind:'gate',state:'HOLD',reason:'token-unavailable'});process.exitCode=1;process.exit();}
+          const q='query Usage($accountTag:string,$start:string,$end:string){viewer{accounts(filter:{accountTag:$accountTag}){all:workersInvocationsAdaptive(limit:1,filter:{datetime_geq:$start,datetime_lt:$end}){sum{requests errors subrequests cpuTimeUs} quantiles{cpuTimeP50 cpuTimeP99}}runtime:workersInvocationsAdaptive(limit:1,filter:{datetime_geq:$start,datetime_lt:$end,scriptName:"vigia-runtime"}){sum{requests errors subrequests cpuTimeUs} quantiles{cpuTimeP50 cpuTimeP99}}runner:workersInvocationsAdaptive(limit:1,filter:{datetime_geq:$start,datetime_lt:$end,scriptName:"vigia-source-runner"}){sum{requests errors subrequests cpuTimeUs} quantiles{cpuTimeP50 cpuTimeP99}}}}}';
+          const periods=[['2026-09-25T00:00:00Z','2026-10-01T00:00:00Z'],
+                         ['2026-10-01T00:00:00Z','2026-10-11T00:00:00Z']];
+          let complete=true;
+          for(const [start,end] of periods){
+            try {
+              const r=await fetch('https://api.cloudflare.com/client/v4/graphql',{method:'POST',redirect:'error',
+                headers:{Authorization:'Bearer '+token,Accept:'application/json','Content-Type':'application/json'},
+                body:JSON.stringify({query:q,variables:{accountTag:account,start,end}}),signal:AbortSignal.timeout(20000)});
+              const j=await r.json().catch(()=>null),row=j?.data?.viewer?.accounts?.[0];
+              const errors=(j?.errors??[]).map(x=>String(x?.message||'').slice(0,110)).slice(0,4);
+              const valid=r.status===200&&row&&errors.length===0&&
+                ['all','runtime','runner'].every(k=>Array.isArray(row[k])&&row[k].length<=1);
+              const metrics={};
+              if(valid)for(const k of ['all','runtime','runner']){
+                const item=row[k]?.[0],sum=item?.sum??{},qt=item?.quantiles??{};
+                metrics[k]={requests:Number.isFinite(sum.requests)?sum.requests:null,
+                  errors:Number.isFinite(sum.errors)?sum.errors:null,
+                  subrequests:Number.isFinite(sum.subrequests)?sum.subrequests:null,
+                  cpuTimeUs:Number.isFinite(sum.cpuTimeUs)?sum.cpuTimeUs:null,
+                  cpuTimeP50:typeof qt.cpuTimeP50==='number'?qt.cpuTimeP50:null,
+                  cpuTimeP99:typeof qt.cpuTimeP99==='number'?qt.cpuTimeP99:null};
+              }
+              out({kind:'period',start,end,http:r.status,valid,metrics,errors,
+                adaptiveSample:true,source:'workersInvocationsAdaptive',noWrites:true});
+              if(!valid)complete=false;
+            }catch {out({kind:'period',start,end,valid:false,reason:'transport',noWrites:true});complete=false;}
+          }
+          out({kind:'gate',state:complete?'PASS':'HOLD',graphqlCalls:2,
+            noDeploy:true,noD1Writes:true,noRuntimeRequests:true,
+            note:'CPU us estimate and Adaptive sampled metrics, not monthly invoice; scheduled events and HTTP share per-script requests'});
+          if(!complete)process.exitCode=1;
+          NODE
