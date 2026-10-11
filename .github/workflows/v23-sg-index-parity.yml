@@ -1,0 +1,64 @@
+name: V23 Safety Gate two official indexes parity (single read-only sample)
+on:
+  push:
+    branches: [audit/v23-sg-index-parity-20261011]
+    paths: [.github/workflows/v23-sg-index-parity.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Compare complete official primary and carousel indexes
+        run: |
+          node --input-type=module <<'NODE'
+          const out=(stage,props)=>console.log('V23_SG_PARITY '+JSON.stringify({stage,...props}));
+          const BASE='https://ec.europa.eu/safety-gate-alerts/public/api/notification/';
+          let count=0;
+          async function fetchPage(kind,page){
+           const url=BASE+(kind==='primary'?'mostRecent/?':'carousel/?'),size=kind==='primary'?100:9;
+           if(++count>135)throw Error('source-get-budget-exceeded');
+           const body=kind==='primary'?{language:'es',page:String(page),pageSize:'100'}:{language:'es',page:String(page)};
+           const r=await fetch(url,{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json',language:'es'},body:JSON.stringify(body),redirect:'error',signal:AbortSignal.timeout(17000)});
+           if(!r.ok)throw Error(kind+'-HTTP-'+r.status+'-page-'+page);
+           const txt=await r.text();if(txt.length>250000)throw Error('upstream-large');
+           const x=JSON.parse(txt),total=x.totalElements,pages=x.totalPages,items=x.content;
+           if(!Number.isSafeInteger(total)||total<1||total>1800||!Number.isSafeInteger(pages)||pages<1||pages>200||pages!==Math.ceil(total/size)||x.number!==page||x.size!==size||!Array.isArray(items)||items.length!==Math.min(size,total-page*size)||x.last!==(page===pages-1))throw Error(kind+'-invalid-pagination');
+           return{total,pages,items};
+          }
+          async function collect(kind){
+           const items=new Map();let total=null,pages=null,lastDate=Infinity;
+           for(let page=0;page<200;page++){
+            const r=await fetchPage(kind,page);
+            if(total===null){total=r.total;pages=r.pages;}
+            if(r.total!==total||r.pages!==pages)throw Error(kind+'-changed-during-snapshot');
+            for(const x of r.items){
+             const date=Date.parse(x.publicationDate??'');
+             if(typeof x.reference!=='string'||!x.reference.trim()||!Number.isSafeInteger(x.id)||x.id<=0||!Number.isFinite(date)||date>lastDate||items.has(x.reference))throw Error(kind+'-bad-row');
+             items.set(x.reference,{id:x.id,mod:typeof x.modificationDate==='string'?x.modificationDate:null,pub:x.publicationDate});
+             lastDate=date;
+            }
+            if(page===pages-1)break;
+           }
+           if(items.size!==total)throw Error(kind+'-missing-rows');
+           return{items,total,pages};
+          }
+          let main=null,carousel=null;
+          try{
+           main=await collect('primary');
+           out('primary',{outcome:'COMPLETE',count:main.total,pages:main.pages});
+           carousel=await collect('carousel');
+           const onlyMain=[...main.items.keys()].filter(k=>!carousel.items.has(k));
+           const onlyCarousel=[...carousel.items.keys()].filter(k=>!main.items.has(k));
+           const differences=[...main.items].filter(([k,v])=>{const b=carousel.items.get(k);return b&&(b.id!==v.id||b.mod!==v.mod||b.pub!==v.pub);});
+           const matched=main.total===carousel.total&&onlyMain.length===0&&onlyCarousel.length===0&&differences.length===0;
+           out('parity',{complete:matched,primaryCount:main.total,primaryPages:main.pages,carouselCount:carousel.total,carouselPages:carousel.pages,onlyPrimary:onlyMain.length,onlyCarousel:onlyCarousel.length,identityDateMismatches:differences.length,upstreamRequests:count,contentsNotLogged:true});
+           out('verdict',{state:matched?'PASS_TWO_SURFACES_SINGLE_INSTANT':'HOLD',noWrites:true,noSourceIngestion:true,noD1:true,notLongTermIdentityGuarantee:true});
+           if(!matched)process.exitCode=1;
+          }catch(e){
+           out('verdict',{state:'HOLD_SOURCE_SCHEMA',errorClass:String(e instanceof Error?e.message:'unknown').slice(0,95),requests:count,noWrites:true,noD1:true});
+           process.exitCode=1;
+          }
+          NODE
