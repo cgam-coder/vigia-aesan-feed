@@ -129,17 +129,17 @@ const listUrl = (page, fullHistory = false) => {
 const lastListPage = (html) => Math.max(1, ...[...html.matchAll(/(?:href|action)\s*=\s*["'][^"']*\/buscador-alertas\/(\d+)(?:[?"'])/gi)]
   .map((match) => Number(match[1])).filter(Number.isFinite));
 
-async function readListPages() {
+async function readListPages(fetchPage) {
   if (!FULL_HISTORY) {
     const urls = Array.from({ length:RECENT_PAGE_COUNT }, (_, index) => listUrl(index + 1));
-    return { pages:await mapLimit(urls, 2, fetchHtml), legacyPages:[], scanned:urls.length };
+    return { pages:await mapLimit(urls, 2, fetchPage), legacyPages:[], scanned:urls.length };
   }
 
-  const firstPage = await fetchHtml(listUrl(1, true));
+  const firstPage = await fetchPage(listUrl(1, true));
   const declaredLastPage = lastListPage(firstPage);
   if (declaredLastPage > MAX_ARCHIVE_PAGES) throw new Error(`El buscador declara ${declaredLastPage} páginas, por encima del límite de seguridad de ${MAX_ARCHIVE_PAGES}.`);
   const remainingUrls = Array.from({ length:declaredLastPage - 1 }, (_, index) => listUrl(index + 2, true));
-  const pages = [firstPage, ...await mapLimit(remainingUrls, 2, fetchHtml)];
+  const pages = [firstPage, ...await mapLimit(remainingUrls, 2, fetchPage)];
   return { pages, legacyPages:[], scanned:pages.length };
 }
 
@@ -172,7 +172,16 @@ async function main() {
   const now = new Date().toISOString();
   const current = await readCurrentFeed();
   // A failed or incomplete scan must never become an empty membership set.
-  const taxonomy = await scanOfficialTaxonomy(fetchHtml);
+  // Reuse the exact same official HTML snapshot when taxonomy and publication
+  // discovery both read the landing/search entry pages in this CLI invocation.
+  // Never cache detail pages, filtered pages, or across independent runs.
+  const sharedOfficialPages = new Map();
+  const fetchSharedOfficialPage = (url) => {
+    if (url !== AESAN_LIST_URL && url !== AESAN_ALERTS_LANDING_URL) return fetchHtml(url);
+    if (!sharedOfficialPages.has(url)) sharedOfficialPages.set(url, fetchHtml(url));
+    return sharedOfficialPages.get(url);
+  };
+  const taxonomy = await scanOfficialTaxonomy(fetchSharedOfficialPage);
   const reviewed = JSON.parse(await readFile(new URL("../test/fixtures/aesan-taxonomy-f0-reviewed.json", import.meta.url), "utf8")).publications;
   const detailCache = new Map();
   const loadDetailHtml = (url) => {
@@ -182,8 +191,8 @@ async function main() {
     return detailCache.get(key);
   };
   const [listing, landingHtml] = await Promise.all([
-    readListPages(),
-    fetchHtml(AESAN_ALERTS_LANDING_URL),
+    readListPages(fetchSharedOfficialPage),
+    fetchSharedOfficialPage(AESAN_ALERTS_LANDING_URL),
   ]);
   const pages = listing.pages;
   if (FULL_HISTORY && pages[0]) console.log(`AESAN_SEARCH_DISCOVERY ${JSON.stringify(searchDiscovery(pages[0]))}`);
