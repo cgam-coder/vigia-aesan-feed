@@ -1,0 +1,85 @@
+name: V24 PR314 Safety Gate and billing read-only checkpoint
+on:
+  push:
+    branches: [audit/v24-pr314-sg-cost-check-20261012]
+    paths: [.github/workflows/v24-sg-cost-observation-once.yml]
+permissions:
+  contents: read
+jobs:
+  observe:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Five bounded GETs only, no SQL, builds or mutation
+        env:
+          VIGIA_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const emit=(section,obj)=>console.log('V24_SG_BUDGET '+JSON.stringify({section,...obj}));
+          const root='https://vigia-runtime.c-gamiz93.workers.dev';
+          const base='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          const endpoints=[
+           ['fresh',root+'/api/freshness?observe=1',process.env.VIGIA_TOKEN],
+           ['coordinator',root+'/api/source-reliability?observe=1',process.env.VIGIA_TOKEN],
+           ['runnerDeployments',base+'/workers/scripts/vigia-source-runner/deployments',process.env.CF_TOKEN],
+           ['runtimeDeployments',base+'/workers/scripts/vigia-runtime/deployments',process.env.CF_TOKEN],
+           ['buildLimits',base+'/builds/account/limits',process.env.CF_TOKEN]
+          ];
+          if(!process.env.VIGIA_TOKEN||!process.env.CF_TOKEN){emit('verdict',{state:'HOLD_EXISTING_CREDENTIALS_UNAVAILABLE'});process.exit(2)}
+          const allowed=new Set(endpoints.map(x=>x[1]));let gets=0;
+          const fetchOnce=async([key,url,token])=>{
+            if(!allowed.has(url)||++gets>5)throw Error('read-limit-exceeded');
+            try{
+              const response=await fetch(url,{method:'GET',headers:{Authorization:'Bearer '+token,Accept:'application/json'},signal:AbortSignal.timeout(14000),redirect:'error'});
+              const raw=await response.text();let body=null;
+              if(raw.length<1400000)try{body=JSON.parse(raw)}catch{}
+              return[key,{status:response.status,body,error:null}];
+            }catch(e){return[key,{status:0,body:null,error:e instanceof Error?e.name:'unavailable'}]}
+          };
+          const pairs=await Promise.all(endpoints.map(fetchOnce)),results=Object.fromEntries(pairs);
+          const get=(key)=>results[key]?.body||{};
+          const f=get('fresh'),c=get('coordinator'),state=c.state||{};
+          const m=t=>typeof t==='string'&&Number.isFinite(Date.parse(t))?Math.round((Date.now()-Date.parse(t))/60000*100)/100:null;
+          const summarize=x=>({source:x.source,status:x.status,ageMin:m(x.lastSyncSuccessAt),probeAgeMin:m(x.checkedAt),
+            parity:x.latestIdentityParity===true,officialSample:x.sampleOfficialCount??null,nagameSample:x.sampleNagameCount??null,
+            officialLatestPresent:!!x.officialLatestIdentity,nagameLatestPresent:!!x.nagameLatestIdentity,
+            missing:(x.missingOfficialIdentities||[]).length,mismatches:(x.revisionMismatches||[]).length,
+            errorClass:x.error?(/timeout|deadline/i.test(x.error)?'TIMEOUT':/403|forbidden/i.test(x.error)?'HTTP403':
+             /429|rate/i.test(x.error)?'RATE_LIMIT':/fetch|network|upstream/i.test(x.error)?'TRANSPORT':'OTHER'):null,
+            history:x.revisionStatus??null});
+          const summaries=(f.states||[]).map(summarize);
+          const d=x=>x.result?.deployments||[];
+          const current=x=>d(x)[0]?.versions?.find(v=>v.percentage===100)?.version_id||null;
+          const rollback=x=>d(x).slice(1).some(v=>Array.isArray(v.versions)&&v.versions.length>0);
+          const r=get('runnerDeployments'),w=get('runtimeDeployments'),limits=get('buildLimits');
+          const recentOK=['AESAN','RAPNA','RASFF','SAFETY GATE','OECD'].every(name=>{
+            const s=summaries.find(z=>z.source===name);return s&&s.parity&&s.ageMin!==null&&s.ageMin>=0&&s.ageMin<=45&&
+             s.probeAgeMin!==null&&s.probeAgeMin>=0&&s.probeAgeMin<=45&&s.missing===0&&s.mismatches===0;
+          });
+          const historic=Object.entries(state.revisionAttempts||{}).filter(([k])=>['RAPNA:current-parity','RAPNA:legacy-reconcile','OECD:historical-reconcile','RASFF:reconcile'].includes(k))
+            .map(([k,v])=>({key:k,outcome:v.outcome,idMatches:k==='RAPNA:current-parity'?v.id==='ab50d0f7-0ad7-4fb5-8078-f6c376aa8f53':null,
+              durableBlock:String(v.nextEligibleAt||'').startsWith('9999')}));
+          const b=limits.result||{};
+          emit('control',{http:Object.fromEntries(pairs.map(([k,v])=>[k,v.status])),
+            runtimeShaMatches:c.buildSha==='d5fcd11cbeb563258b4bbdc9482a80b8684c81d3',
+            coordinatorMode:c.mode,coordinatorLeaseActive:c.activeLease??null,
+            runtimeActiveVersion:current(w)?.slice(0,12)||null,runnerActiveVersion:current(r)?.slice(0,12)||null,
+            runtimeRollbackAvailable:rollback(w),runnerRollbackAvailable:rollback(r),historic,
+            recentOK,sources:summaries,globalHistoryCertified:c.officialParityCertified===true});
+          emit('budget',{buildLimitHttp:results.buildLimits.status,
+            paidPlanFieldsOptionalByCloudflareDoc:true,fieldLimitPresent:typeof b.has_reached_build_minutes_limit==='boolean',
+            hasReachedLimit:typeof b.has_reached_build_minutes_limit==='boolean'?b.has_reached_build_minutes_limit:null,
+            buildMinutesRefreshPresent:typeof b.build_minutes_refresh_on==='string',numericRemainingMinutesNotProvidedByThisEndpoint:true,
+            costCeilingAssumption:'1 extra run per day at hard limit 60000 CPU ms',
+            maxExtraRunnerCpuMsPer30Days:1800000,estimatedExtraCpuDollarsIfEntirelyAboveIncluded:0.036,
+            estimatedExtraRequestDollarsIfEntirelyAboveIncluded:0.000009,
+            extraD1OperationsAndBuildMinutesNotQuantified:true});
+          const baselineOK=pairs.every(([k,z])=>z.status===200)&&c.buildSha==='d5fcd11cbeb563258b4bbdc9482a80b8684c81d3'&&
+            current(w)?.startsWith('2914305e')&&current(r)?.startsWith('ba9f64ab')&&rollback(w)&&rollback(r);
+          emit('verdict',{state:baselineOK?'PASS_SNAPSHOT_NO_RELEASE':'HOLD_BASELINE',recentOK,gets,
+            noD1SQL:true,noWrites:true,noBuildsStarted:true,noDeploy:true,noSourceSync:true,
+            releaseAuthorized:false,unknownRAPNAStillFenced:historic.some(x=>x.key==='RAPNA:current-parity'&&x.outcome==='unknown')});
+          if(!baselineOK)process.exitCode=1;
+          NODE
