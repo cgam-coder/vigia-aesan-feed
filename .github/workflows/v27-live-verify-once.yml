@@ -1,0 +1,35 @@
+name: V27 production versions read-only verification
+on:
+  push:
+    branches: [audit/v27-live-version-only-20261012]
+    paths: [.github/workflows/v27-live-verify-once.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    env:
+      CF_READ: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Two scoped GETs for existing production versions
+        shell: bash
+        run: |
+          node <<'NODE'
+          (async()=>{
+            const t=process.env.CF_READ;
+            if(!t)throw Error('NO_TOKEN');
+            const root='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/workers/scripts/';
+            const result={};
+            for(const name of ['vigia-runtime','vigia-source-runner']){
+              const r=await fetch(root+name+'/deployments',{method:'GET',headers:{Authorization:'Bearer '+t,Accept:'application/json'},redirect:'error',signal:AbortSignal.timeout(14000)});
+              const j=await r.json();
+              if(r.status!==200||j?.success!==true)throw Error('PRODUCTION_GET_'+name+'_'+r.status);
+              result[name]=(j.result?.deployments||[])[0]?.versions?.find(v=>v.percentage===100)?.version_id||null;
+            }
+            const pass=result['vigia-runtime']?.startsWith('2914305e')&&result['vigia-source-runner']==='92273d27-d9d4-4b07-a06b-bc9f9c324d7a';
+            console.log('V27_LIVE_GUARD '+JSON.stringify({pass,versions:result,GET:2,D1SQL:0,writes:0,newBuilds:0,newDeployments:0}));
+            if(!pass)process.exitCode=2;
+          })().catch(e=>{console.log('V27_LIVE_GUARD '+JSON.stringify({pass:false,errorName:e.name,readsOnly:true}));process.exitCode=2});
+          NODE
