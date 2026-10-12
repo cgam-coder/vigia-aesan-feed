@@ -1,0 +1,99 @@
+name: V27 Safety Gate certified index delta-preview read-only
+on:
+  push:
+    branches: [audit/v27-sg-delta-preview-20261012]
+    paths: [.github/workflows/v27-safety-gate-index-preview-readonly.yml]
+permissions: { contents: read }
+jobs:
+  observe:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Authenticated preflight and ONE native zero-write delta-preview
+        shell: bash
+        env:
+          VIGIA_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node <<'NODE'
+          (async()=>{
+            const token=process.env.VIGIA_TOKEN||'';
+            if(!token)throw Error('EXISTING_SECRET_MISSING');
+            const root='https://vigia-runtime.c-gamiz93.workers.dev';
+            let gets=0,posts=0;
+            const read=async(path,method='GET',timeoutMs=16000)=>{
+              if(!['/api/source-reliability?observe=1','/api/freshness?observe=1','/api/safety-gate/sync?observe=1','/api/safety-gate/sync?mode=delta-preview'].includes(path))throw Error('PATH_NOT_ALLOWED');
+              if(method==='POST'){
+                if(path!=='/api/safety-gate/sync?mode=delta-preview'||++posts>1)throw Error('ONLY_ONE_READONLY_POST');
+              }else if(method!=='GET'||++gets>5)throw Error('GET_LIMIT');
+              try{
+                const response=await fetch(root+path,{method,redirect:'error',headers:{Authorization:'Bearer '+token,Accept:'application/json'},signal:AbortSignal.timeout(timeoutMs)});
+                const raw=await response.text();
+                if(raw.length>1500000)throw Error('BODY_LIMIT');
+                return {http:response.status,data:JSON.parse(raw)};
+              }catch(e){return {http:0,error:e?.name||'unknown',data:null}}
+            };
+            const [control,fresh,sg]=await Promise.all([
+              read('/api/source-reliability?observe=1'),
+              read('/api/freshness?observe=1'),
+              read('/api/safety-gate/sync?observe=1')
+            ]);
+            const now=Date.now();
+            const minutes=stamp=>typeof stamp==='string'&&Number.isFinite(Date.parse(stamp))?(now-Date.parse(stamp))/60000:null;
+            const s=sg.data?.recent||{},lease=sg.data?.lease;
+            const sourceHealthy=['AESAN','RAPNA','RASFF','SAFETY GATE','OECD'].every(n=>{
+              const z=(fresh.data?.states||[]).find(x=>x.source===n);
+              const age=minutes(z?.lastSyncSuccessAt),probe=minutes(z?.checkedAt);
+              return age!==null&&age>=0&&age<=45&&probe!==null&&probe>=0&&probe<=45&&z?.latestIdentityParity===true&&
+                (z?.missingOfficialIdentities||[]).length===0&&(z?.revisionMismatches||[]).length===0
+            });
+            const sgAge=minutes(s.lastSuccessAt);
+            const leaseActive=!!(lease&&(!Number.isFinite(Date.parse(lease.expiresAt))||Date.parse(lease.expiresAt)>now));
+            const pass=control.http===200&&fresh.http===200&&sg.http===200&&
+              control.data?.buildSha==='d5fcd11cbeb563258b4bbdc9482a80b8684c81d3'&&
+              control.data?.mode==='five-source-coordinated'&&control.data?.activeLease===false&&
+              s.status==='completed'&&!s.lastError&&s.detailFailures===0&&sgAge!==null&&sgAge>=0&&sgAge<=45&&!leaseActive&&sourceHealthy;
+            console.log('V27_SG_PREVIEW_GATE '+JSON.stringify({pass,controlHttp:control.http,freshHttp:fresh.http,sgHttp:sg.http,
+              fiveRecentHealthy:sourceHealthy,coordinatorQuiet:control.data?.activeLease===false,
+              sgAgeMin:sgAge===null?null:+sgAge.toFixed(2),sgLeaseActive:leaseActive,
+              sgMode:s.status||null,sgFullPlanMarker:String(s.planVersion||'').startsWith('safety-gate-recent-full-v1:'),
+              GETs:gets,posts,writes:0}));
+            if(!pass){process.exitCode=2;return}
+            const started=Date.now();
+            const result=await read('/api/safety-gate/sync?mode=delta-preview','POST',160000);
+            const preview=result.data?.preview||{};
+            const summary={
+              preflightPassed:pass,http:result.http,durationSec:+((Date.now()-started)/1000).toFixed(2),
+              zeroWrite:preview.zeroWrite===true,
+              coverage:preview.discovery?.coverage||null,
+              unresolvedGap:preview.discovery?.unresolvedGap??null,
+              indexPages:preview.pagesScanned??null,
+              recordsObserved:preview.recordsObserved??null,
+              deduplicated:preview.recordsDeduplicated??null,
+              storedMatched:preview.storedMatched??null,
+              baselineDetailRequests:preview.baselineDetailRequests??null,
+              deltaDetailCandidates:preview.candidateDetailRequests??null,
+              potentialAvoidedDetails:preview.savedDetailRequests??null,
+              potentialReductionPercent:preview.reductionPercent??null,
+              reasonCounts:preview.reasons??null,
+              missingOrIncomplete:result.http!==200,
+              GETs:gets,readOnlyPOSTs:posts,D1Writes:0,ingestions:0,builds:0,deploys:0
+            };
+            summary.pass=result.http===200&&summary.zeroWrite&&summary.coverage==='complete'&&
+              summary.unresolvedGap===0&&Number.isSafeInteger(summary.recordsObserved)&&
+              Number.isSafeInteger(summary.baselineDetailRequests)&&summary.baselineDetailRequests===summary.recordsObserved&&
+              Number.isSafeInteger(summary.deltaDetailCandidates)&&summary.deltaDetailCandidates>=0&&
+              summary.deltaDetailCandidates<=summary.baselineDetailRequests;
+            console.log('V27_SG_DELTA_PREVIEW '+JSON.stringify(summary));
+            if(!summary.pass){process.exitCode=3;return}
+            const end=await read('/api/safety-gate/sync?observe=1');
+            const unchanged=end.http===200&&end.data?.recent?.updatedAt===s.updatedAt;
+            console.log('V27_SG_POST_READ '+JSON.stringify({http:end.http,originalStateStillSame:unchanged,GETs:gets,readOnlyPOSTs:posts,
+              noHybridConfigured:true,actualSavingsUnmeasured:true,releaseAuthorized:false}));
+            if(!unchanged)process.exitCode=4;
+          })().catch(e=>{
+            console.log('V27_SG_DELTA_PREVIEW '+JSON.stringify({state:'HOLD',reason:String(e.message||e.name).slice(0,80),
+              noWrites:true,noDeploy:true,releaseAuthorized:false}));
+            process.exitCode=3;
+          });
+          NODE
