@@ -1,0 +1,37 @@
+name: V24 RAPNA current checkpoint timing one-shot
+on:
+  push:
+    branches: [audit/v24-rapna313-build-and-drift-20261012]
+    paths: [.github/workflows/v24-rapna-timings.yml]
+permissions: {contents: read}
+jobs:
+  measure:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Read-only D1 checkpoint timing
+        env:
+          CF: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          T: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const log=(k,x)=>console.log('V24_RAPNA_TIMING '+JSON.stringify({k,...x}));
+          if(!process.env.CF||!process.env.T){log('HOLD',{reason:'missing-existing-token'});process.exit(2)}
+          const root='https://vigia-runtime.c-gamiz93.workers.dev/api/source-reliability?observe=1';
+          const x=await fetch(root,{method:'GET',headers:{Authorization:'Bearer '+process.env.T},redirect:'error',signal:AbortSignal.timeout(12000)}),c=await x.json().catch(()=>({}));
+          if(x.status!==200||c.buildSha!=='d5fcd11cbeb563258b4bbdc9482a80b8684c81d3'){log('HOLD',{reason:'baseline-changed',http:x.status});process.exit(2)}
+          const id='ab50d0f7-0ad7-4fb5-8078-f6c376aa8f53',url='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/d1/database/55596003-1b90-4f66-aad8-decb21205f13/query';
+          const sql="SELECT ordinal, committed_at AS committedAt, json_extract(result_json,'$.checkpoint.cursor') AS cursor,json_extract(result_json,'$.checkpoint.status') AS status,json_extract(result_json,'$.checkpoint.updated_at') AS stateUpdatedAt FROM source_reliability_effects WHERE job_id=? AND json_extract(result_json,'$.checkpoint.cursor') IS NOT NULL ORDER BY ordinal LIMIT 30";
+          if(!/^SELECT\s/u.test(sql)||sql.includes(';'))throw Error('SQL_DENIED');
+          const q=await fetch(url,{method:'POST',headers:{Authorization:'Bearer '+process.env.CF,'Content-Type':'application/json'},body:JSON.stringify({sql,params:[id]}),redirect:'error',signal:AbortSignal.timeout(20000)});
+          const j=await q.json().catch(()=>null),r=j?.result?.[0];
+          if(q.status!==200||j?.success!==true||r?.meta?.rows_written!==0||!Array.isArray(r?.results)){log('HOLD',{http:q.status,errorCode:j?.errors?.[0]?.code});process.exit(2)}
+          const rows=r.results.map(v=>({cursor:v.cursor,status:v.status,committedAt:v.committedAt,ordinal:v.ordinal}));
+          const completes=rows.filter(v=>v.cursor>0&&v.status!=='running');
+          const firstTimes=Array.from(new Set(completes.map(v=>v.cursor))).map(cursor=>completes.find(v=>v.cursor===cursor));
+          const interval=firstTimes.map((v,i)=>({cursor:v.cursor,time:v.committedAt,elapsedFromPriorSeconds:i?+((Date.parse(v.committedAt)-Date.parse(firstTimes[i-1].committedAt))/1000).toFixed(1):null}));
+          log('measure',{rowsRead:r.meta.rows_read,rowsWritten:r.meta.rows_written,checkpoints:firstTimes.length,cursorTimings:interval,
+            maxUnitDeltaSeconds:Math.max(...interval.filter(x=>x.elapsedFromPriorSeconds!==null).map(x=>x.elapsedFromPriorSeconds)),candidateCapForReview:2,notAnAuthorization:true});
+          log('PASS',{gets:1,selects:1,sourceJobs:0,writes:0});
+          NODE
