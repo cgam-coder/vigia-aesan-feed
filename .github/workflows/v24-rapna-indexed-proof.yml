@@ -1,0 +1,59 @@
+name: V24 RAPNA postcycle indexed proof once
+on:
+  push:
+    branches: [audit/v24-rapna-current-postcycle-journal-20261012]
+    paths: [.github/workflows/v24-rapna-indexed-proof.yml]
+permissions:
+  contents: read
+jobs:
+  read:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Indexed journal SQL SELECT with strict cap, zero source calls
+        env:
+          CF: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TOK: ${{ secrets.VIGIA_SYNC_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const out=(phase,v)=>console.log('V24_RAPNA_INDEX '+JSON.stringify({phase,...v}));
+          const CF=process.env.CF,T=process.env.TOK;
+          if(!CF||!T){out('HOLD',{reason:'auth-unavailable'});process.exit(2)}
+          const api='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/d1/database/55596003-1b90-4f66-aad8-decb21205f13/query',
+          url='https://vigia-runtime.c-gamiz93.workers.dev/api/source-reliability?observe=1',
+          from='2026-10-12T00:09:11.119Z';
+          let selects=0,totalRead=0;
+          const r=await fetch(url,{method:'GET',headers:{Authorization:'Bearer '+T},redirect:'error',signal:AbortSignal.timeout(15000)});
+          const ctl=await r.json().catch(()=>null),job=ctl?.state?.revisionAttempts?.['RAPNA:current-parity'];
+          if(r.status!==200||ctl?.buildSha!=='d5fcd11cbeb563258b4bbdc9482a80b8684c81d3'||job?.outcome!=='unknown'||job.id!=='ab50d0f7-0ad7-4fb5-8078-f6c376aa8f53')
+            {out('HOLD',{reason:'baseline-drift',http:r.status});process.exit(2)}
+          const read=async(label,q,p=[])=>{
+            if(++selects>4||!/^SELECT\s/u.test(q)||q.includes(';'))throw Error('sql-not-allowed');
+            const response=await fetch(api,{method:'POST',headers:{Authorization:'Bearer '+CF,'Content-Type':'application/json'},body:JSON.stringify({sql:q,params:p}),redirect:'error',signal:AbortSignal.timeout(18000)});
+            const j=await response.json().catch(()=>null),d=j?.result?.[0];
+            if(response.status!==200||j?.success!==true||d?.meta?.rows_written!==0||!Array.isArray(d?.results))throw Error('d1-unavailable-'+label);
+            totalRead+=d.meta.rows_read||0;
+            out(label,{rows:d.results.slice(0,30),rowsRead:d.meta.rows_read,totalRead,rowsWritten:0});
+            if(totalRead>5000)throw Error('indexed-budget-5000-exceeded');
+            return d.results;
+          };
+          const field="LOWER(TRIM(json_extract(w.value,'$.sql')))";
+          const tables=['alerts','alert_versions','alert_source_identities','alert_aliases','alert_categories','alert_hazards','alert_geographies','alert_actors','alert_dimension_state'];
+          const predicates=tables.flatMap(t=>[
+            field+" LIKE 'insert into "+t+" %'",
+            field+" LIKE 'insert or ignore into "+t+" %'",
+            field+" LIKE 'update "+t+" %'",
+            field+" LIKE 'delete from "+t+" %'"
+          ]).join(' OR ');
+          const changes="EXISTS(SELECT 1 FROM json_each(e.manifest_json,'$.writes') AS w WHERE "+predicates+")";
+          const join="FROM source_reliability_jobs j JOIN source_reliability_effects AS e INDEXED BY source_reliability_effects_job ON e.job_id=j.id";
+          const filter=" WHERE j.source='RAPNA' AND j.started_at>=? AND e.committed_at>?";
+          try{
+            await read('job-index-summary',"SELECT COUNT(*) AS effects,COUNT(DISTINCT j.id) AS jobs,COALESCE(SUM(CASE WHEN "+changes+" THEN 1 ELSE 0 END),0) AS domainEffects,COALESCE(SUM(CASE WHEN e.result_json IS NULL THEN 1 ELSE 0 END),0) AS resultMissing,MAX(e.committed_at) AS lastCommit "+join+filter,[from,from]);
+            await read('job-counts',"SELECT j.mode,j.kind,COUNT(DISTINCT j.id) AS jobs,COUNT(*) AS effects,COALESCE(SUM(CASE WHEN "+changes+" THEN 1 ELSE 0 END),0) AS domainEffects "+join+filter+" GROUP BY j.mode,j.kind ORDER BY j.mode LIMIT 8",[from,from]);
+            await read('original-effect-fence',"SELECT COUNT(*) AS effects,COUNT(DISTINCT ordinal) AS ordinals,MAX(ordinal) AS lastOrdinal,COALESCE(SUM(CASE WHEN committed_at IS NULL OR result_json IS NULL THEN 1 ELSE 0 END),0) AS pending FROM source_reliability_effects WHERE job_id=?",['ab50d0f7-0ad7-4fb5-8078-f6c376aa8f53']);
+            await read('postcycle-checks',"SELECT COUNT(*) AS checks,COALESCE(SUM(changed_count),0) AS changedAlerts,MAX(checked_at) AS lastCheck FROM source_checks WHERE source='RAPNA' AND checked_at>?",[from]);
+            out('verdict',{state:'PASS_INDEXED_OBSERVATION',selects,totalRead,rowsWritten:0,sourceJobs:0,noD1DomainChangesByThisAudit:true,notAbsoluteParityProof:true});
+          }catch(e){out('verdict',{state:'HOLD',reason:e instanceof Error?e.message:'unknown',selects,totalRead,rowsWritten:0});process.exitCode=1;}
+          NODE
