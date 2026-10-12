@@ -31,7 +31,7 @@ jobs:
             const j=await r.json().catch(()=>null);if(r.status!==200||!j)throw Error('GET_FAIL_'+r.status);return j;
           };
           const sql=async(label,q,params=[])=>{
-            if(!/^SELECT\s/u.test(q)||q.includes(';')||/\b(INSERT|UPDATE|DELETE|DROP|ALTER|PRAGMA|ATTACH|DETACH|VACUUM|REPLACE|CREATE)\b/iu.test(q)||++selects>6)throw Error('SQL_POLICY');
+            if(!/^SELECT\s/u.test(q)||q.includes(';')||/(?:--|\/\*|\*\/)/u.test(q)||++selects>6)throw Error('SQL_POLICY');
             const r=await fetch(api+'/d1/database/'+D+'/query',{method:'POST',headers:{Authorization:'Bearer '+CF,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({sql:q,params}),signal:AbortSignal.timeout(22000),redirect:'error'});
             const j=await r.json().catch(()=>null),p=j?.result?.[0];
             if(r.status!==200||j?.success!==true||!Array.isArray(p?.results)||p?.meta?.rows_written!==0)throw Error('SQL_FAIL_'+label+'_'+r.status);
