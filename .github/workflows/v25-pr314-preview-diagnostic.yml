@@ -1,0 +1,42 @@
+name: V25 PR314 Cloudflare preview failure diagnosis GET-only
+on:
+  push:
+    branches: [audit/v25-preview-readonly-20261012]
+permissions:
+  contents: read
+jobs:
+  diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    env:
+      CF_READ: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Cloudflare failed build logs with bounded redacted output
+        shell: bash
+        run: |
+          node <<'NODE'
+          const account='9c1807c68493f14259248b5f5782cc6f';
+          const build='c92924b4-ac65-4cb4-951d-aae58040163c';
+          const base='https://api.cloudflare.com/client/v4/accounts/'+account+'/builds/builds/'+build;
+          if(!process.env.CF_READ){console.log('V25_DIAG HOLD token-absent');process.exitCode=1;return}
+          const get=async path=>{
+            try {
+              const r=await fetch(path,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+process.env.CF_READ,Accept:'application/json'},signal:AbortSignal.timeout(13000)});
+              return {http:r.status,body:await r.json()};
+            }catch(e){return {http:0,error:e.name,body:null}}
+          };
+          const [b,l,q]=await Promise.all([get(base),get(base+'/logs'),get('https://api.cloudflare.com/client/v4/accounts/'+account+'/builds/account/limits')]);
+          const v=b.body?.result||{},rows=l.body?.result?.lines||[];
+          const clean=s=>String(s)
+            .replace(/https?:\\/\\/[^\\s]+/g,'[URL]')
+            .replace(/(?:authorization|bearer|secret|api.?key|token)\\s*[:=]\\s*[^\\s,;]+/ig,'[SENSITIVE]')
+            .replace(/[A-Za-z0-9_+\\/=-]{25,}/g,'[OPAQUE]')
+            .replace(/[A-Za-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}/ig,'[EMAIL]')
+            .replace(/[\\x00-\\x1f\\x7f-\\x9f]/g,' ')
+            .slice(0,240);
+          const lines=rows.map(x=>Array.isArray(x)?x.join(' '):String(x));
+          const marked=lines.map((line,i)=>({i,line})).filter(x=>/error|fail|timeout|cancel|fatal|exit|kill|npm err|wrangler|build command|run command|step |cannot|enoent|permission|repository/i.test(x.line));
+          console.log('V25_DIAG_META '+JSON.stringify({buildHttp:b.http,logsHttp:l.http,limitsHttp:q.http,commit:String(v.commit_hash||v.commit||'').slice(0,12),status:v.status,outcome:v.build_outcome,logLineCount:lines.length,errorLineCount:marked.length,limitsReached:q.body?.result?.has_reached_build_minutes_limit??null,noWrites:true,noBuilds:true}));
+          for(const x of marked.slice(-30))console.log('V25_DIAG_LINE '+x.i+' '+clean(x.line));
+          if(b.http!==200||l.http!==200)process.exitCode=2;
+          NODE
