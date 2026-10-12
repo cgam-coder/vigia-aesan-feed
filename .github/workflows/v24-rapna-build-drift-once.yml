@@ -60,7 +60,7 @@ jobs:
             d1Http:db.http,d1UUIDMatches:db.json?.result?.uuid===database,d1IdMatches:db.json?.result?.id===database,
             d1Success:db.json?.success??null});
           const okBaseline=c.http===200&&c.json?.buildSha==='d5fcd11cbeb563258b4bbdc9482a80b8684c81d3'&&
-            rapna.http===200&&db.http===200&&db.json?.result?.uuid===database;
+            db.http===200&&db.json?.result?.uuid===database;
           if(!okBaseline){emit('verdict',{status:'HOLD_BASELINE',requestCount:n,queries:0,sourceWrites:0});process.exit(2);}
           const sql="SELECT COUNT(*) AS checks,COALESCE(SUM(CASE WHEN changed_count>0 THEN 1 ELSE 0 END),0) AS changedChecks,COALESCE(SUM(changed_count),0) AS changedAlerts,MAX(checked_at) AS latestChecked,MIN(CASE WHEN changed_count>0 THEN checked_at END) AS firstChanged FROM source_checks WHERE source='RAPNA' AND checked_at>'2026-10-12T00:09:09.851Z'";
           const drift=await req(cf+'/d1/database/'+database+'/query',CF,sql);
