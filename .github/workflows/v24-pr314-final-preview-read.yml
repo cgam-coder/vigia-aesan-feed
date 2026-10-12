@@ -1,0 +1,38 @@
+name: V24 PR314 terminal Preview diagnostic read-only
+on:
+  push:
+    branches: [audit/v24-pr314-last-preview-diagnosis-20261012]
+    paths: [.github/workflows/v24-pr314-final-preview-read.yml]
+permissions:
+  contents: read
+jobs:
+  observe:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Two Cloudflare GETs, no source D1 writes or deployments
+        env:
+          T: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const account='9c1807c68493f14259248b5f5782cc6f',build='c92924b4-ac65-4cb4-951d-aae58040163c';
+          const root='https://api.cloudflare.com/client/v4/accounts/'+account+'/builds/builds/'+build;
+          if(!process.env.T){console.log('V24_BUILD_DIAG '+JSON.stringify({phase:'HOLD',reason:'token-absent'}));process.exit(2)}
+          const get=async url=>{
+            const r=await fetch(url,{method:'GET',headers:{Authorization:'Bearer '+process.env.T,Accept:'application/json'},
+              redirect:'error',signal:AbortSignal.timeout(14000)});
+            return {http:r.status,json:await r.json().catch(()=>null)};
+          };
+          const [b,logs]=await Promise.all([get(root),get(root+'/logs')]);
+          const v=b.json?.result||{},rows=logs.json?.result?.lines||[];
+          const lines=rows.map(z=>Array.isArray(z)?z.join(' '):String(z));
+          const errors=lines.map((z,i)=>({i,kind:/\berror|failed|fatal|quota|timeout|exceed|terminated|cancelled/i.test(z)?(
+            /quota|billing|exceed|credit/.test(z)?'quota':/timeout|timed out/.test(z)?'timeout':/cancel|terminated/.test(z)?'cancelled':'error'):null}))
+            .filter(z=>z.kind).slice(-12);
+          console.log('V24_BUILD_DIAG '+JSON.stringify({phase:'observation',buildHttp:b.http,logsHttp:logs.http,
+            status:v.status??null,outcome:v.build_outcome??null,commit:v.build_trigger_metadata?.commit_hash?.slice(0,12)??null,
+            branch:v.build_trigger_metadata?.branch??null,logsTruncated:logs.json?.result?.truncated??null,
+            logLineCount:lines.length,errorTypes:errors,zeroWrites:true,zeroNewBuilds:true}));
+          if(b.http!==200||logs.http!==200)process.exitCode=1;
+          NODE
