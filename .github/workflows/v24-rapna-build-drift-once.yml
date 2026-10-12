@@ -55,6 +55,10 @@ jobs:
             buildTime:buildInfo.build_time_ms??null,branch:buildInfo.build_trigger_metadata?.branch??null,
             commit:buildInfo.build_trigger_metadata?.commit_hash?.slice(0,12)??null,logCount:list.length,
             logTruncated:logs.json?.result?.truncated??null,errorClasses:classes,lastErrorIndices:hits.slice(-12)});
+          emit('baseline',{coordinatorHttp:c.http,coordinatorSha:c.json?.buildSha?.slice(0,12)||null,coordinatorMode:c.json?.mode??null,
+            rapnaHttp:rapna.http,rapnaStatus:rapna.json?.currentParity?.status??null,
+            d1Http:db.http,d1UUIDMatches:db.json?.result?.uuid===database,d1IdMatches:db.json?.result?.id===database,
+            d1Success:db.json?.success??null});
           const okBaseline=c.http===200&&c.json?.buildSha==='d5fcd11cbeb563258b4bbdc9482a80b8684c81d3'&&
             rapna.http===200&&db.http===200&&db.json?.result?.uuid===database;
           if(!okBaseline){emit('verdict',{status:'HOLD_BASELINE',requestCount:n,queries:0,sourceWrites:0});process.exit(2);}
