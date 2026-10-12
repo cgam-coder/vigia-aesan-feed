@@ -1,0 +1,62 @@
+name: V24 Safety Gate third independent-day shadow after quiet window (one-shot)
+on:
+  push:
+    branches: [audit/v24-safety-gate-third-shadow-20261012]
+    paths: [.github/workflows/v24-sg-third-shadow.yml]
+permissions:
+  contents: read
+jobs:
+  shadow:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Wait bounded time for empty native lease then one zero-write full-detail shadow
+        env:
+          VIGIA_SYNC_TOKEN: ${{ secrets.VIGIA_SYNC_TOKEN }}
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const log=(stage,v)=>console.log('V24_SG_THIRD_SHADOW '+JSON.stringify({stage,...v}));
+          const root='https://vigia-runtime.c-gamiz93.workers.dev',CF='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
+          const key=process.env.VIGIA_SYNC_TOKEN,cft=process.env.CF_TOKEN,sha='d5fcd11cbeb563258b4bbdc9482a80b8684c81d3';
+          if(!key||!cft){log('verdict',{state:'HOLD_MISSING_TOKEN'});process.exit(2);}
+          let reads=0;const get=async(url,token,method='GET',timeout=14000)=>{
+           const u=new URL(url);
+           const allowed=(u.origin===root&&['/api/source-reliability','/api/safety-gate/sync','/api/freshness'].includes(u.pathname))||
+           (u.origin==='https://api.cloudflare.com'&&u.pathname==='/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f/workers/scripts/vigia-source-runner/settings');
+           if(!allowed||++reads>85||(method!=='GET'&&!(method==='POST'&&u.origin===root&&u.pathname==='/api/safety-gate/sync'&&u.searchParams.get('mode')==='delta-shadow')))throw Error('read-only-allowlist');
+           try{const r=await fetch(u.href,{method,headers:{Authorization:'Bearer '+token,Accept:'application/json'},redirect:'error',signal:AbortSignal.timeout(timeout)});const str=await r.text();let j=null;if(str.length<=1500000)try{j=JSON.parse(str)}catch{}return{http:r.status,j};}catch(e){return{http:0,j:{error:e instanceof Error?e.name:'network'}};}
+          };
+          const cfg=await get(CF+'/workers/scripts/vigia-source-runner/settings',cft);
+          const vars=cfg.j?.result?.bindings||[];
+          const runnerStable=cfg.http===200&&Array.isArray(vars)&&vars.some(v=>v.name==='SOURCE_RUNNER_MODE'&&v.type==='plain_text'&&v.text==='active')&&!vars.some(v=>v.name==='SAFETY_GATE_RECENT_STRATEGY');
+          if(!runnerStable){log('verdict',{state:'HOLD_RUNNER_CONFIG',http:cfg.http,hybridFlagPresent:true});process.exit(1);}
+          let ready=false,last={};let tries=0;
+          for(let i=0;i<9;i++){
+           tries++;
+           const [c,s,f]=await Promise.all([
+           get(root+'/api/source-reliability?observe=1',key),
+           get(root+'/api/safety-gate/sync?observe=1',key),
+           get(root+'/api/freshness?observe=1',key)
+           ]);
+           const owner=c.j||{},a=s.j?.recent||{},sourceLease=s.j?.lease;
+           const age=t=>typeof t==='string'&&Number.isFinite(Date.parse(t))?(Date.now()-Date.parse(t))/60000:null;
+           const sources=['AESAN','RAPNA','RASFF','SAFETY GATE','OECD'].map(name=>{const x=(f.j?.states||[]).find(k=>k.source===name)||{};return{name,job:owner.state?.attempts?.[name]?.outcome,age:age(x.lastSyncSuccessAt),observedAge:age(x.checkedAt),parity:x.latestIdentityParity===true,missing:(x.missingOfficialIdentities||[]).length,mismatches:(x.revisionMismatches||[]).length}});
+           const pass=sources.every(x=>x.job==='completed'&&x.age!==null&&x.age>=0&&x.age<=45&&x.observedAge!==null&&x.observedAge>=0&&x.observedAge<=45&&x.parity&&x.missing===0&&x.mismatches===0);
+           const lease=Boolean(sourceLease?.expiresAt&&Date.parse(sourceLease.expiresAt)>Date.now());
+           ready=c.http===200&&s.http===200&&f.http===200&&owner.buildSha===sha&&owner.mode==='five-source-coordinated'&&Boolean(owner.state?.ownershipVerifiedAt)&&owner.activeLease===false&&!lease&&a.status==='completed'&&!a.lastError&&a.detailFailures===0&&a.planVersion==null&&age(a.lastSuccessAt)!==null&&age(a.lastSuccessAt)<45&&pass;
+           last={code:[c.http,s.http,f.http],coordinatorLease:owner.activeLease??null,sgLease:lease,safetyStatus:a.status,safetyAge:age(a.lastSuccessAt),healthyFiveRecent:pass};
+           if(ready)break;
+           if(i<8)await new Promise(done=>setTimeout(done,12000));
+          }
+          log('preflight',{ready,attempts:tries,runnerHybridFlagAbsent:true,...last});
+          if(Date.now()-Date.parse('2026-10-11T20:25:35.614Z')<6*60*60000){log('verdict',{state:'HOLD_INDEPENDENCE_INTERVAL',fullShadowNotRun:true});process.exit(0);}
+          if(!ready){log('verdict',{state:'HOLD_NO_QUIET_WINDOW',reads,fullShadowNotRun:true,noWrites:true});process.exit(0);}
+          const start=Date.now(),r=await get(root+'/api/safety-gate/sync?mode=delta-shadow',key,'POST',205000);
+          const x=r.j?.shadow||{},d=x.discovery||{};
+          const pass=r.http===200&&x.pass===true&&x.hydrationComplete===true&&d.coverage==='complete'&&x.detailFailures===0&&x.falseNegativeCount===0&&x.falsePositiveCount===0&&x.recordsObserved>0&&x.recordsObserved<=600&&x.pagesScanned>0&&x.pagesScanned<=10;
+          log('shadow',{http:r.http,complete:pass,elapsedSeconds:+((Date.now()-start)/1000).toFixed(1),officialIndexCount:x.recordsObserved??null,pages:x.pagesScanned??null,storedMatched:x.storedMatched??null,hydrated:x.hydratedCount??null,candidates:x.candidateCount??null,materialChanges:x.materialChangeCount??null,falseNegatives:x.falseNegativeCount??null,falsePositives:x.falsePositiveCount??null,detailFailures:x.detailFailures??null,errorCode:r.j?.code??null});
+          log('verdict',{state:pass?'PASS_THIRD_OBSERVATIONAL_CYCLE':'HOLD',reads,noD1Writes:true,noSourceJobs:true,noCloudflareChanges:true,noFeatureActivation:true,noRollout:true,not24HourContinuityProof:true,sourceRequestEstimateFromPriorSample:520,nightlyServiceBudgetUnchanged:true});
+          if(!pass)process.exitCode=1;
+          NODE
