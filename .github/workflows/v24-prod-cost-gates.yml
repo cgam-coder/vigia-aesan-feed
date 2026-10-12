@@ -24,7 +24,7 @@ jobs:
           const api='https://api.cloudflare.com/client/v4/accounts/9c1807c68493f14259248b5f5782cc6f';
           const approved=new Set([
             origin+'/api/source-reliability?observe=1',
-            origin+'/api/freshness?observe=1&policy=1',
+            origin+'/api/freshness?observe=1',
             origin+'/api/safety-gate/sync?observe=1',
             api+'/workers/scripts/vigia-runtime/deployments',
             api+'/workers/scripts/vigia-source-runner/deployments',
@@ -40,7 +40,7 @@ jobs:
           };
           const tasks=[
             ['coordinator',origin+'/api/source-reliability?observe=1',sync],
-            ['freshness',origin+'/api/freshness?observe=1&policy=1',sync],
+            ['freshness',origin+'/api/freshness?observe=1',sync],
             ['safety',origin+'/api/safety-gate/sync?observe=1',sync],
             ['runtimeDeploy',api+'/workers/scripts/vigia-runtime/deployments',cf],
             ['runnerDeploy',api+'/workers/scripts/vigia-source-runner/deployments',cf],
@@ -67,7 +67,7 @@ jobs:
           const crons=o=>{const r=o.j?.result;return Array.isArray(r?.schedules)?r.schedules.map(y=>y.cron):Array.isArray(r)?r.map(y=>y.cron):[];};
           const failures=Object.entries(owner.state?.revisionAttempts||{}).filter(([k,v])=>['RAPNA:legacy-reconcile','RASFF:reconcile','OECD:historical-reconcile'].includes(k)).map(([key,v])=>({key,outcome:v?.outcome??null,blocked:String(v?.nextEligibleAt||'').startsWith('9999')}));
           const sg=x.safety.j?.recent||{};
-          const endpointsOK=pairs.every(([,v])=>v.http===200);
+          const endpointsOK=pairs.every(([,v])=>v.http===200)&&sourceStatus.every(v=>v.observed!=='unavailable');
           emit('control',{http:Object.fromEntries(pairs.map(([k,v])=>[k,v.http])),workerShaMatches:owner.buildSha==='d5fcd11cbeb563258b4bbdc9482a80b8684c81d3',
             coordMode:owner.mode,coordinatorLease:owner.activeLease??null,runnerVersion:runnerVersion?.slice(0,12)||null,
             runtimeVersion:runtimeVersion?.slice(0,12)||null,runnerMode:runnerMode?.type==='plain_text'?runnerMode?.text:null,
