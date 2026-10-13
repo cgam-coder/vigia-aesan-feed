@@ -36,7 +36,7 @@ jobs:
               return body;
             };
             const sql=async(name,statement,params=[])=>{
-              if(++selects>8||!/\ASELECT\s/i.test(statement)||statement.includes(';')||
+              if(++selects>8||!/^SELECT\s/i.test(statement)||statement.includes(';')||
                 /\b(?:INSERT|UPDATE|DELETE|DROP|ALTER|REPLACE|CREATE|ATTACH|PRAGMA|VACUUM)\b/i.test(statement))throw Error('sql-policy');
               const res=await fetch(cloud+'/d1/database/'+db+'/query',{method:'POST',
                 headers:{Authorization:'Bearer '+cf,'Content-Type':'application/json',Accept:'application/json'},
