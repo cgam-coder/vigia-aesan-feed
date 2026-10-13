@@ -85,7 +85,7 @@ jobs:
             const noOverlap=successors[0]?.n===0&&locks.length===0&&!coActive;
             const outcome={
               at:time,job,kind:jb?.kind,phase:jb?.phase,receipt:rc?.outcome,reason:rc?.reason,
-              receiptCorrect,journalCorrect,effectsCount:stats?.n,nextEffectAbsent:stats?.hi===4,
+              receiptCorrect,receiptStateLastError:String(rc?.state?.lastError??'').slice(-180),journalCorrect,effectsCount:stats?.n,nextEffectAbsent:stats?.hi===4,
               markerOrdinal,exactSourceStatePreimage:exactRow,rowCorrect,
               noRecoveryReceipt:pre[0]?.n===0,noRecoveryIntent:intent[0]?.n===0,noSuccessor:successors[0]?.n===0,
               sourceLockCount:locks.length,controlIdle:!coActive,deadlineExpired:due,coordinatorAttempt:co?.outcome,
