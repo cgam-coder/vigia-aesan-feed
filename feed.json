@@ -4,17 +4,244 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-10-09T10:48:55.635Z",
+  "generatedAt": "2026-10-22T15:31:55.953Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
-    "totalAlerts": 131,
+    "totalAlerts": 132,
     "earliestPublishedAt": "2025-01-01T23:00:00.000Z",
-    "latestPublishedAt": "2026-10-08T22:00:00.000Z",
+    "latestPublishedAt": "2026-10-21T22:00:00.000Z",
     "lastFullSyncAt": "2026-10-09T10:48:55.635Z",
     "pagesScanned": 9,
     "legacyIndexesScanned": 0
   },
   "alerts": [
+    {
+      "id": "aesan:ES2026/637",
+      "reference": "ES2026/637",
+      "sourceRecordId": "952c705f-2911-4614-a754-328edbe194df",
+      "sourceRecordIdType": "idAlert",
+      "sourceRecordSchemaVersion": 2,
+      "sourceRecordHash": "d4218ae532e39fc313cceac9e06c211b490386c10a236330611df0bbf1949f6d",
+      "previousReferences": [],
+      "referenceHistory": [],
+      "source": "AESAN",
+      "type": "Alimentaria",
+      "priority": "Alta",
+      "title": "Alerta por presencia de Listeria monocytogenes en mejillones cocidos procedentes de España. (Ref. ES2026/637)",
+      "product": "Mejillón de Chile cocido",
+      "brand": "Marvalmar",
+      "productClass": "Pescado y marisco",
+      "productKey": "mejillon de chile cocido",
+      "brandKey": "marvalmar",
+      "provider": "",
+      "providerKey": "",
+      "providerRole": "",
+      "providerEvidence": "",
+      "notifyingText": "La Agencia Española de Seguridad Alimentaria y Nutrición (AESAN) ha sido informada por las autoridades sanitarias de la Comunidad de Madrid, a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de la presencia de Listeria monocytogenes en mejillones cocidos de la marca Marvalmar con fecha de caducidad 20/11/2026.",
+      "hazard": "Listeria monocytogenes",
+      "origin": "España",
+      "scope": "Población general · publicación oficial AESAN",
+      "action": "Se recomienda a las personas que tengan en su domicilio los productos incluidos en esta alerta se abstengan de consumirlos.",
+      "lots": [
+        "387/21096 1809"
+      ],
+      "imageUrl": "https://www.aesan.gob.es/dam/jcr:ce96f1eb-533a-4986-88d3-55884b12ece1/Alerta_2026_10_22.2026-10-22-16-03-07.png",
+      "officialTitle": "Alerta por presencia de Listeria monocytogenes en mejillones cocidos procedentes de España. (Ref. ES2026/637)",
+      "publishedFields": [
+        {
+          "label": "Nombre del producto",
+          "value": "Mejillón de Chile cocido",
+          "sourceField": "article.productData[0].field[0]",
+          "order": 0,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Nombre de marca",
+          "value": "Marvalmar",
+          "sourceField": "article.productData[0].field[1]",
+          "order": 1,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Aspecto del producto",
+          "value": "Envasado en bandeja al vacío",
+          "sourceField": "article.productData[0].field[2]",
+          "order": 2,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Número de lote",
+          "value": "387/21096 1809",
+          "sourceField": "article.productData[0].field[3]",
+          "order": 3,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Fecha de consumo preferente",
+          "value": "20/11/2026",
+          "sourceField": "article.productData[0].field[4]",
+          "order": 4,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Peso de unidad",
+          "value": "200 g",
+          "sourceField": "article.productData[0].field[5]",
+          "order": 5,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Temperatura",
+          "value": "Refrigerado",
+          "sourceField": "article.productData[0].field[6]",
+          "order": 6,
+          "section": "product_data",
+          "context": "list:0"
+        }
+      ],
+      "materialParagraphs": [
+        {
+          "value": "La Agencia Española de Seguridad Alimentaria y Nutrición (AESAN) ha tenido conocimiento a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI) de una notificación de alerta trasladada por las autoridades sanitarias de la Comunidad de Madrid, relativa a la presencia de Listeria monocytogenes , en mejillones cocidos.",
+          "sourceField": "article.body.p[0]",
+          "order": 0,
+          "section": "publication"
+        },
+        {
+          "value": "Se adjunta imagen disponible de la etiqueta.",
+          "sourceField": "article.body.p[1]",
+          "order": 1,
+          "section": "publication"
+        },
+        {
+          "value": "Según la información disponible, la distribución ha sido a las comunidades autónomas de Castilla - La Mancha, Castilla y León y Comunidad de Madrid.",
+          "sourceField": "article.body.p[2]",
+          "order": 2,
+          "section": "publication"
+        },
+        {
+          "value": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información, con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+          "sourceField": "article.body.p[3]",
+          "order": 3,
+          "section": "publication"
+        },
+        {
+          "value": "Se recomienda a las personas que tengan en su domicilio productos afectados por esta alerta, se abstengan de consumirlos.",
+          "sourceField": "article.body.p[4]",
+          "order": 4,
+          "section": "publication"
+        },
+        {
+          "value": "En el caso de haber consumido alguno de los productos de los lotes afectados y presentar sintomatología compatible con la listeriosis (vómitos, diarrea o fiebre), se recomienda acudir a un centro de salud.",
+          "sourceField": "article.body.p[5]",
+          "order": 5,
+          "section": "publication"
+        },
+        {
+          "value": "En el caso de estar embarazada, se recomienda consultar las recomendaciones de consumo durante el embarazo realizadas por la AESAN relativas a prácticas de higiene alimentaria importantes para las mujeres gestantes, así como una relación de los alimentos que se deben evitar durante el embarazo por estar asociados a determinados peligros biológicos (entre los que destaca Listeria monocytogenes ). Además, ha publicado un vídeo específico sobre recomendaciones para la prevención de listeriosis durante el embarazo .",
+          "sourceField": "article.body.p[6]",
+          "order": 6,
+          "section": "publication"
+        },
+        {
+          "value": "Se recuerda la importancia de extremar las medidas de higiene para evitar la contaminación cruzada con otros productos.",
+          "sourceField": "article.body.p[7]",
+          "order": 7,
+          "section": "publication"
+        },
+        {
+          "value": "Puede ampliar la información sobre la listeriosis en el siguiente enlace .",
+          "sourceField": "article.body.p[8]",
+          "order": 8,
+          "section": "publication"
+        },
+        {
+          "value": "Puede ampliar información sobre enfermedades de transmisión alimentaria en el portal de la AESAN.",
+          "sourceField": "article.body.p[9]",
+          "order": 9,
+          "section": "publication"
+        }
+      ],
+      "resources": [
+        {
+          "kind": "image",
+          "url": "https://www.aesan.gob.es/dam/jcr:ce96f1eb-533a-4986-88d3-55884b12ece1/Alerta_2026_10_22.2026-10-22-16-03-07.png",
+          "label": null,
+          "sourceField": "article.image[0]",
+          "order": 0
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:6f57a77f-541c-4c54-a124-543d65b1aaf1/alimentacion_segura_embarazo.pdf",
+          "label": "recomendaciones de consumo durante el embarazo",
+          "sourceField": "article.link[1]",
+          "order": 1
+        },
+        {
+          "kind": "link",
+          "url": "https://www.aesan.gob.es/actualidad/campanyas-seguridad-alimentaria/Listeriosis_embarazo",
+          "label": "recomendaciones para la prevención de listeriosis durante el embarazo",
+          "sourceField": "article.link[2]",
+          "order": 2
+        },
+        {
+          "kind": "link",
+          "url": "https://www.aesan.gob.es/AECOSAN/web/para_el_consumidor/ampliacion/contaminacion_cruzada.htm",
+          "label": "medidas de higiene para evitar la contaminación cruzada",
+          "sourceField": "article.link[3]",
+          "order": 3
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:88348d48-2e3b-4756-b6b4-837a6da02d6c/Listeriosis.pdf",
+          "label": "enlace",
+          "sourceField": "article.link[4]",
+          "order": 4
+        },
+        {
+          "kind": "link",
+          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/detalle/enfermedades_transmision_alimentaria.htm",
+          "label": "enfermedades de transmisión alimentaria",
+          "sourceField": "article.link[5]",
+          "order": 5
+        }
+      ],
+      "officialDates": [
+        {
+          "label": null,
+          "value": "22/10/2026",
+          "sourceField": "pageInfo.date",
+          "order": 0
+        }
+      ],
+      "url": "https://www.aesan.gob.es/alertas/2026_72",
+      "publishedAt": "2026-10-21T22:00:00.000Z",
+      "detectedAt": "2026-10-22T15:31:55.953Z",
+      "updatedAt": "2026-10-21T22:00:00.000Z",
+      "contentHash": "d4218ae532e39fc313cceac9e06c211b490386c10a236330611df0bbf1949f6d",
+      "versionCount": 1,
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "unknown",
+        "code": null,
+        "sourceTypeId": null,
+        "officialLabel": null,
+        "publications": [
+          {
+            "sourceRecordId": "952c705f-2911-4614-a754-328edbe194df",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_72",
+            "matches": []
+          }
+        ]
+      }
+    },
     {
       "id": "aesan:ES2026/606",
       "reference": "ES2026/606",
