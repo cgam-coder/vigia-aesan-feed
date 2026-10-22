@@ -4,7 +4,7 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-10-22T15:31:55.953Z",
+  "generatedAt": "2026-10-22T19:24:38.682Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
     "totalAlerts": 132,
@@ -228,16 +228,22 @@
       "isUpdate": false,
       "aesanAlertClassification": {
         "schemaVersion": 1,
-        "status": "unknown",
-        "code": null,
-        "sourceTypeId": null,
-        "officialLabel": null,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
         "publications": [
           {
             "sourceRecordId": "952c705f-2911-4614-a754-328edbe194df",
             "sourceRecordIdType": "idAlert",
             "url": "https://www.aesan.gob.es/alertas/2026_72",
-            "matches": []
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
           }
         ]
       }
