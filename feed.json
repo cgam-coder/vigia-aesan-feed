@@ -4,10 +4,10 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-10-23T15:46:38.966Z",
+  "generatedAt": "2026-10-23T22:39:06.744Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
-    "totalAlerts": 133,
+    "totalAlerts": 134,
     "earliestPublishedAt": "2025-01-01T23:00:00.000Z",
     "latestPublishedAt": "2026-10-22T22:00:00.000Z",
     "lastFullSyncAt": "2026-10-09T10:48:55.635Z",
@@ -160,6 +160,207 @@
             "sourceRecordId": "7a439baa-97ef-44ff-8ede-195776d12d56",
             "sourceRecordIdType": "idAlert",
             "url": "https://www.aesan.gob.es/alertas/2026_73",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "aesan:ES2026/642",
+      "reference": "ES2026/642",
+      "sourceRecordId": "25158a15-5d75-43b4-9a00-87833da87561",
+      "sourceRecordIdType": "idAlert",
+      "sourceRecordSchemaVersion": 2,
+      "sourceRecordHash": "fceba47dfc3dbddee8b68e2255547181942877c7d26d24a936f48aa14c35d3ab",
+      "previousReferences": [],
+      "referenceHistory": [],
+      "source": "AESAN",
+      "type": "Alimentaria",
+      "priority": "Alta",
+      "title": "Alerta por presencia de Salmonella spp. en clara de huevo pasteurizada. (Ref. ES2026/642)",
+      "product": "Clara de huevo pasteurizada",
+      "brand": "Casa de Castrelo",
+      "productClass": "Pescado y marisco",
+      "productKey": "clara de huevo pasteurizada",
+      "brandKey": "casa de castrelo",
+      "provider": "",
+      "providerKey": "",
+      "providerRole": "",
+      "providerEvidence": "",
+      "notifyingText": "La Agencia Española de Seguridad Alimentaria y Nutrición (AESAN) ha sido informada por las autoridades sanitarias de la Junta de Andalucía a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI) de la presencia de Salmonella spp. en clara de huevo pasteurizada de la marca Casa de Castrelo con fecha de caducidad 27/10/2026",
+      "hazard": "Salmonella spp.",
+      "origin": "No indicado",
+      "scope": "Según la información disponible, la distribución inicial ha sido a la comunidad autónoma de Andalucía, si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
+      "action": "Se recomienda a las personas que tengan en su domicilio los productos incluidos en esta alerta se abstengan de consumirlos.",
+      "lots": [
+        "6265"
+      ],
+      "imageUrl": "https://www.aesan.gob.es/dam/jcr:f788f7a2-3c54-44bd-97a5-b6916e2dd6a6/casa%20de%20castro1.2026-10-23-21-43-54.jpg",
+      "officialTitle": "Alerta por presencia de Salmonella spp. en clara de huevo pasteurizada. (Ref. ES2026/642)",
+      "publishedFields": [
+        {
+          "label": "Nombre del producto",
+          "value": "Clara de huevo pasteurizada",
+          "sourceField": "article.productData[0].field[0]",
+          "order": 0,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Nombre de marca",
+          "value": "Casa de Castrelo",
+          "sourceField": "article.productData[0].field[1]",
+          "order": 1,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Aspecto del producto",
+          "value": "Botella de plástico",
+          "sourceField": "article.productData[0].field[2]",
+          "order": 2,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Número de lote",
+          "value": "6265",
+          "sourceField": "article.productData[0].field[3]",
+          "order": 3,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Fecha de caducidad",
+          "value": "27/10/26",
+          "sourceField": "article.productData[0].field[4]",
+          "order": 4,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Peso de unidad/vol.",
+          "value": "500 ml",
+          "sourceField": "article.productData[0].field[5]",
+          "order": 5,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Temperatura",
+          "value": "Refrigerado",
+          "sourceField": "article.productData[0].field[6]",
+          "order": 6,
+          "section": "product_data",
+          "context": "list:0"
+        }
+      ],
+      "materialParagraphs": [
+        {
+          "value": "La Agencia Española de Seguridad Alimentaria y Nutrición (AESAN) ha tenido conocimiento a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de una notificación de alerta trasladada por las autoridades sanitarias de la Junta de Andalucía relativa a la presencia de Salmonella spp. en clara de huevo pasteurizada.",
+          "sourceField": "article.body.p[0]",
+          "order": 0,
+          "section": "publication"
+        },
+        {
+          "value": "Según la información disponible, la distribución inicial ha sido a la comunidad autónoma de Andalucía, si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
+          "sourceField": "article.body.p[1]",
+          "order": 1,
+          "section": "publication"
+        },
+        {
+          "value": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+          "sourceField": "article.body.p[2]",
+          "order": 2,
+          "section": "publication"
+        },
+        {
+          "value": "Se recomienda a las personas que tengan en su domicilio productos afectados por esta alerta, se abstengan de consumirlos.",
+          "sourceField": "article.body.p[3]",
+          "order": 3,
+          "section": "publication"
+        },
+        {
+          "value": "En el caso de haber consumido alguno de los productos de los lotes afectados y presentar alguna sintomatología compatible con la salmonelosis (principalmente diarrea y / o vómitos acompañados de fiebre y dolor de cabeza) se recomienda acudir a un centro de salud.",
+          "sourceField": "article.body.p[4]",
+          "order": 4,
+          "section": "publication"
+        },
+        {
+          "value": "Puede ampliar información de la AESAN sobre la salmonelosis en el siguiente enlace",
+          "sourceField": "article.body.p[5]",
+          "order": 5,
+          "section": "publication"
+        },
+        {
+          "value": "Puede ampliar información sobre enfermedades de transmisión alimentaria en el portal de la AESAN.",
+          "sourceField": "article.body.p[6]",
+          "order": 6,
+          "section": "publication"
+        }
+      ],
+      "resources": [
+        {
+          "kind": "image",
+          "url": "https://www.aesan.gob.es/dam/jcr:f788f7a2-3c54-44bd-97a5-b6916e2dd6a6/casa%20de%20castro1.2026-10-23-21-43-54.jpg",
+          "label": null,
+          "sourceField": "article.image[0]",
+          "order": 0
+        },
+        {
+          "kind": "image",
+          "url": "https://www.aesan.gob.es/dam/jcr:39d39de2-efcd-4b29-a903-b84caaa48d12/casa%20de%20castro2.2026-10-23-21-44-15.jpg",
+          "label": null,
+          "sourceField": "article.image[1]",
+          "order": 1
+        },
+        {
+          "kind": "link",
+          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/salmonela.htm",
+          "label": "enlace",
+          "sourceField": "article.link[2]",
+          "order": 2
+        },
+        {
+          "kind": "link",
+          "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/detalle/enfermedades_transmision_alimentaria.htm",
+          "label": "enfermedades de transmisión alimentaria",
+          "sourceField": "article.link[3]",
+          "order": 3
+        }
+      ],
+      "officialDates": [
+        {
+          "label": null,
+          "value": "23/10/2026",
+          "sourceField": "pageInfo.date",
+          "order": 0
+        }
+      ],
+      "url": "https://www.aesan.gob.es/alertas/2026_74",
+      "publishedAt": "2026-10-22T22:00:00.000Z",
+      "detectedAt": "2026-10-23T22:39:06.744Z",
+      "updatedAt": "2026-10-22T22:00:00.000Z",
+      "contentHash": "fceba47dfc3dbddee8b68e2255547181942877c7d26d24a936f48aa14c35d3ab",
+      "versionCount": 1,
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "25158a15-5d75-43b4-9a00-87833da87561",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_74",
             "matches": [
               {
                 "code": "general_population",
