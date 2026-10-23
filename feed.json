@@ -4,17 +4,173 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-10-22T19:24:38.682Z",
+  "generatedAt": "2026-10-23T15:46:38.966Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
-    "totalAlerts": 132,
+    "totalAlerts": 133,
     "earliestPublishedAt": "2025-01-01T23:00:00.000Z",
-    "latestPublishedAt": "2026-10-21T22:00:00.000Z",
+    "latestPublishedAt": "2026-10-22T22:00:00.000Z",
     "lastFullSyncAt": "2026-10-09T10:48:55.635Z",
     "pagesScanned": 9,
     "legacyIndexesScanned": 0
   },
   "alerts": [
+    {
+      "id": "aesan:ES2026/621",
+      "reference": "ES2026/621",
+      "sourceRecordId": "7a439baa-97ef-44ff-8ede-195776d12d56",
+      "sourceRecordIdType": "idAlert",
+      "sourceRecordSchemaVersion": 2,
+      "sourceRecordHash": "f78ff75d25f2c59c9bdcffcffb5f5985c07d7a1591e5a6165f8bc1654eeca032",
+      "previousReferences": [],
+      "referenceHistory": [],
+      "source": "AESAN",
+      "type": "Alimentaria",
+      "priority": "Alta",
+      "title": "Alerta por presencia de cuerpos extraños (fragmentos de vidrio) en Salsa Ricotta procedente de Italia. (Ref. ES2026/621)",
+      "product": "Salsa Ricotta",
+      "brand": "EROSKI",
+      "productClass": "Condimentos, salsas y especias",
+      "productKey": "salsa ricotta",
+      "brandKey": "eroski",
+      "provider": "",
+      "providerKey": "",
+      "providerRole": "",
+      "providerEvidence": "",
+      "notifyingText": "La Agencia Española de Seguridad Alimentaria y Nutrición (AESAN) ha sido informada por la Comunidad Foral de Navarra, a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de la presencia de cuerpos extraños (fragmentos de vidrio) en el producto Salsa Ricota de la marca EROSKI, del lote LA310CRI01 de fecha de caducidad 06/11/2028.",
+      "hazard": "Fragmentos de vidrio",
+      "origin": "Italia",
+      "scope": "Población general · publicación oficial AESAN",
+      "action": "Se recomienda a las personas que tengan en su domicilio los productos incluidos en esta alerta se abstengan de consumirlos.",
+      "lots": [
+        "LA310CRI01"
+      ],
+      "imageUrl": "https://www.aesan.gob.es/dam/jcr:7a8ef38a-6ba5-40f2-9b8d-dd958293d775/Alerta_2026_10_23_1.2026-10-23-13-35-37.png",
+      "officialTitle": "Alerta por presencia de cuerpos extraños (fragmentos de vidrio) en Salsa Ricotta procedente de Italia. (Ref. ES2026/621)",
+      "publishedFields": [
+        {
+          "label": "Nombre del producto",
+          "value": "Salsa Ricotta",
+          "sourceField": "article.productData[0].field[0]",
+          "order": 0,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Nombre de marca",
+          "value": "EROSKI",
+          "sourceField": "article.productData[0].field[1]",
+          "order": 1,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Aspecto del producto",
+          "value": "Bote de vidrio",
+          "sourceField": "article.productData[0].field[2]",
+          "order": 2,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Número de lote",
+          "value": "LA310CRI01",
+          "sourceField": "article.productData[0].field[3]",
+          "order": 3,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Fecha de caducidad",
+          "value": "06/11/2028",
+          "sourceField": "article.productData[0].field[4]",
+          "order": 4,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Peso de unidad",
+          "value": "350 g",
+          "sourceField": "article.productData[0].field[5]",
+          "order": 5,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Temperatura",
+          "value": "Ambiente",
+          "sourceField": "article.productData[0].field[6]",
+          "order": 6,
+          "section": "product_data",
+          "context": "list:0"
+        }
+      ],
+      "materialParagraphs": [
+        {
+          "value": "La Agencia Española de Seguridad Alimentaria y Nutrición ha tenido conocimiento a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de una notificación de alerta trasladada por las autoridades sanitarias de la Comunidad Foral de Navarra relativa a la presencia de cuerpos extraños (fragmentos de vidrio) en el producto Salsa Ricota de la marca EROSKI.",
+          "sourceField": "article.body.p[0]",
+          "order": 0,
+          "section": "publication"
+        },
+        {
+          "value": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+          "sourceField": "article.body.p[1]",
+          "order": 1,
+          "section": "publication"
+        },
+        {
+          "value": "Se recomienda a las personas que tengan en su domicilio productos afectados por esta alerta, se abstengan de consumirlos.",
+          "sourceField": "article.body.p[2]",
+          "order": 2,
+          "section": "publication"
+        }
+      ],
+      "resources": [
+        {
+          "kind": "image",
+          "url": "https://www.aesan.gob.es/dam/jcr:7a8ef38a-6ba5-40f2-9b8d-dd958293d775/Alerta_2026_10_23_1.2026-10-23-13-35-37.png",
+          "label": null,
+          "sourceField": "article.image[0]",
+          "order": 0
+        }
+      ],
+      "officialDates": [
+        {
+          "label": null,
+          "value": "23/10/2026",
+          "sourceField": "pageInfo.date",
+          "order": 0
+        }
+      ],
+      "url": "https://www.aesan.gob.es/alertas/2026_73",
+      "publishedAt": "2026-10-22T22:00:00.000Z",
+      "detectedAt": "2026-10-23T15:46:38.966Z",
+      "updatedAt": "2026-10-22T22:00:00.000Z",
+      "contentHash": "f78ff75d25f2c59c9bdcffcffb5f5985c07d7a1591e5a6165f8bc1654eeca032",
+      "versionCount": 1,
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "7a439baa-97ef-44ff-8ede-195776d12d56",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_73",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
+    },
     {
       "id": "aesan:ES2026/637",
       "reference": "ES2026/637",
