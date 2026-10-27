@@ -4,7 +4,7 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-10-26T21:53:49.948Z",
+  "generatedAt": "2026-10-27T12:35:09.170Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
     "totalAlerts": 135,
@@ -21,9 +21,15 @@
       "sourceRecordId": "10b6716f-313b-4ccb-8939-1d9043f19ecb",
       "sourceRecordIdType": "idAlert",
       "sourceRecordSchemaVersion": 2,
-      "sourceRecordHash": "b767a4bbfba03a4e4622b43a610f8d13375db196ee189c3683abd334c5fbcc6e",
+      "sourceRecordHash": "d97e30398a9308b99528942e5c7c586b6a881fcb8edbd718ffcc39d2b8f94c78",
       "previousReferences": [],
-      "referenceHistory": [],
+      "referenceHistory": [
+        {
+          "reference": "ES2026/648",
+          "title": "Alerta por presencia de Salmonella en tahini de sésamo procedente de Egipto. (Ref. ES2026/648)",
+          "contentHash": "b767a4bbfba03a4e4622b43a610f8d13375db196ee189c3683abd334c5fbcc6e"
+        }
+      ],
       "source": "AESAN",
       "type": "Alimentaria",
       "priority": "Alta",
@@ -40,7 +46,7 @@
       "notifyingText": "",
       "hazard": "Salmonella spp.",
       "origin": "Egipto",
-      "scope": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Cataluña, Madrid y País Vasco , si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
+      "scope": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Cataluña, Madrid, Islas Baleares y Comunidad Valenciana , si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
       "action": "Se recomienda a las personas que tengan en su domicilio los productos incluidos en esta alerta se abstengan de consumirlos.",
       "lots": [
         "0257502493"
@@ -113,7 +119,7 @@
           "section": "publication"
         },
         {
-          "value": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Cataluña, Madrid y País Vasco , si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
+          "value": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Cataluña, Madrid, Islas Baleares y Comunidad Valenciana , si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
           "sourceField": "article.body.p[1]",
           "order": 1,
           "section": "publication"
@@ -183,10 +189,298 @@
       "url": "https://www.aesan.gob.es/alertas/2026_75",
       "publishedAt": "2026-10-25T23:00:00.000Z",
       "detectedAt": "2026-10-26T17:33:23.512Z",
-      "updatedAt": "2026-10-25T23:00:00.000Z",
-      "contentHash": "b767a4bbfba03a4e4622b43a610f8d13375db196ee189c3683abd334c5fbcc6e",
-      "versionCount": 1,
+      "updatedAt": "2026-10-27T12:35:09.170Z",
+      "contentHash": "d97e30398a9308b99528942e5c7c586b6a881fcb8edbd718ffcc39d2b8f94c78",
+      "versionCount": 2,
       "isUpdate": false,
+      "publicationHistory": [
+        {
+          "reference": "ES2026/648",
+          "sourceRecordId": "10b6716f-313b-4ccb-8939-1d9043f19ecb",
+          "sourceRecordIdType": "idAlert",
+          "url": "https://www.aesan.gob.es/alertas/2026_75",
+          "publishedAt": "2026-10-25T23:00:00.000Z",
+          "sourceRecordSchemaVersion": 2,
+          "sourceRecordHash": "b767a4bbfba03a4e4622b43a610f8d13375db196ee189c3683abd334c5fbcc6e",
+          "officialTitle": "Alerta por presencia de Salmonella en tahini de sésamo procedente de Egipto. (Ref. ES2026/648)",
+          "publishedFields": [
+            {
+              "label": "Nombre del producto",
+              "value": "Pure Sesame Tahini",
+              "sourceField": "article.productData[0].field[0]",
+              "order": 0,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Arkan",
+              "sourceField": "article.productData[0].field[1]",
+              "order": 1,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Aspecto del producto",
+              "value": "Bote de plástico",
+              "sourceField": "article.productData[0].field[2]",
+              "order": 2,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Número de lote",
+              "value": "0257502493",
+              "sourceField": "article.productData[0].field[3]",
+              "order": 3,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Fecha de caducidad",
+              "value": "12/2027",
+              "sourceField": "article.productData[0].field[4]",
+              "order": 4,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Peso de unidad",
+              "value": "400 g",
+              "sourceField": "article.productData[0].field[5]",
+              "order": 5,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Temperatura",
+              "value": "Ambiente",
+              "sourceField": "article.productData[0].field[6]",
+              "order": 6,
+              "section": "product_data",
+              "context": "list:0"
+            }
+          ],
+          "materialParagraphs": [
+            {
+              "value": "La Agencia Española de Seguridad Alimentaria y Nutrición (AESAN) ha tenido conocimiento a través de la Red de Alerta Alimentaria Europea (RASFF), de una notificación de alerta trasladada por las autoridades sanitarias de Malta relativa a la presencia de Salmonella spp. en el producto Pure Sesame Tahini de la marca Arkan.",
+              "sourceField": "article.body.p[0]",
+              "order": 0,
+              "section": "publication"
+            },
+            {
+              "value": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Cataluña, Madrid y País Vasco , si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
+              "sourceField": "article.body.p[1]",
+              "order": 1,
+              "section": "publication"
+            },
+            {
+              "value": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI, con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+              "sourceField": "article.body.p[2]",
+              "order": 2,
+              "section": "publication"
+            },
+            {
+              "value": "Se recomienda a las personas que tengan en su domicilio productos afectados por esta alerta, se abstengan de consumirlos.",
+              "sourceField": "article.body.p[3]",
+              "order": 3,
+              "section": "publication"
+            },
+            {
+              "value": "En el caso de haber consumido alguno de los productos de los lotes afectados y presentar alguna sintomatología compatible con la salmonelosis (principalmente diarrea y / o vómitos acompañados de fiebre y dolor de cabeza) se recomienda acudir a un centro de salud.",
+              "sourceField": "article.body.p[4]",
+              "order": 4,
+              "section": "publication"
+            },
+            {
+              "value": "Puede ampliar información de la AESAN sobre la salmonelosis en el siguiente enlace",
+              "sourceField": "article.body.p[5]",
+              "order": 5,
+              "section": "publication"
+            },
+            {
+              "value": "Puede ampliar información sobre enfermedades de transmisión alimentaria en el portal de la AESAN.",
+              "sourceField": "article.body.p[6]",
+              "order": 6,
+              "section": "publication"
+            }
+          ],
+          "resources": [
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:2b8e8304-3360-46a2-8cd3-ee2af6a66b40/Alerta_2026_10_16_1.2026-10-26-18-20-36.png",
+              "label": null,
+              "sourceField": "article.image[0]",
+              "order": 0
+            },
+            {
+              "kind": "link",
+              "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/salmonela.htm",
+              "label": "enlace",
+              "sourceField": "article.link[1]",
+              "order": 1
+            },
+            {
+              "kind": "link",
+              "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/detalle/enfermedades_transmision_alimentaria.htm",
+              "label": "enfermedades de transmisión alimentaria",
+              "sourceField": "article.link[2]",
+              "order": 2
+            }
+          ],
+          "officialDates": [
+            {
+              "label": null,
+              "value": "26/10/2026",
+              "sourceField": "pageInfo.date",
+              "order": 0
+            }
+          ]
+        },
+        {
+          "reference": "ES2026/648",
+          "sourceRecordId": "10b6716f-313b-4ccb-8939-1d9043f19ecb",
+          "sourceRecordIdType": "idAlert",
+          "url": "https://www.aesan.gob.es/alertas/2026_75",
+          "publishedAt": "2026-10-25T23:00:00.000Z",
+          "sourceRecordSchemaVersion": 2,
+          "sourceRecordHash": "d97e30398a9308b99528942e5c7c586b6a881fcb8edbd718ffcc39d2b8f94c78",
+          "officialTitle": "Alerta por presencia de Salmonella en tahini de sésamo procedente de Egipto. (Ref. ES2026/648)",
+          "publishedFields": [
+            {
+              "label": "Nombre del producto",
+              "value": "Pure Sesame Tahini",
+              "sourceField": "article.productData[0].field[0]",
+              "order": 0,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Nombre de marca",
+              "value": "Arkan",
+              "sourceField": "article.productData[0].field[1]",
+              "order": 1,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Aspecto del producto",
+              "value": "Bote de plástico",
+              "sourceField": "article.productData[0].field[2]",
+              "order": 2,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Número de lote",
+              "value": "0257502493",
+              "sourceField": "article.productData[0].field[3]",
+              "order": 3,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Fecha de caducidad",
+              "value": "12/2027",
+              "sourceField": "article.productData[0].field[4]",
+              "order": 4,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Peso de unidad",
+              "value": "400 g",
+              "sourceField": "article.productData[0].field[5]",
+              "order": 5,
+              "section": "product_data",
+              "context": "list:0"
+            },
+            {
+              "label": "Temperatura",
+              "value": "Ambiente",
+              "sourceField": "article.productData[0].field[6]",
+              "order": 6,
+              "section": "product_data",
+              "context": "list:0"
+            }
+          ],
+          "materialParagraphs": [
+            {
+              "value": "La Agencia Española de Seguridad Alimentaria y Nutrición (AESAN) ha tenido conocimiento a través de la Red de Alerta Alimentaria Europea (RASFF), de una notificación de alerta trasladada por las autoridades sanitarias de Malta relativa a la presencia de Salmonella spp. en el producto Pure Sesame Tahini de la marca Arkan.",
+              "sourceField": "article.body.p[0]",
+              "order": 0,
+              "section": "publication"
+            },
+            {
+              "value": "Según la información disponible, la distribución inicial ha sido a las comunidades autónomas de Cataluña, Madrid, Islas Baleares y Comunidad Valenciana , si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
+              "sourceField": "article.body.p[1]",
+              "order": 1,
+              "section": "publication"
+            },
+            {
+              "value": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI, con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+              "sourceField": "article.body.p[2]",
+              "order": 2,
+              "section": "publication"
+            },
+            {
+              "value": "Se recomienda a las personas que tengan en su domicilio productos afectados por esta alerta, se abstengan de consumirlos.",
+              "sourceField": "article.body.p[3]",
+              "order": 3,
+              "section": "publication"
+            },
+            {
+              "value": "En el caso de haber consumido alguno de los productos de los lotes afectados y presentar alguna sintomatología compatible con la salmonelosis (principalmente diarrea y / o vómitos acompañados de fiebre y dolor de cabeza) se recomienda acudir a un centro de salud.",
+              "sourceField": "article.body.p[4]",
+              "order": 4,
+              "section": "publication"
+            },
+            {
+              "value": "Puede ampliar información de la AESAN sobre la salmonelosis en el siguiente enlace",
+              "sourceField": "article.body.p[5]",
+              "order": 5,
+              "section": "publication"
+            },
+            {
+              "value": "Puede ampliar información sobre enfermedades de transmisión alimentaria en el portal de la AESAN.",
+              "sourceField": "article.body.p[6]",
+              "order": 6,
+              "section": "publication"
+            }
+          ],
+          "resources": [
+            {
+              "kind": "image",
+              "url": "https://www.aesan.gob.es/dam/jcr:2b8e8304-3360-46a2-8cd3-ee2af6a66b40/Alerta_2026_10_16_1.2026-10-26-18-20-36.png",
+              "label": null,
+              "sourceField": "article.image[0]",
+              "order": 0
+            },
+            {
+              "kind": "link",
+              "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/subdetalle/salmonela.htm",
+              "label": "enlace",
+              "sourceField": "article.link[1]",
+              "order": 1
+            },
+            {
+              "kind": "link",
+              "url": "https://www.aesan.gob.es/AECOSAN/web/seguridad_alimentaria/detalle/enfermedades_transmision_alimentaria.htm",
+              "label": "enfermedades de transmisión alimentaria",
+              "sourceField": "article.link[2]",
+              "order": 2
+            }
+          ],
+          "officialDates": [
+            {
+              "label": null,
+              "value": "26/10/2026",
+              "sourceField": "pageInfo.date",
+              "order": 0
+            }
+          ]
+        }
+      ],
       "aesanAlertClassification": {
         "schemaVersion": 1,
         "status": "known",
