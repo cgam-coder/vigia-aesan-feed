@@ -4,17 +4,179 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-10-27T12:35:09.170Z",
+  "generatedAt": "2026-10-27T18:20:12.183Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
-    "totalAlerts": 135,
+    "totalAlerts": 136,
     "earliestPublishedAt": "2025-01-01T23:00:00.000Z",
-    "latestPublishedAt": "2026-10-25T23:00:00.000Z",
+    "latestPublishedAt": "2026-10-26T23:00:00.000Z",
     "lastFullSyncAt": "2026-10-09T10:48:55.635Z",
     "pagesScanned": 9,
     "legacyIndexesScanned": 0
   },
   "alerts": [
+    {
+      "id": "aesan:ES2026/647",
+      "reference": "ES2026/647",
+      "sourceRecordId": "53aaa47b-4918-4e21-a0c4-29502c62a2de",
+      "sourceRecordIdType": "idAlert",
+      "sourceRecordSchemaVersion": 2,
+      "sourceRecordHash": "e59588063c44c217128a4aad7935e6cdaf16b6dc5978329e0f551d3f9be559dd",
+      "previousReferences": [],
+      "referenceHistory": [],
+      "source": "AESAN",
+      "type": "Alimentaria",
+      "priority": "Media",
+      "title": "Alerta por posible presencia de fragmentos de cristal en pudding procedente de Dinamarca. (Ref. ES2026/647)",
+      "product": "Vanilla cookie flavour pudding",
+      "brand": "Arla protein",
+      "productClass": "Bebidas",
+      "productKey": "vanilla cookie flavour pudding",
+      "brandKey": "arla protein",
+      "provider": "",
+      "providerKey": "",
+      "providerRole": "",
+      "providerEvidence": "",
+      "notifyingText": "",
+      "hazard": "Consultar publicación oficial",
+      "origin": "Dinamarca",
+      "scope": "Según la información disponible, la distribución inicial se ha realizado en casi todo el territorio nacional.",
+      "action": "Se recomienda a las personas que tengan en su domicilio los productos incluidos en esta alerta se abstengan de consumirlos.",
+      "lots": [
+        "ES26271001"
+      ],
+      "imageUrl": "https://www.aesan.gob.es/dam/jcr:8e758bc1-877a-494c-bb40-712a13c3ead1/Alerta_2026_10_27_1.2026-10-27-16-02-23.png",
+      "officialTitle": "Alerta por posible presencia de fragmentos de cristal en pudding procedente de Dinamarca. (Ref. ES2026/647)",
+      "publishedFields": [
+        {
+          "label": "Nombre del producto",
+          "value": "Vanilla cookie flavour pudding",
+          "sourceField": "article.productData[0].field[0]",
+          "order": 0,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Nombre de marca",
+          "value": "Arla protein",
+          "sourceField": "article.productData[0].field[1]",
+          "order": 1,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Aspecto del producto",
+          "value": "Bote",
+          "sourceField": "article.productData[0].field[2]",
+          "order": 2,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Número de lote",
+          "value": "ES26271001",
+          "sourceField": "article.productData[0].field[3]",
+          "order": 3,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Fecha de consumo preferente",
+          "value": "25/04/2027",
+          "sourceField": "article.productData[0].field[4]",
+          "order": 4,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Peso de unidad",
+          "value": "200 g",
+          "sourceField": "article.productData[0].field[5]",
+          "order": 5,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Temperatura",
+          "value": "Refrigerado",
+          "sourceField": "article.productData[0].field[6]",
+          "order": 6,
+          "section": "product_data",
+          "context": "list:0"
+        }
+      ],
+      "materialParagraphs": [
+        {
+          "value": "La Agencia Española de Seguridad Alimentaria y Nutrición ha tenido conocimiento a través de la Red de Alerta Alimentaria Europea (RASFF), de una notificación de alerta trasladada por las autoridades sanitarias de Dinamarca relativa a la posible presencia de fragmentos de cristal, en pudding.",
+          "sourceField": "article.body.p[0]",
+          "order": 0,
+          "section": "publication"
+        },
+        {
+          "value": "Según la información disponible, la distribución inicial se ha realizado en casi todo el territorio nacional.",
+          "sourceField": "article.body.p[1]",
+          "order": 1,
+          "section": "publication"
+        },
+        {
+          "value": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+          "sourceField": "article.body.p[2]",
+          "order": 2,
+          "section": "publication"
+        },
+        {
+          "value": "Se recomienda a las personas que tengan en su domicilio productos afectados por esta alerta, se abstengan de consumirlos.",
+          "sourceField": "article.body.p[3]",
+          "order": 3,
+          "section": "publication"
+        }
+      ],
+      "resources": [
+        {
+          "kind": "image",
+          "url": "https://www.aesan.gob.es/dam/jcr:8e758bc1-877a-494c-bb40-712a13c3ead1/Alerta_2026_10_27_1.2026-10-27-16-02-23.png",
+          "label": null,
+          "sourceField": "article.image[0]",
+          "order": 0
+        }
+      ],
+      "officialDates": [
+        {
+          "label": null,
+          "value": "27/10/2026",
+          "sourceField": "pageInfo.date",
+          "order": 0
+        }
+      ],
+      "url": "https://www.aesan.gob.es/alertas/2026_76",
+      "publishedAt": "2026-10-26T23:00:00.000Z",
+      "detectedAt": "2026-10-27T18:20:12.183Z",
+      "updatedAt": "2026-10-26T23:00:00.000Z",
+      "contentHash": "e59588063c44c217128a4aad7935e6cdaf16b6dc5978329e0f551d3f9be559dd",
+      "versionCount": 1,
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "general_population",
+        "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+        "officialLabel": "Alertas alimentarias de interés para toda la población",
+        "publications": [
+          {
+            "sourceRecordId": "53aaa47b-4918-4e21-a0c4-29502c62a2de",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_76",
+            "matches": [
+              {
+                "code": "general_population",
+                "sourceTypeId": "b5c27f12-7f21-4d2e-bc5c-d5186b4d6259",
+                "officialLabel": "Alertas alimentarias de interés para toda la población"
+              }
+            ]
+          }
+        ]
+      }
+    },
     {
       "id": "aesan:ES2026/648",
       "reference": "ES2026/648",
