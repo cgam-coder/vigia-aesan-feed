@@ -4,7 +4,7 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-10-28T19:47:19.805Z",
+  "generatedAt": "2026-10-28T23:38:22.771Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
     "totalAlerts": 138,
@@ -150,16 +150,22 @@
       "isUpdate": false,
       "aesanAlertClassification": {
         "schemaVersion": 1,
-        "status": "unknown",
-        "code": null,
-        "sourceTypeId": null,
-        "officialLabel": null,
+        "status": "known",
+        "code": "food_supplements",
+        "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+        "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios",
         "publications": [
           {
             "sourceRecordId": "e123101f-ef12-497a-ac6d-3cce27bf2652",
             "sourceRecordIdType": "idAlert",
             "url": "https://www.aesan.gob.es/alertas/2026_78",
-            "matches": []
+            "matches": [
+              {
+                "code": "food_supplements",
+                "sourceTypeId": "649ce619-367b-4ad2-96cd-27b905fb6020",
+                "officialLabel": "Alertas alimentarias para personas que consumen complementos alimenticios"
+              }
+            ]
           }
         ]
       }
