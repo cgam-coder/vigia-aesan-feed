@@ -1,8 +1,8 @@
 {
   "protocol": "nagamealert-v35-readproof-input-v1",
-  "phase": "preflight",
-  "commitMessage": "preflight",
-  "runtimeOverrideUUID": null,
+  "phase": "canary",
+  "commitMessage": "canary:f3e53976-1918-4dd3-97c4-5d34014a3bcf",
+  "runtimeOverrideUUID": "f3e53976-1918-4dd3-97c4-5d34014a3bcf",
   "candidateCommit": "c16ebd87ab1bdade34a782ccbd5b8e1d604ef2cd",
   "candidateGitTree": "8568c043c5f9c11da9fd4186abe40ea36e98bc2b",
   "candidateTreeSHA256": "eb666de719059c2da2de539fe09f7503c0626ba0b63e93a8db3980c609ea3b37",
@@ -15,5 +15,5 @@
   "workflowSHA256": "cb9c619aa0d9dda22aeb2bc0750c1eb86f72c161628ec64ce0230f62528b370f",
   "wrapperSHA256": "00edef707106f7aaf678546d9891b515fe04df2c9b1934be851ed81f4ccd2307",
   "keyId": "551080bcea7f7875a427aad0435ee8eed2368bb8ab85bca006c102c64024764e",
-  "activationCommitNotYetCreated": true
+  "activationCommitNotYetCreated": false
 }
