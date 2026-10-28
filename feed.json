@@ -4,17 +4,385 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-10-27T18:20:12.183Z",
+  "generatedAt": "2026-10-28T19:47:19.805Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
-    "totalAlerts": 136,
+    "totalAlerts": 138,
     "earliestPublishedAt": "2025-01-01T23:00:00.000Z",
-    "latestPublishedAt": "2026-10-26T23:00:00.000Z",
+    "latestPublishedAt": "2026-10-27T23:00:00.000Z",
     "lastFullSyncAt": "2026-10-09T10:48:55.635Z",
     "pagesScanned": 9,
     "legacyIndexesScanned": 0
   },
   "alerts": [
+    {
+      "id": "aesan:ES2026/654",
+      "reference": "ES2026/654",
+      "sourceRecordId": "e123101f-ef12-497a-ac6d-3cce27bf2652",
+      "sourceRecordIdType": "idAlert",
+      "sourceRecordSchemaVersion": 2,
+      "sourceRecordHash": "b3386b0af86c4ad3199ac06ed8b51999c68f574322074baf962fa633030be87f",
+      "previousReferences": [],
+      "referenceHistory": [],
+      "source": "AESAN",
+      "type": "Alimentaria",
+      "priority": "Alta",
+      "title": "Alerta por presencia de sildenafilo en complemento alimenticio procedente de Perú (Ref. ES2026/654)",
+      "product": "complemento alimenticio",
+      "brand": "",
+      "productClass": "Complementos alimenticios",
+      "productKey": "complemento alimenticio",
+      "brandKey": "",
+      "provider": "",
+      "providerKey": "",
+      "providerRole": "",
+      "providerEvidence": "",
+      "notifyingText": "",
+      "hazard": "Sildenafilo",
+      "origin": "Perú",
+      "scope": "Personas consumidoras del complemento alimenticio indicado",
+      "action": "Se recomienda a las personas que tengan en su domicilio el productos incluido en esta alerta se abstengan de consumirlo.",
+      "lots": [],
+      "imageUrl": "https://www.aesan.gob.es/dam/jcr:26ee3881-7154-4c0f-b3fb-7cd72fb7ada4/Alerta_2026_10_28_3.2026-10-28-18-53-34.png",
+      "officialTitle": "Alerta por presencia de sildenafilo en complemento alimenticio procedente de Perú (Ref. ES2026/654)",
+      "publishedFields": [],
+      "materialParagraphs": [
+        {
+          "value": "La Agencia Española de Seguridad Alimentaria y Nutrición informa de que la Agencia Española de Medicamentos y Productos Sanitarios (AEMPS) ha ordenado la retirada del complemento alimenticio “Enerup Premium” por la presencia de sildenafilo no declarado en el etiquetado.",
+          "sourceField": "article.body.p[0]",
+          "order": 0,
+          "section": "publication"
+        },
+        {
+          "value": "La inclusión de las sustancias activas como sildenafilo en cantidad suficiente para restaurar, corregir o modificar una función fisiológica ejerciendo una acción farmacológica puede producir reacciones adversas de diversa gravedad.",
+          "sourceField": "article.body.p[1]",
+          "order": 1,
+          "section": "publication"
+        },
+        {
+          "value": "Se adjunta imagen disponible:",
+          "sourceField": "article.body.p[2]",
+          "order": 2,
+          "section": "publication"
+        },
+        {
+          "value": "Pueden ampliar información en el siguiente enlace:",
+          "sourceField": "article.body.p[3]",
+          "order": 3,
+          "section": "publication"
+        },
+        {
+          "value": "Esta información ha sido trasladada a las autoridades competentes de las comunidades autónomas a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada del los producto afectado de los canales de comercialización.",
+          "sourceField": "article.body.p[4]",
+          "order": 4,
+          "section": "publication"
+        },
+        {
+          "value": "Se recomienda a las personas que tengan en su domicilio el producto afectado por esta alerta, se abstengan de consumirlo.",
+          "sourceField": "article.body.p[5]",
+          "order": 5,
+          "section": "publication"
+        },
+        {
+          "value": "Puede ampliar información de AESAN sobre complementos alimenticios en el siguiente enlace:",
+          "sourceField": "article.body.p[6]",
+          "order": 6,
+          "section": "publication"
+        },
+        {
+          "value": "Asimismo, puede ser de interés la siguiente información sobre comercio por internet:",
+          "sourceField": "article.body.p[7]",
+          "order": 7,
+          "section": "publication"
+        }
+      ],
+      "resources": [
+        {
+          "kind": "image",
+          "url": "https://www.aesan.gob.es/dam/jcr:26ee3881-7154-4c0f-b3fb-7cd72fb7ada4/Alerta_2026_10_28_3.2026-10-28-18-53-34.png",
+          "label": null,
+          "sourceField": "article.image[0]",
+          "order": 0
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:2178a5cd-77f9-4c54-abdb-6865aebf74c1/saber_complementos.pdf",
+          "label": "¿Qué necesito saber sobre los complementos alimenticios?",
+          "sourceField": "article.link[1]",
+          "order": 1
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:f3ee1883-76dc-4d00-a6ba-4dc2618331fc/Decalogo_consumo_responsable_complementos_alimenticios.pdf",
+          "label": "Decálogo para un consumo responsable de los complementos alimenticios”.",
+          "sourceField": "article.link[2]",
+          "order": 2
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:7fd7f1f6-1592-42bc-9ef7-4d45eedf15fc/Cinco_preguntas.pdf",
+          "label": "5 Preguntas que debes hacerte antes de tomar un complemento alimenticio",
+          "sourceField": "article.link[3]",
+          "order": 3
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:d6b6ac5d-6345-403e-a62b-79e9a07307b8/COMPRA_SEGURA_DE_ALIMENTOS_POR_INTERNET.pdf",
+          "label": "Compra segura a través de internet",
+          "sourceField": "article.link[4]",
+          "order": 4
+        }
+      ],
+      "officialDates": [
+        {
+          "label": null,
+          "value": "28/10/2026",
+          "sourceField": "pageInfo.date",
+          "order": 0
+        }
+      ],
+      "url": "https://www.aesan.gob.es/alertas/2026_78",
+      "publishedAt": "2026-10-27T23:00:00.000Z",
+      "detectedAt": "2026-10-28T19:47:19.805Z",
+      "updatedAt": "2026-10-27T23:00:00.000Z",
+      "contentHash": "b3386b0af86c4ad3199ac06ed8b51999c68f574322074baf962fa633030be87f",
+      "versionCount": 1,
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "unknown",
+        "code": null,
+        "sourceTypeId": null,
+        "officialLabel": null,
+        "publications": [
+          {
+            "sourceRecordId": "e123101f-ef12-497a-ac6d-3cce27bf2652",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_78",
+            "matches": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "aesan:ES2026/655",
+      "reference": "ES2026/655",
+      "sourceRecordId": "a389f955-7ca4-46a9-9fb6-84e26d6c9c07",
+      "sourceRecordIdType": "idAlert",
+      "sourceRecordSchemaVersion": 2,
+      "sourceRecordHash": "fdbb29021738b52b202bfe35ede3c07bc21e69e51b1f97fea46a09c14a1463b5",
+      "previousReferences": [],
+      "referenceHistory": [],
+      "source": "AESAN",
+      "type": "Alimentaria",
+      "priority": "Media",
+      "title": "Advertencia para personas con alergia al huevo: Presencia de huevo no declarado en preparación de surimi con gambas procedente de España. (Ref. ES2026/655)",
+      "product": "MeloDIA marinera con gambas al ajillo",
+      "brand": "DIA Mari Marinera",
+      "productClass": "Pescado y marisco",
+      "productKey": "melodia marinera con gambas al ajillo",
+      "brandKey": "dia mari marinera",
+      "provider": "",
+      "providerKey": "",
+      "providerRole": "",
+      "providerEvidence": "",
+      "notifyingText": "La Agencia Española de Seguridad Alimentaria y Nutrición (AESAN) ha tenido conocimiento a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de una notificación de alerta trasladada por las autoridades sanitarias del País Vasco, relativa a la presencia de huevo no incluido en el etiquetado del producto MeloDIA marinera con gambas al ajillo de la marca DIA Mari Marinera.",
+      "hazard": "Huevo no declarado",
+      "origin": "España",
+      "scope": "Colectivo alérgico o intolerante indicado por AESAN",
+      "action": "Como medida de precaución, se recomienda a aquellas PERSONAS CON ALERGIA AL HUEVO que pudieran tener el producto anteriormente mencionado en sus hogares se abstengan de consumirlo.",
+      "lots": [],
+      "imageUrl": "https://www.aesan.gob.es/dam/jcr:8d7ec58b-68ac-415b-84b4-5bb8ac12ac60/Alerta_2026_10_28_1.2026-10-28-16-23-34.jpg",
+      "officialTitle": "Advertencia para personas con alergia al huevo: Presencia de huevo no declarado en preparación de surimi con gambas procedente de España. (Ref. ES2026/655)",
+      "publishedFields": [
+        {
+          "label": "Nombre del producto",
+          "value": "MeloDIA marinera con gambas al ajillo",
+          "sourceField": "article.productData[0].field[0]",
+          "order": 0,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Marca comercial",
+          "value": "DIA Mari Marinera",
+          "sourceField": "article.productData[0].field[1]",
+          "order": 1,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Aspecto del producto",
+          "value": "Bandeja de plástico",
+          "sourceField": "article.productData[0].field[2]",
+          "order": 2,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Números de lote",
+          "value": "L260566GGO con fecha de caducidad 30/11/2027;\nL260642GGO con fecha de caducidad 31/12/2027;\nL260747GGO, L260754GGO y L260769GGO con fecha de caducidad 31/01/2028;\nL260942GGO, L260951GGO y L260962GGO con fecha de caducidad 31/03/2028",
+          "sourceField": "article.productData[0].field[3]",
+          "order": 3,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Peso de unidad",
+          "value": "250 g ( 2 x 125g)",
+          "sourceField": "article.productData[0].field[4]",
+          "order": 4,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Temperatura",
+          "value": "Congelado",
+          "sourceField": "article.productData[0].field[5]",
+          "order": 5,
+          "section": "product_data",
+          "context": "list:0"
+        }
+      ],
+      "materialParagraphs": [
+        {
+          "value": "La Agencia Española de Seguridad Alimentaria y Nutrición (AESAN) ha tenido conocimiento a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de una notificación de alerta trasladada por las autoridades sanitarias del País Vasco, relativa a la presencia de huevo no incluido en el etiquetado del producto MeloDIA marinera con gambas al ajillo de la marca DIA Mari Marinera.",
+          "sourceField": "article.body.p[0]",
+          "order": 0,
+          "section": "publication"
+        },
+        {
+          "value": "La información que aquí se incluye es resultante del autocontrol de la propia empresa, que ha comunicado la incidencia a las autoridades competentes, en cumplimiento de la legislación y a fin de no poner a disposición de la población alimentos no seguros.",
+          "sourceField": "article.body.p[1]",
+          "order": 1,
+          "section": "publication"
+        },
+        {
+          "value": "Según la información disponible, la distribución se ha realizado en todo el territorio nacional.",
+          "sourceField": "article.body.p[2]",
+          "order": 2,
+          "section": "publication"
+        },
+        {
+          "value": "Esta información ha sido trasladada a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+          "sourceField": "article.body.p[3]",
+          "order": 3,
+          "section": "publication"
+        },
+        {
+          "value": "Como medida de precaución, se recomienda a las personas con alergia al huevo, que pudieran tener el producto anteriormente mencionado en sus hogares que se abstengan de consumirlo.",
+          "sourceField": "article.body.p[4]",
+          "order": 4,
+          "section": "publication"
+        },
+        {
+          "value": "EL CONSUMO DE ESTE PRODUCTO NO COMPORTA NINGÚN RIESGO PARA EL RESTO DE LA POBLACIÓN.",
+          "sourceField": "article.body.p[5]",
+          "order": 5,
+          "section": "publication"
+        },
+        {
+          "value": "Puede ampliar información de la AESAN sobre alergias, intolerancias y problemas derivados de la ingesta de gluten en los siguientes enlaces:",
+          "sourceField": "article.body.p[6]",
+          "order": 6,
+          "section": "publication"
+        }
+      ],
+      "resources": [
+        {
+          "kind": "image",
+          "url": "https://www.aesan.gob.es/dam/jcr:8d7ec58b-68ac-415b-84b4-5bb8ac12ac60/Alerta_2026_10_28_1.2026-10-28-16-23-34.jpg",
+          "label": null,
+          "sourceField": "article.image[0]",
+          "order": 0
+        },
+        {
+          "kind": "image",
+          "url": "https://www.aesan.gob.es/dam/jcr:a3953721-b705-4038-905d-f4296fbd86a2/Alerta_2026_10_28_2.2026-10-28-16-25-18.jpg",
+          "label": null,
+          "sourceField": "article.image[1]",
+          "order": 1
+        },
+        {
+          "kind": "image",
+          "url": "https://www.aesan.gob.es/dam/jcr:100d6e74-2b07-437c-b6c1-38d0feeac0db/Alerta_2026_10_28_3.2026-10-28-16-25-45.jpg",
+          "label": null,
+          "sourceField": "article.image[2]",
+          "order": 2
+        },
+        {
+          "kind": "link",
+          "url": "https://www.aesan.gob.es/seguridad-alimentaria/informacion-alimentaria/etiquetado-sustancias",
+          "label": "Etiquetado de sustancias que causan alergias e intolerancias",
+          "sourceField": "article.link[3]",
+          "order": 3
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:c2bccf06-9aea-45e8-9725-546a60eee891/Cuadriptico_Alergias_Alimentarias_interactivo.pdf",
+          "label": "Información a los consumidores sobre alergias alimentarias",
+          "sourceField": "article.link[4]",
+          "order": 4
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:63990b52-7b41-4d8c-ba93-745d68b63471/intolerancia_lactosa.pdf",
+          "label": "Intolerancia a la lactosa",
+          "sourceField": "article.link[5]",
+          "order": 5
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:a9d14dd3-f957-4638-8448-c2b3e007ec0c/enfermedad_celiaca.pdf",
+          "label": "Enfermedad celiaca",
+          "sourceField": "article.link[6]",
+          "order": 6
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:738ee87d-9f8f-4f46-bf93-f6ba9766ee71/GUIA_ETIQUETADO_DE_ALIMENTOS_QUE_CONTIENEN_CEREALES_CON_GLUTEN.pdf",
+          "label": "Guía de etiquetado de alimentos que contienen cereales con gluten",
+          "sourceField": "article.link[7]",
+          "order": 7
+        }
+      ],
+      "officialDates": [
+        {
+          "label": null,
+          "value": "28/10/2026",
+          "sourceField": "pageInfo.date",
+          "order": 0
+        }
+      ],
+      "url": "https://www.aesan.gob.es/alertas/2026_77",
+      "publishedAt": "2026-10-27T23:00:00.000Z",
+      "detectedAt": "2026-10-28T19:47:19.805Z",
+      "updatedAt": "2026-10-27T23:00:00.000Z",
+      "contentHash": "fdbb29021738b52b202bfe35ede3c07bc21e69e51b1f97fea46a09c14a1463b5",
+      "versionCount": 1,
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "a389f955-7ca4-46a9-9fb6-84e26d6c9c07",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_77",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
+    },
     {
       "id": "aesan:ES2026/647",
       "reference": "ES2026/647",
