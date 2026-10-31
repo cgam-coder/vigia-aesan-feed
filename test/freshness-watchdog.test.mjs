@@ -324,11 +324,13 @@ test('V20 F1: failed, unknown and pending historical attempts prevent historical
   }
 });
 
-test('V20 F1: native watchdog code preserves 15-minute schedule and global failure exit',()=>{
+test('watchdog preserves 15-minute schedule and routes exit through severity policy',()=>{
   const workflow=readFileSync(new URL('../.github/workflows/freshness-watchdog.yml',import.meta.url),'utf8');
   const script=readFileSync(new URL('../scripts/freshness-watchdog.mjs',import.meta.url),'utf8');
   assert.match(workflow,/cron: "13,28,43,58 \* \* \* \*"/);
   assert.match(workflow,/timeout-minutes: 35/);
-  assert.match(script,/if \(!report\.allFresh\) process\.exitCode = 1;/);
+  assert.match(script,/let decision = classifyWatchdogReport\(report\);/);
+  assert.match(script,/const decision = await publishWatchdogReport\(report\);/);
+  assert.match(script,/if \(decision\.exitCode !== 0\) process\.exitCode = decision\.exitCode;/);
   assert.match(script,/const legacyKnown=native\.http===404\|\|\(native\.ok&&native\.http===200&&native\.body\?\.outcome==='disabled'\)/);
 });

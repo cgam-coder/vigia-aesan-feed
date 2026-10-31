@@ -1,4 +1,6 @@
 import { pathToFileURL } from 'node:url';
+import { appendFile } from 'node:fs/promises';
+import { classifyWatchdogReport, watchdogStepSummary, nativeSeverityEvidenceIssues } from './watchdog-disposition.mjs';
 
 export const SOURCES = Object.freeze(['AESAN', 'RAPNA', 'RASFF', 'SAFETY GATE', 'OECD']);
 const ROUTES = ['aesan', 'rapna', 'rasff', 'safety-gate', 'oecd'];
@@ -178,6 +180,7 @@ export async function runWatchdog({ url, token, fetchImpl=fetch, clock=Date.now,
     const allFresh=Boolean(nativeMode&&native.http===200&&native.body.outcome==='observed'&&native.body.officialParityCertified===true&&native.body.activeLease===false&&recentAudit&&seen.size===5&&states.every(s=>s.verdict==='PASS'));
     const channels=summarizeNativeChannels(native.body,policies,clock(),native.ok&&native.http===200&&policyResult.ok&&policyResult.http===200&&!authBlocked);
     const report={states,channels,policyVersion:policies?1:null,allFresh,zeroWrite:true,supervisor:'github-observes-cloudflare',recoveryOutcomeUncertain:false,auditOutcomeUncertain:false,authBlocked,elapsedMs:monotonic()-started,calls};
+    report.evidenceIssues=nativeSeverityEvidenceIssues(native.body,report,clock());
     log({phase:'summary',...report});return report;
   }
   const policyResult = await request(freshnessUrl({ observe:'1', policy:'1' }), 'GET', 'policy', null, BUDGET.read);
@@ -262,10 +265,27 @@ export async function runWatchdog({ url, token, fetchImpl=fetch, clock=Date.now,
   return report;
 }
 
+export async function publishWatchdogReport(report, { summaryPath=process.env.GITHUB_STEP_SUMMARY,
+  log=message=>console.log(message), error=message=>console.error(message), appendSummary=appendFile }={}) {
+  let decision = classifyWatchdogReport(report);
+  if (summaryPath) {
+    try { await appendSummary(summaryPath, watchdogStepSummary(decision), 'utf8'); }
+    catch {
+      decision=Object.freeze({...decision,level:'CRITICAL',exitCode:1,reason:'github-summary-unavailable'});
+      error('::error title=NagameAlert watchdog evidence::GitHub watchdog summary unavailable');
+    }
+  }
+  log('WATCHDOG_DISPOSITION ' + JSON.stringify(decision));
+  if (decision.level === 'WARNING') log('::warning title=NagameAlert historical HOLD::RECENT observed; historical certification pending');
+  if (decision.level === 'CRITICAL') error('::error title=NagameAlert critical watchdog::RECENT, coordinator, parity or evidence requires investigation');
+  return decision;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const report = await runWatchdog({ url:process.env.VIGIA_FRESHNESS_URL, token:process.env.VIGIA_SYNC_TOKEN });
-    if (!report.allFresh) process.exitCode = 1;
-  } catch { console.error('Watchdog configuration or execution failed closed'); process.exitCode = 1; }
+    const decision = await publishWatchdogReport(report);
+    if (decision.exitCode !== 0) process.exitCode = decision.exitCode;
+  } catch { console.error('::error title=NagameAlert critical watchdog::Watchdog configuration or execution failed closed'); process.exitCode = 1; }
 }
 

@@ -1,0 +1,157 @@
+{
+  "provenance": {
+    "run_id": 41160491223,
+    "job_id": 124416776806,
+    "url": "https://github.com/cgam-coder/vigia-aesan-feed/actions/runs/41160491223",
+    "captured_log_time": "2026-10-31T02:33:12.0320373Z",
+    "retrieved_at": "2026-10-31T16:49:37.588Z",
+    "baseline_verified": true,
+    "originalConclusion": "failure",
+    "sanitization": "Extracted WATCHDOG summary verbatim; excluded runner environment and credentials. No native HTTP body was logged."
+  },
+  "report": {
+    "phase": "summary",
+    "states": [
+      {
+        "source": "AESAN",
+        "verdict": "PASS",
+        "recentAgeMinutes": 22.121816666666668,
+        "revisionAgeMinutes": 66.87263333333334,
+        "scope": "full-archive",
+        "recentFresh": true,
+        "revisionFresh": true,
+        "parity": true,
+        "reason": null
+      },
+      {
+        "source": "RAPNA",
+        "verdict": "HOLD",
+        "recentAgeMinutes": 27.306083333333333,
+        "revisionAgeMinutes": 2512.6671666666666,
+        "scope": "current+legacy",
+        "recentFresh": true,
+        "revisionFresh": false,
+        "parity": true,
+        "reason": null
+      },
+      {
+        "source": "RASFF",
+        "verdict": "HOLD",
+        "recentAgeMinutes": 17.09585,
+        "revisionAgeMinutes": 30725.44595,
+        "scope": "operational-2020+",
+        "recentFresh": true,
+        "revisionFresh": false,
+        "parity": true,
+        "reason": null
+      },
+      {
+        "source": "SAFETY GATE",
+        "verdict": "PASS",
+        "recentAgeMinutes": 11.431566666666667,
+        "revisionAgeMinutes": null,
+        "scope": "recent-index-only",
+        "recentFresh": true,
+        "revisionFresh": true,
+        "parity": true,
+        "reason": null
+      },
+      {
+        "source": "OECD",
+        "verdict": "HOLD",
+        "recentAgeMinutes": 32.03215,
+        "revisionAgeMinutes": 30992.350783333335,
+        "scope": "operational-2020+",
+        "recentFresh": true,
+        "revisionFresh": false,
+        "parity": true,
+        "reason": null
+      }
+    ],
+    "channels": {
+      "coordinator": {
+        "verdict": "OBSERVED",
+        "wakeAgeMinutes": 2.5699666666666667,
+        "auditAgeMinutes": 10.849
+      },
+      "recent": {
+        "verdict": "OBSERVED",
+        "officialFreshnessCertified": false,
+        "sources": [
+          {
+            "source": "AESAN",
+            "verdict": "OBSERVED"
+          },
+          {
+            "source": "RAPNA",
+            "verdict": "OBSERVED"
+          },
+          {
+            "source": "RASFF",
+            "verdict": "OBSERVED"
+          },
+          {
+            "source": "SAFETY GATE",
+            "verdict": "OBSERVED"
+          },
+          {
+            "source": "OECD",
+            "verdict": "OBSERVED"
+          }
+        ]
+      },
+      "historical": {
+        "verdict": "HOLD",
+        "officialFreshnessCertified": false,
+        "sources": [
+          {
+            "source": "AESAN",
+            "verdict": "OBSERVED"
+          },
+          {
+            "source": "RAPNA",
+            "verdict": "HOLD"
+          },
+          {
+            "source": "RASFF",
+            "verdict": "HOLD"
+          },
+          {
+            "source": "SAFETY GATE",
+            "verdict": "NOT_REQUIRED"
+          },
+          {
+            "source": "OECD",
+            "verdict": "HOLD"
+          }
+        ]
+      },
+      "recoveryAuthorized": false,
+      "zeroWrite": true
+    },
+    "policyVersion": 1,
+    "allFresh": false,
+    "zeroWrite": true,
+    "supervisor": "github-observes-cloudflare",
+    "recoveryOutcomeUncertain": false,
+    "auditOutcomeUncertain": false,
+    "authBlocked": false,
+    "elapsedMs": 1554.7725409999998,
+    "calls": [
+      {
+        "phase": "native-heartbeat",
+        "source": null,
+        "method": "GET",
+        "timeoutMs": 30000,
+        "http": 200
+      },
+      {
+        "phase": "policy",
+        "source": null,
+        "method": "GET",
+        "timeoutMs": 30000,
+        "http": 200
+      }
+    ]
+  }
+}
