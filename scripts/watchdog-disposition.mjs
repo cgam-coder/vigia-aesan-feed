@@ -4,6 +4,20 @@
  * The original report.allFresh remains authoritative and unchanged.
  */
 export const SOURCE_NAMES = Object.freeze(['AESAN','RAPNA','RASFF','SAFETY GATE','OECD']);
+// Runtime #182's v35-audit-only-reader-v1 validates this immutable resolution,
+// including original job/receipt hashes and committed effects. It explicitly
+// preserves unknown certification; this identity grants no global PASS.
+export function nativeHistoricalCertificationHolds(body) {
+  const gate=body?.certificationGate;
+  const attempt=body?.state?.revisionAttempts?.['RAPNA:current-parity'];
+  if(gate?.protocol!=='v35-audit-only-reader-v1' || gate.allow!==false || gate.consumerAllow!==true ||
+     gate.reason!=='V35_AUDIT_ONLY_READER' || gate.cycles!==0 || gate.unsafe!==0 || gate.legacyUnresolved!==0 ||
+     attempt?.id!=='ab50d0f7-0ad7-4fb5-8078-f6c376aa8f53' || attempt.outcome!=='unknown' ||
+     attempt.reason!=='REVISION_CERTIFICATION_HOLD' ||
+     !Array.isArray(attempt.pendingDetails) || attempt.pendingDetails.length!==0) return [];
+  return [{key:'RAPNA:current-parity',id:attempt.id,originalOutcome:'unknown',
+    classification:'materialized-certification-unknown',protocol:gate.protocol}];
+}
 const names = new Set(SOURCE_NAMES);
 const validSourceSet = rows => Array.isArray(rows) && rows.length === SOURCE_NAMES.length &&
   new Set(rows.map(row => row?.source)).size === SOURCE_NAMES.length &&
@@ -19,6 +33,7 @@ function disposition(level, reason, report, historicHolds=[]) {
     recent:report?.channels?.recent?.verdict??'UNKNOWN',
     historical:report?.channels?.historical?.verdict??'UNKNOWN',
     historicalHolds:Object.freeze([...historicHolds]),
+    preservedHistoricalUnknowns:Object.freeze([...(Array.isArray(report?.historicalEvidenceHolds)?report.historicalEvidenceHolds:[])]),
     zeroWrite:report?.zeroWrite===true,
     recoveryAuthorized:false,
   });
@@ -109,11 +124,13 @@ export function nativeSeverityEvidenceIssues(body, report, now) {
       issues.push('unknown-or-contradictory-source-status');
   }
   const attempts=body?.state?.revisionAttempts;
+  const classified=nativeHistoricalCertificationHolds(body);
   if(attempts!==undefined){
     if(!attempts || typeof attempts!=='object' || Array.isArray(attempts)) issues.push('invalid-historical-attempts');
     else for(const [key,attempt] of Object.entries(attempts)){
       if(!SOURCE_NAMES.some(s=>key.startsWith(s+':')) ||
-         !['completed','partial','failed','running','idle','skipped'].includes(attempt?.outcome) ||
+         (!['completed','partial','failed','running','idle','skipped'].includes(attempt?.outcome) &&
+          !classified.some(hold=>hold.key===key && hold.id===attempt?.id)) ||
          (attempt?.pendingDetails!==undefined && !Array.isArray(attempt.pendingDetails)))
         issues.push('unknown-historical-attempt');
     }
@@ -127,10 +144,12 @@ export function watchdogStepSummary(classification) {
   const label=classification.level==='CRITICAL'?'CRITICAL — intervention or investigation required':
     classification.level==='WARNING'?'WARNING — historical certification pending':'HEALTHY — all global gates met';
   const holds=classification.historicalHolds.length?classification.historicalHolds.join(', '):'None';
+  const preserved=classification.preservedHistoricalUnknowns?.map(h=>h.key).join(', ')||'None';
   return `### NagameAlert source freshness: ${label}\n\n`+
     `- Native RECENT channel: **${classification.recent}**\n`+
     `- Historical certification channel: **${classification.historical}**\n`+
     `- Historical HOLD sources: **${holds}**\n`+
+    `- Preserved historical UNKNOWN with native classified effects: **${preserved}**\n`+
     `- Existing global allFresh (unchanged): **${classification.globalOfficialAllFresh}**\n`+
     `- Decision: **${classification.reason}**\n`+
     `- Mutations or recovery authorized by this classification: **NO**\n\n`+

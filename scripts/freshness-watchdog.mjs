@@ -1,6 +1,6 @@
 import { pathToFileURL } from 'node:url';
 import { appendFile } from 'node:fs/promises';
-import { classifyWatchdogReport, watchdogStepSummary, nativeSeverityEvidenceIssues } from './watchdog-disposition.mjs';
+import { classifyWatchdogReport, watchdogStepSummary, nativeSeverityEvidenceIssues, nativeHistoricalCertificationHolds } from './watchdog-disposition.mjs';
 
 export const SOURCES = Object.freeze(['AESAN', 'RAPNA', 'RASFF', 'SAFETY GATE', 'OECD']);
 const ROUTES = ['aesan', 'rapna', 'rasff', 'safety-gate', 'oecd'];
@@ -181,6 +181,7 @@ export async function runWatchdog({ url, token, fetchImpl=fetch, clock=Date.now,
     const channels=summarizeNativeChannels(native.body,policies,clock(),native.ok&&native.http===200&&policyResult.ok&&policyResult.http===200&&!authBlocked);
     const report={states,channels,policyVersion:policies?1:null,allFresh,zeroWrite:true,supervisor:'github-observes-cloudflare',recoveryOutcomeUncertain:false,auditOutcomeUncertain:false,authBlocked,elapsedMs:monotonic()-started,calls};
     report.evidenceIssues=nativeSeverityEvidenceIssues(native.body,report,clock());
+    report.historicalEvidenceHolds=nativeHistoricalCertificationHolds(native.body);
     log({phase:'summary',...report});return report;
   }
   const policyResult = await request(freshnessUrl({ observe:'1', policy:'1' }), 'GET', 'policy', null, BUDGET.read);

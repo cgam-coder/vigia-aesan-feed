@@ -1,0 +1,157 @@
+{
+  "provenance": {
+    "run_id": 41231581014,
+    "job_id": 124626759163,
+    "baseline": "28bcb64d37dcc9449549e4b5396f578a3f0cc5a3",
+    "kind": "authentic-archived-summary",
+    "url": "https://github.com/cgam-coder/vigia-aesan-feed/actions/runs/41231581014"
+  },
+  "report": {
+    "phase": "summary",
+    "states": [
+      {
+        "source": "AESAN",
+        "verdict": "PASS",
+        "recentAgeMinutes": 27.6448,
+        "revisionAgeMinutes": 322.39348333333334,
+        "scope": "full-archive",
+        "recentFresh": true,
+        "revisionFresh": true,
+        "parity": true,
+        "reason": null
+      },
+      {
+        "source": "RAPNA",
+        "verdict": "HOLD",
+        "recentAgeMinutes": 32.791266666666665,
+        "revisionAgeMinutes": 3493.19285,
+        "scope": "current+legacy",
+        "recentFresh": true,
+        "revisionFresh": false,
+        "parity": true,
+        "reason": null
+      },
+      {
+        "source": "RASFF",
+        "verdict": "HOLD",
+        "recentAgeMinutes": 22.74365,
+        "revisionAgeMinutes": 31705.971633333334,
+        "scope": "operational-2020+",
+        "recentFresh": true,
+        "revisionFresh": false,
+        "parity": true,
+        "reason": null
+      },
+      {
+        "source": "SAFETY GATE",
+        "verdict": "PASS",
+        "recentAgeMinutes": 17.050233333333335,
+        "revisionAgeMinutes": null,
+        "scope": "recent-index-only",
+        "recentFresh": true,
+        "revisionFresh": true,
+        "parity": true,
+        "reason": null
+      },
+      {
+        "source": "OECD",
+        "verdict": "HOLD",
+        "recentAgeMinutes": 37.64123333333333,
+        "revisionAgeMinutes": 31972.87646666667,
+        "scope": "operational-2020+",
+        "recentFresh": true,
+        "revisionFresh": false,
+        "parity": true,
+        "reason": null
+      }
+    ],
+    "channels": {
+      "coordinator": {
+        "verdict": "HOLD",
+        "wakeAgeMinutes": 3.0953666666666666,
+        "auditAgeMinutes": 16.502233333333333
+      },
+      "recent": {
+        "verdict": "HOLD",
+        "officialFreshnessCertified": false,
+        "sources": [
+          {
+            "source": "AESAN",
+            "verdict": "OBSERVED"
+          },
+          {
+            "source": "RAPNA",
+            "verdict": "OBSERVED"
+          },
+          {
+            "source": "RASFF",
+            "verdict": "OBSERVED"
+          },
+          {
+            "source": "SAFETY GATE",
+            "verdict": "OBSERVED"
+          },
+          {
+            "source": "OECD",
+            "verdict": "OBSERVED"
+          }
+        ]
+      },
+      "historical": {
+        "verdict": "HOLD",
+        "officialFreshnessCertified": false,
+        "sources": [
+          {
+            "source": "AESAN",
+            "verdict": "OBSERVED"
+          },
+          {
+            "source": "RAPNA",
+            "verdict": "HOLD"
+          },
+          {
+            "source": "RASFF",
+            "verdict": "HOLD"
+          },
+          {
+            "source": "SAFETY GATE",
+            "verdict": "NOT_REQUIRED"
+          },
+          {
+            "source": "OECD",
+            "verdict": "HOLD"
+          }
+        ]
+      },
+      "recoveryAuthorized": false,
+      "zeroWrite": true
+    },
+    "policyVersion": 1,
+    "allFresh": false,
+    "zeroWrite": true,
+    "supervisor": "github-observes-cloudflare",
+    "recoveryOutcomeUncertain": false,
+    "auditOutcomeUncertain": false,
+    "authBlocked": false,
+    "elapsedMs": 1784.776131,
+    "calls": [
+      {
+        "phase": "native-heartbeat",
+        "source": null,
+        "method": "GET",
+        "timeoutMs": 30000,
+        "http": 200
+      },
+      {
+        "phase": "policy",
+        "source": null,
+        "method": "GET",
+        "timeoutMs": 30000,
+        "http": 200
+      }
+    ],
+    "evidenceIssues": [
+      "unknown-historical-attempt"
+    ]
+  }
+}
