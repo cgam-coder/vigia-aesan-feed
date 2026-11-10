@@ -1,0 +1,272 @@
+name: TEMP Safety Gate F2B historical detail reachability
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/temp-safety-gate-f2b-history-reachability.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Sample old, middle and recent weekly reports against official JSON detail
+        if: false
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const indexUrl="https://ec.europa.eu/safety-gate-alerts/api/download/weeklyReport/list/xml/en";
+          const detailBase="https://ec.europa.eu/safety-gate-alerts/public/api/notification/";
+          const get=async(url,accept="application/xml")=>{
+            const response=await fetch(url,{headers:{accept,"user-agent":"NagameAlert-F2B-ReadOnly-Probe/1.0"},
+              signal:AbortSignal.timeout(30_000),redirect:"follow"});
+            return {status:response.status,text:await response.text(),contentType:response.headers.get("content-type")};
+          };
+          const index=await get(indexUrl);
+          if(index.status!==200) throw new Error("weekly report index HTTP "+index.status);
+          const blocks=[...index.text.matchAll(/<weeklyReport>([\s\S]*?)<\/weeklyReport>/gu)].map((m)=>m[1]);
+          const value=(block,key)=>block.match(new RegExp("<"+key+">([\\s\\S]*?)<\\/"+key+">","u"))?.[1]?.trim()??null;
+          const reports=blocks.map((block)=>({
+            reference:value(block,"reference"),publicationDate:value(block,"publicationDate"),
+            year:Number(value(block,"year")),week:Number(value(block,"week")),url:value(block,"URL")?.replace(/&amp;/gu,"&")??null,
+          })).filter((r)=>r.reference&&Number.isSafeInteger(r.year)&&Number.isSafeInteger(r.week)&&r.url);
+          if(reports.length<9) throw new Error("too few official weekly reports: "+reports.length);
+          reports.sort((a,b)=>a.year-b.year||a.week-b.week||String(a.reference).localeCompare(String(b.reference)));
+          const n=reports.length, mid=Math.floor(n/2);
+          const positions=[0,1,2,mid-1,mid,mid+1,n-3,n-2,n-1].filter((v,i,a)=>v>=0&&v<n&&a.indexOf(v)===i);
+          const selected=positions.map((i)=>reports[i]);
+          let sampledAlerts=0, detail200=0, detail404=0, otherFailures=0, refMismatches=0, xmlIdentityFailures=0;
+          const reportResults=[];
+          for(const report of selected){
+            const xml=await get(report.url);
+            if(xml.status!==200){
+              reportResults.push({report:report.reference,year:report.year,week:report.week,xmlStatus:xml.status,alerts:0});
+              otherFailures++; continue;
+            }
+            const notifications=[...xml.text.matchAll(/<notifications\b[\s\S]*?<\/notifications>/gu)].map((m)=>m[0]);
+            const identities=notifications.map((block)=>{
+              const reference=value(block,"caseNumber")??value(block,"alertNumber")??value(block,"notificationNumber");
+              const link=value(block,"reference");
+              const id=Number(link?.match(/alertDetail\/(\d+)/u)?.[1]);
+              return {reference,id};
+            });
+            const valid=identities.filter((x)=>x.reference&&Number.isSafeInteger(x.id)&&x.id>0);
+            xmlIdentityFailures+=identities.length-valid.length;
+            if(valid.length===0&&notifications.length){
+              const first=notifications[0];
+              const fields=[...first.matchAll(/<([A-Za-z0-9_:-]+)>([^<]{1,300})<\/\1>/gu)]
+                .map((m)=>({key:m[1],value:m[2].trim().slice(0,180)}))
+                .filter(({value})=>value);
+              console.log("SAFETY_GATE_OLD_XML_FIELDS "+JSON.stringify({
+                report:report.reference,year:report.year,week:report.week,fields:fields.slice(0,80)
+              }));
+            }
+            const pickIdx=[0,1,2,Math.floor(valid.length/2),valid.length-3,valid.length-2,valid.length-1]
+              .filter((v,i,a)=>v>=0&&v<valid.length&&a.indexOf(v)===i);
+            const sample=pickIdx.map((i)=>valid[i]);
+            const details=[];
+            for(const identity of sample){
+              sampledAlerts++;
+              const response=await get(detailBase+identity.id+"?language=es","application/json");
+              let body=null;
+              try{body=JSON.parse(response.text);}catch{}
+              const returnedRef=typeof body?.reference==="string"?body.reference:null;
+              if(response.status===200){
+                detail200++;
+                if(returnedRef!==identity.reference)refMismatches++;
+              }else if(response.status===404)detail404++;
+              else otherFailures++;
+              details.push({id:identity.id,reference:identity.reference,status:response.status,returnedReference:returnedRef});
+            }
+            reportResults.push({report:report.reference,year:report.year,week:report.week,xmlStatus:xml.status,
+              xmlNotifications:identities.length,validIdentities:valid.length,sampled:details});
+          }
+          const summary={reportCount:reports.length,sampledReports:selected.length,sampledAlerts,detail200,detail404,
+            otherFailures,refMismatches,xmlIdentityFailures,oldest:reports[0],middle:reports[mid],newest:reports.at(-1)};
+          console.log("SAFETY_GATE_HISTORY_REACHABILITY "+JSON.stringify(summary));
+          for(const result of reportResults)console.log("SAFETY_GATE_HISTORY_REPORT "+JSON.stringify(result));
+          if(detail404!==0||otherFailures!==0||refMismatches!==0||xmlIdentityFailures!==0||detail200!==sampledAlerts){
+            throw new Error("historical reachability sample is not clean");
+          }
+          NODE
+
+
+      - name: Discover official Safety Gate frontend API routes
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const base="https://ec.europa.eu";
+          const pageUrl=base+"/safety-gate-alerts/screen/search?resetSearch=true";
+          const response=await fetch(pageUrl,{headers:{"user-agent":"NagameAlert-F2B-ReadOnly-Probe/1.0"},signal:AbortSignal.timeout(30_000)});
+          const html=await response.text();
+          console.log("SAFETY_GATE_SEARCH_HTML "+JSON.stringify({status:response.status,bytes:Buffer.byteLength(html),finalUrl:response.url}));
+          const scripts=[...html.matchAll(/<script[^>]+src=["']([^"']+)["'][^>]*>/giu)].map((m)=>new URL(m[1],response.url).href);
+          console.log("SAFETY_GATE_SEARCH_SCRIPTS "+JSON.stringify(scripts));
+          const interesting=new Set();
+          for(const scriptUrl of scripts){
+            const jsResponse=await fetch(scriptUrl,{headers:{"user-agent":"NagameAlert-F2B-ReadOnly-Probe/1.0"},signal:AbortSignal.timeout(30_000)});
+            const js=await jsResponse.text();
+            const needles=["mostRecent","notification/search","/public/api/notification","searchCriteria","freeText","reference"];
+            for(const needle of needles){
+              let from=0;
+              while(true){
+                const i=js.indexOf(needle,from);
+                if(i<0)break;
+                const snippet=js.slice(Math.max(0,i-240),Math.min(js.length,i+500)).replace(/\s+/gu," ");
+                interesting.add(snippet);
+                from=i+needle.length;
+                if(interesting.size>=80)break;
+              }
+              if(interesting.size>=80)break;
+            }
+            const routeMatches=js.match(/(?:https:\/\/ec\.europa\.eu\/safety-gate-alerts)?\/(?:public\/)?api\/[A-Za-z0-9_?=&./:+%~-]{3,180}/gu) ?? [];
+            for(const route of routeMatches)interesting.add(route);
+            console.log("SAFETY_GATE_SCRIPT_META "+JSON.stringify({url:scriptUrl,status:jsResponse.status,bytes:Buffer.byteLength(js)}));
+          }
+          for(const value of [...interesting].slice(0,100))console.log("SAFETY_GATE_FRONTEND_ROUTE "+JSON.stringify(value));
+          NODE
+
+
+      - name: Extract exact official search service contract
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const root="https://ec.europa.eu/safety-gate-alerts/";
+          const page=await (await fetch(root+"screen/search?resetSearch=true",{signal:AbortSignal.timeout(30_000)})).text();
+          const mainSrc=[...page.matchAll(/<script[^>]+src=["']([^"']*main-[^"']+\.js)["']/giu)]
+            .map((m)=>new URL(m[1],root).href)[0];
+          if(!mainSrc)throw new Error("main bundle missing");
+          const seen=new Map();
+          const queue=[mainSrc];
+          while(queue.length&&seen.size<180){
+            const url=queue.shift();
+            if(seen.has(url))continue;
+            const response=await fetch(url,{signal:AbortSignal.timeout(30_000)});
+            if(response.status!==200)continue;
+            const js=await response.text();
+            seen.set(url,js);
+            for(const m of js.matchAll(/(?:from\s*|import\()["'](\.\/chunk-[A-Z0-9]+\.js)["']/gu)){
+              const child=new URL(m[1],url).href;
+              if(!seen.has(child))queue.push(child);
+            }
+          }
+          let hit=null;
+          for(const [url,js] of seen){
+            const pos=js.indexOf('this.http.post(this.baseUrl+"search"');
+            if(pos>=0){hit={url,js,pos};break;}
+          }
+          if(!hit)throw new Error("official search service not found in reachable bundles");
+          const alias=hit.js.slice(hit.pos,hit.pos+500).match(/headers:\{\[([A-Za-z_$][A-Za-z0-9_$]*)\]:"lang"\}/u)?.[1]??null;
+          let importedFrom=null,sourceExport=null;
+          if(alias){
+            const importMatches=[...hit.js.matchAll(/import\{([^}]*)\}from["'](\.\/chunk-[A-Z0-9]+\.js)["']/gu)];
+            for(const im of importMatches){
+              const pairs=im[1].split(",");
+              for(const entry of pairs){
+                const mm=entry.trim().match(/^([A-Za-z_$][A-Za-z0-9_$]*)\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)$/u);
+                if(mm&&mm[2]===alias){
+                  sourceExport=mm[1];
+                  importedFrom=new URL(im[2],hit.url).href;
+                  break;
+                }
+              }
+              if(importedFrom)break;
+            }
+          }
+          let aliasSource=null;
+          if(importedFrom&&sourceExport&&seen.has(importedFrom)){
+            const src=seen.get(importedFrom);
+            const exportPos=src.lastIndexOf("export{");
+            const exportTail=exportPos>=0?src.slice(exportPos):"";
+            let mapped=sourceExport;
+            for(const entry of exportTail.replace(/^.*?export\{/su,"").split(",")){
+              const mm=entry.trim().match(/^([A-Za-z_$][A-Za-z0-9_$]*)\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)/u);
+              if(mm&&mm[2]===sourceExport){mapped=mm[1];break;}
+            }
+            const positions=[src.indexOf("var "+mapped+"="),src.indexOf("const "+mapped+"="),src.indexOf("let "+mapped+"=")].filter((v)=>v>=0);
+            const defPos=positions.length?Math.min(...positions):-1;
+            aliasSource=defPos>=0?src.slice(Math.max(0,defPos-300),Math.min(src.length,defPos+700)):exportTail.slice(0,1800);
+          }
+          const qPos=hit.js.indexOf("new Qs(9,0");
+          const qPositions=[hit.js.indexOf("var Qs="),hit.js.indexOf("class Qs"),hit.js.indexOf("Qs=class")].filter((v)=>v>=0);
+          const qDefPos=qPositions.length?Math.min(...qPositions):-1;
+          console.log("SAFETY_GATE_EXACT_SEARCH_CONTRACT "+JSON.stringify({
+            bundlesFetched:seen.size,
+            serviceChunk:new URL(hit.url).pathname.split("/").at(-1),
+            headerAlias:alias,
+            importedFrom:importedFrom?new URL(importedFrom).pathname.split("/").at(-1):null,
+            sourceExport,
+            aliasSource,
+            serviceExcerpt:hit.js.slice(Math.max(0,hit.pos-1700),Math.min(hit.js.length,hit.pos+1800)).replace(/\s+/gu," "),
+            paginationUse:qPos>=0?hit.js.slice(Math.max(0,qPos-500),Math.min(hit.js.length,qPos+700)).replace(/\s+/gu," "):null,
+            paginationDefinition:qDefPos>=0?hit.js.slice(Math.max(0,qDefPos-300),Math.min(hit.js.length,qDefPos+1300)).replace(/\s+/gu," "):null,
+            imports:hit.js.slice(0,2200).replace(/\s+/gu," "),
+          }));
+          NODE
+
+
+      - name: Resolve archived Safety Gate references through official search
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const endpoint="https://ec.europa.eu/safety-gate-alerts/public/api/search";
+          const headers={
+            "accept":"application/json",
+            "content-type":"application/json",
+            "x-lang-param":"lang",
+            "x-requested-with":"XMLHttpRequest",
+            "cache-control":"No-Cache",
+            "user-agent":"NagameAlert-F2B-ReadOnly-Probe/1.0",
+          };
+          const payload=(reference)=>({
+            criteria:{},
+            searchCriteriaForNotification:false,
+            isLaunched:true,
+            isLaunchSearch:true,
+            pagination:{size:9,page:0,sortField:"PUBLICATION_DATE",sortOrder:"DESC"},
+            searchResults:[],
+            displayDefaultResults:false,
+            displayTagsWithSelectedCriteria:[],
+            isForMostRecent:false,
+            fullTextSearch:reference,
+            language:"en",
+          });
+          const findIdentities=(value,path="$",out=[])=>{
+            if(!value||typeof value!=="object")return out;
+            if(!Array.isArray(value)&&Number.isSafeInteger(value.id)&&typeof value.reference==="string"){
+              out.push({path,id:value.id,reference:value.reference});
+            }
+            if(Array.isArray(value)){
+              value.forEach((child,index)=>findIdentities(child,path+"["+index+"]",out));
+            }else{
+              for(const [key,child] of Object.entries(value))findIdentities(child,path+"."+key,out);
+            }
+            return out;
+          };
+          for(const reference of ["SR/02546/26","A12/1295/15","0374/04","0002/05","0010/05"]){
+            const response=await fetch(endpoint,{
+              method:"POST",headers,body:JSON.stringify(payload(reference)),
+              redirect:"manual",signal:AbortSignal.timeout(30_000),
+            });
+            const raw=await response.text();
+            let body=null;
+            try{body=JSON.parse(raw);}catch{}
+            const identities=findIdentities(body).filter((x)=>x.reference===reference);
+            console.log("SAFETY_GATE_OFFICIAL_SEARCH "+JSON.stringify({
+              query:reference,status:response.status,contentType:response.headers.get("content-type"),
+              allow:response.headers.get("allow"),bytes:Buffer.byteLength(raw),
+              topLevelKeys:body&&typeof body==="object"&&!Array.isArray(body)?Object.keys(body):[],
+              exactMatches:identities,
+              prefix:body?null:raw.slice(0,180).replace(/\s+/gu," "),
+            }));
+          }
+          NODE
