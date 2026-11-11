@@ -4,17 +4,226 @@
     "name": "AESAN",
     "url": "https://www.aesan.gob.es/alertas/buscador-alertas"
   },
-  "generatedAt": "2026-11-10T18:06:58.531Z",
+  "generatedAt": "2026-11-11T18:00:26.132Z",
   "archive": {
     "scope": "Archivo público accesible desde el buscador oficial de AESAN",
-    "totalAlerts": 141,
+    "totalAlerts": 142,
     "earliestPublishedAt": "2025-01-01T23:00:00.000Z",
-    "latestPublishedAt": "2026-11-09T23:00:00.000Z",
+    "latestPublishedAt": "2026-11-10T23:00:00.000Z",
     "lastFullSyncAt": "2026-11-04T11:20:13.768Z",
     "pagesScanned": 10,
     "legacyIndexesScanned": 0
   },
   "alerts": [
+    {
+      "id": "aesan:ES2026/681",
+      "reference": "ES2026/681",
+      "sourceRecordId": "a49ad4d9-8d39-46bc-9964-b0dd62a2652f",
+      "sourceRecordIdType": "idAlert",
+      "sourceRecordSchemaVersion": 2,
+      "sourceRecordHash": "721c198b6881d8b1f94acf525e6ca2f4cb28b546d05e6a29e460c96dc43b7780",
+      "previousReferences": [],
+      "referenceHistory": [],
+      "source": "AESAN",
+      "type": "Alimentaria",
+      "priority": "Media",
+      "title": "Advertencia para personas con intolerancia a los sulfitos: Presencia de sulfitos no declarados en el etiquetado de gamba blanca congelada procedente de Senegal (Ref. ES2026/681)",
+      "product": "Gamba blanca congelada",
+      "brand": "Oceanpescados S.A",
+      "productClass": "Pescado y marisco",
+      "productKey": "gamba blanca congelada",
+      "brandKey": "oceanpescados",
+      "provider": "",
+      "providerKey": "",
+      "providerRole": "",
+      "providerEvidence": "",
+      "notifyingText": "La Agencia Española de Seguridad Alimentaria y Nutrición ha tenido conocimiento a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de una notificación de alerta trasladada por las autoridades sanitarias de Castilla y León, relativa a la presencia de sulfitos no incluidos en el etiquetado en gamba blanca congelada de la marca Oceanpescados S.A.",
+      "hazard": "Sulfitos no declarados",
+      "origin": "Senegal",
+      "scope": "Según la información disponible, la distribución inicial ha sido a la comunidad autónoma de Castilla y León , si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
+      "action": "Como medida de precaución, se recomienda a aquellas PERSONAS CON INTOLERANCIA A LOS SULFITOS que pudieran tener el producto anteriormente mencionado en sus hogares se abstengan de consumirlo.",
+      "lots": [
+        "OP30126G"
+      ],
+      "imageUrl": "https://www.aesan.gob.es/dam/jcr:956b4ae6-1384-4cdf-a093-3caa0aa60970/Alerta_2026_11_11_1.2026-11-11-15-02-14.png",
+      "officialTitle": "Advertencia para personas con intolerancia a los sulfitos: Presencia de sulfitos no declarados en el etiquetado de gamba blanca congelada procedente de Senegal (Ref. ES2026/681)",
+      "publishedFields": [
+        {
+          "label": "Nombre del producto",
+          "value": "Gamba blanca congelada",
+          "sourceField": "article.productData[0].field[0]",
+          "order": 0,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Marca comercial",
+          "value": "Oceanpescados S.A.",
+          "sourceField": "article.productData[0].field[1]",
+          "order": 1,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Aspecto del producto",
+          "value": "Envasado en caja de cartón",
+          "sourceField": "article.productData[0].field[2]",
+          "order": 2,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Número de lote",
+          "value": "OP30126G",
+          "sourceField": "article.productData[0].field[3]",
+          "order": 3,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Fecha de consumo preferente",
+          "value": "01/2028",
+          "sourceField": "article.productData[0].field[4]",
+          "order": 4,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Peso de unidad",
+          "value": "1200 g",
+          "sourceField": "article.productData[0].field[5]",
+          "order": 5,
+          "section": "product_data",
+          "context": "list:0"
+        },
+        {
+          "label": "Temperatura",
+          "value": "Congelado",
+          "sourceField": "article.productData[0].field[6]",
+          "order": 6,
+          "section": "product_data",
+          "context": "list:0"
+        }
+      ],
+      "materialParagraphs": [
+        {
+          "value": "La Agencia Española de Seguridad Alimentaria y Nutrición ha tenido conocimiento a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), de una notificación de alerta trasladada por las autoridades sanitarias de Castilla y León, relativa a la presencia de sulfitos no incluidos en el etiquetado en gamba blanca congelada de la marca Oceanpescados S.A.",
+          "sourceField": "article.body.p[0]",
+          "order": 0,
+          "section": "publication"
+        },
+        {
+          "value": "Según la información disponible, la distribución inicial ha sido a la comunidad autónoma de Castilla y León , si bien no es descartable que puedan existir redistribuciones a otras comunidades autónomas.",
+          "sourceField": "article.body.p[1]",
+          "order": 1,
+          "section": "publication"
+        },
+        {
+          "value": "Esta información ha sido trasladada a través del Sistema Coordinado de Intercambio Rápido de Información (SCIRI), con el objeto de que se verifique la retirada de los productos afectados de los canales de comercialización.",
+          "sourceField": "article.body.p[2]",
+          "order": 2,
+          "section": "publication"
+        },
+        {
+          "value": "Como medida de precaución, se recomienda a las personas con intolerancia a los sulfitos, que pudieran tener el producto anteriormente mencionado en sus hogares que se abstengan de consumirlo.",
+          "sourceField": "article.body.p[3]",
+          "order": 3,
+          "section": "publication"
+        },
+        {
+          "value": "EL CONSUMO DE ESTE PRODUCTO NO COMPORTA NINGÚN RIESGO PARA EL RESTO DE LA POBLACIÓN.",
+          "sourceField": "article.body.p[4]",
+          "order": 4,
+          "section": "publication"
+        },
+        {
+          "value": "Puede ampliar información de la AESAN sobre alergias, intolerancias y problemas derivados de la ingesta de gluten en los siguientes enlaces:",
+          "sourceField": "article.body.p[5]",
+          "order": 5,
+          "section": "publication"
+        }
+      ],
+      "resources": [
+        {
+          "kind": "image",
+          "url": "https://www.aesan.gob.es/dam/jcr:956b4ae6-1384-4cdf-a093-3caa0aa60970/Alerta_2026_11_11_1.2026-11-11-15-02-14.png",
+          "label": null,
+          "sourceField": "article.image[0]",
+          "order": 0
+        },
+        {
+          "kind": "link",
+          "url": "https://www.aesan.gob.es/seguridad-alimentaria/informacion-alimentaria/etiquetado-sustancias",
+          "label": "Etiquetado de sustancias que causan alergias e intolerancias",
+          "sourceField": "article.link[1]",
+          "order": 1
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:c2bccf06-9aea-45e8-9725-546a60eee891/Cuadriptico_Alergias_Alimentarias_interactivo.pdf",
+          "label": "Información a los consumidores sobre alergias alimentarias",
+          "sourceField": "article.link[2]",
+          "order": 2
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:63990b52-7b41-4d8c-ba93-745d68b63471/intolerancia_lactosa.pdf",
+          "label": "Intolerancia a la lactosa",
+          "sourceField": "article.link[3]",
+          "order": 3
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:a9d14dd3-f957-4638-8448-c2b3e007ec0c/enfermedad_celiaca.pdf",
+          "label": "Enfermedad celiaca",
+          "sourceField": "article.link[4]",
+          "order": 4
+        },
+        {
+          "kind": "document",
+          "url": "https://www.aesan.gob.es/dam/jcr:738ee87d-9f8f-4f46-bf93-f6ba9766ee71/GUIA_ETIQUETADO_DE_ALIMENTOS_QUE_CONTIENEN_CEREALES_CON_GLUTEN.pdf",
+          "label": "Guía de etiquetado de alimentos que contienen cereales con gluten",
+          "sourceField": "article.link[5]",
+          "order": 5
+        }
+      ],
+      "officialDates": [
+        {
+          "label": null,
+          "value": "11/11/2026",
+          "sourceField": "pageInfo.date",
+          "order": 0
+        }
+      ],
+      "url": "https://www.aesan.gob.es/alertas/2026_82",
+      "publishedAt": "2026-11-10T23:00:00.000Z",
+      "detectedAt": "2026-11-11T18:00:26.132Z",
+      "updatedAt": "2026-11-10T23:00:00.000Z",
+      "contentHash": "721c198b6881d8b1f94acf525e6ca2f4cb28b546d05e6a29e460c96dc43b7780",
+      "versionCount": 1,
+      "isUpdate": false,
+      "aesanAlertClassification": {
+        "schemaVersion": 1,
+        "status": "known",
+        "code": "allergy_intolerance_adverse",
+        "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+        "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias",
+        "publications": [
+          {
+            "sourceRecordId": "a49ad4d9-8d39-46bc-9964-b0dd62a2652f",
+            "sourceRecordIdType": "idAlert",
+            "url": "https://www.aesan.gob.es/alertas/2026_82",
+            "matches": [
+              {
+                "code": "allergy_intolerance_adverse",
+                "sourceTypeId": "8c7503b4-b714-4c08-9d8e-0039a2d03624",
+                "officialLabel": "Alertas alimentarias para personas con alergias, intolerancias u otros efectos adversos a determinadas sustancias"
+              }
+            ]
+          }
+        ]
+      }
+    },
     {
       "id": "aesan:ES2026/678",
       "reference": "ES2026/678",
