@@ -3,9 +3,7 @@ import { appendFile } from 'node:fs/promises';
 import { classifyWatchdogReport, watchdogStepSummary, nativeSeverityEvidenceIssues, nativeHistoricalCertificationHolds } from './watchdog-disposition.mjs';
 
 export const SOURCES = Object.freeze(['AESAN', 'RAPNA', 'RASFF', 'SAFETY GATE', 'OECD']);
-const ROUTES = ['aesan', 'rapna', 'rasff', 'safety-gate', 'oecd'];
-export const BUDGET = Object.freeze({ global:32 * 60_000, read:30_000, audit:90_000,
-  recovery:20 * 60_000, reserve:30_000 });
+export const BUDGET = Object.freeze({ global:90_000, read:30_000 });
 
 // Consume the runtime policy; never duplicate or relax its source SLAs.
 export function parsePolicy(body) {
@@ -117,38 +115,25 @@ export function assessSilence(runs, now, maxSilenceMinutes) {
     officialFreshnessCertified:false, recoveryAuthorized:false };
 }
 
-function safeToRecover(body, source, now) {
-  if (!body || !Object.hasOwn(body, 'lease') || body.lease !== null ||
-      body.recent?.source !== source || body.recent?.mode !== 'recent' ||
-      !['completed', 'partial', 'failed', 'idle', 'skipped'].includes(body.recent.status)) return false;
-  if (body.backfill && (body.backfill.source !== source || !['completed', 'idle'].includes(body.backfill.status))) return false;
-  if (body.snapshot && !['backfill-completed', 'ready'].includes(body.snapshot.status)) return false;
-  return !body.recent.lastSuccessAt || age(body.recent.lastSuccessAt, now) !== null;
-}
-
 export async function runWatchdog({ url, token, fetchImpl=fetch, clock=Date.now,
   monotonic=() => performance.now(), log=record => console.log('WATCHDOG ' + JSON.stringify(record)) }) {
   const endpoint = new URL(url);
   if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || !token) throw new Error('Invalid watchdog configuration');
   endpoint.search = '';
   const started = monotonic();
-  const wallStarted = clock();
   const deadline = started + BUDGET.global;
   const globalSignal = AbortSignal.timeout(BUDGET.global);
   let authBlocked = false;
-  let uncertain = false;
-  let auditOutcomeUncertain = false;
-  let writeBlocked = false;
   const calls = [];
-  async function request(target, method, phase, source, cap) {
-    const remaining = deadline - monotonic() - (phase === 'reconcile' ? 0 : BUDGET.reserve);
+  async function request(target, phase) {
+    const remaining = deadline - monotonic();
     if (remaining <= 0) return { ok:false, reason:'budget' };
-    const timeoutMs = Math.max(1, Math.floor(Math.min(cap, remaining)));
-    const call = { phase, source, method, timeoutMs };
+    const timeoutMs = Math.max(1, Math.floor(Math.min(BUDGET.read, remaining)));
+    const call = { phase, source:null, method:'GET', timeoutMs };
     calls.push(call);
     log({ ...call, event:'start', elapsedMs:monotonic() - started });
     try {
-      const response = await fetchImpl(target, { method, redirect:'error',
+      const response = await fetchImpl(target, { method:'GET', redirect:'error',
         headers:{ Authorization:`Bearer ${token}` },
         signal:AbortSignal.any([globalSignal, AbortSignal.timeout(timeoutMs)]) });
       call.http = response.status;
@@ -161,109 +146,25 @@ export async function runWatchdog({ url, token, fetchImpl=fetch, clock=Date.now,
     finally { log({ ...call, event:'end', elapsedMs:monotonic() - started }); }
   }
   const freshnessUrl = params => { const target = new URL(endpoint); target.search = new URLSearchParams(params); return target; };
-  const syncUrl = source => new URL(`/api/${ROUTES[SOURCES.indexOf(source)]}/sync?observe=1`, endpoint);
   // This provider observes Cloudflare without invoking ingestion or its watchdog.
-  const native=await request(new URL('/api/source-reliability?observe=1',endpoint),'GET','native-heartbeat',null,BUDGET.read);
+  const native=await request(new URL('/api/source-reliability?observe=1',endpoint),'native-heartbeat');
   const nativeMode=native.ok&&native.body?.mode==='five-source-coordinated';
-  const legacyKnown=native.http===404||(native.ok&&native.http===200&&native.body?.outcome==='disabled');
-  if(nativeMode||!legacyKnown){
-    const policyResult=await request(freshnessUrl({observe:'1',policy:'1'}),'GET','policy',null,BUDGET.read);
-    const policies=policyResult.ok&&policyResult.http===200?parsePolicy(policyResult.body):null;
-    const audit=native.body?.state?.lastAudit,seen=new Set(),states=[];
-    const recentAudit=audit&&age(audit.finishedAt,clock())!==null&&age(audit.finishedAt,clock())<=15;
-    for(const source of SOURCES){
-      const matches=Array.isArray(audit?.states)?audit.states.filter(s=>s?.source===source):[];
-      const state=matches.length===1?matches[0]:null;
-      if(state)seen.add(source);
-      states.push(policies&&state?assess(state,source,policies.get(source),clock()):{source,verdict:'UNKNOWN',reason:'missing-native-official-evidence'});
-    }
-    const allFresh=Boolean(nativeMode&&native.http===200&&native.body.outcome==='observed'&&native.body.officialParityCertified===true&&native.body.activeLease===false&&recentAudit&&seen.size===5&&states.every(s=>s.verdict==='PASS'));
-    const channels=summarizeNativeChannels(native.body,policies,clock(),native.ok&&native.http===200&&policyResult.ok&&policyResult.http===200&&!authBlocked);
-    const report={states,channels,policyVersion:policies?1:null,allFresh,zeroWrite:true,supervisor:'github-observes-cloudflare',recoveryOutcomeUncertain:false,auditOutcomeUncertain:false,authBlocked,elapsedMs:monotonic()-started,calls};
-    report.evidenceIssues=nativeSeverityEvidenceIssues(native.body,report,clock());
-    report.historicalEvidenceHolds=nativeHistoricalCertificationHolds(native.body);
-    log({phase:'summary',...report});return report;
+  const policyResult=await request(freshnessUrl({observe:'1',policy:'1'}),'policy');
+  const policies=policyResult.ok&&policyResult.http===200?parsePolicy(policyResult.body):null;
+  const audit=nativeMode ? native.body?.state?.lastAudit : null,seen=new Set(),states=[];
+  const recentAudit=audit&&age(audit.finishedAt,clock())!==null&&age(audit.finishedAt,clock())<=15;
+  for(const source of SOURCES){
+    const matches=Array.isArray(audit?.states)?audit.states.filter(s=>s?.source===source):[];
+    const state=matches.length===1?matches[0]:null;
+    if(state)seen.add(source);
+    states.push(policies&&state?assess(state,source,policies.get(source),clock()):{source,verdict:'UNKNOWN',reason:'missing-native-official-evidence'});
   }
-  const policyResult = await request(freshnessUrl({ observe:'1', policy:'1' }), 'GET', 'policy', null, BUDGET.read);
-  const policies = policyResult.ok && policyResult.http === 200 ? parsePolicy(policyResult.body) : null;
-  // Persisted evidence is read-only and explicitly historical, even when its label says fresh.
-  const persisted = authBlocked ? { ok:false, reason:'auth' }
-    : await request(freshnessUrl({ observe:'1' }), 'GET', 'persisted-observation', null, BUDGET.read);
-  log({ phase:'persisted-observation', zeroWrite:true, currentOfficialParityCertified:false,
-    sourceCount:persisted.ok && Array.isArray(persisted.body?.states) ? persisted.body.states.length : 0 });
-  const results = new Map(SOURCES.map(source => [source, { source, verdict:'UNKNOWN', reason:'not-evaluated' }]));
-  const states = new Map();
-  const observed = new Set();
-  // Isolate READ failures before any audit/recovery POST. These five reads
-  // ensure a failed first source cannot hide the other sources' operational state.
-  if (policies) for (const source of SOURCES) {
-    if (authBlocked) break;
-    const r = await request(syncUrl(source), 'GET', 'source-observation', source, BUDGET.read);
-    if (r.ok && r.http === 200 && r.body?.recent?.source === source && r.body.recent.mode === 'recent' &&
-        Object.hasOwn(r.body,'lease')) observed.add(source);
-    log({ phase:'source-observation', source, zeroWrite:true, observed:observed.has(source),
-      currentOfficialParityCertified:false, reason:observed.has(source) ? null : r.reason ?? 'invalid-observation' });
-  }
-  let auditsComplete = Boolean(policies);
-  if (policies) for (const source of SOURCES) {
-    if (authBlocked) { auditsComplete = false; results.set(source, { source, verdict:'UNKNOWN', reason:'auth-blocked' }); continue; }
-    if (writeBlocked || !observed.has(source)) { auditsComplete = false;
-      results.set(source,{source,verdict:'UNKNOWN',reason:writeBlocked ? 'prior-audit-outcome-unconfirmed' : 'source-observation-failed'}); continue; }
-    // This audit persists freshness evidence. recover=0 does NOT mean zero-write.
-    const r = await request(freshnessUrl({ audit:'1', recover:'0', source }), 'POST', 'audit', source, BUDGET.audit);
-    const state = r.ok && Array.isArray(r.body?.states) && r.body.states.length === 1 ? r.body.states[0] : null;
-    const assessment = assess(state, source, policies.get(source), clock());
-    if (!r.ok || assessment.verdict === 'UNKNOWN' || r.body?.allFresh !== (state?.status === 'fresh') ||
-        r.http !== (r.body?.allFresh ? 200 : 503) || Date.parse(state?.checkedAt) < wallStarted) {
-      auditsComplete = false;
-      results.set(source, { source, verdict:'UNKNOWN', reason:r.reason ?? 'invalid-audit-response' });
-      writeBlocked = true;
-      auditOutcomeUncertain = !authBlocked && r.reason !== 'budget';
-      if (!authBlocked) {
-        const reconciliation = await request(freshnessUrl({observe:'1'}),'GET','reconcile',source,BUDGET.read);
-        log({phase:'audit-reconcile',source,zeroWrite:true,observationReceived:reconciliation.ok,
-          remoteOutcomeKnown:false,retryAuthorized:false});
-      }
-    } else { states.set(source, state); results.set(source, assessment); }
-    log({ phase:'audit', zeroWrite:false, recoveryRequested:false, ...results.get(source) });
-  }
-  // Complete all observations first. At most ONE recovery POST in this job; never retry it.
-  // A revision-only HOLD needs its ordinary historical lane, not repeated recent ingestion.
-  if (auditsComplete && !authBlocked) {
-    const offset = Math.floor(wallStarted / (15 * 60_000)) % SOURCES.length;
-    const ordered = [...SOURCES.slice(offset), ...SOURCES.slice(0,offset)];
-    const source = ordered.find(s => { const state = states.get(s); const a = results.get(s);
-      return a.verdict === 'HOLD' && state.error === null && state.activeLease === false && (!a.recentFresh || !a.parity); });
-    if (source && deadline - monotonic() >= BUDGET.recovery + 2 * BUDGET.read + BUDGET.reserve) {
-      const before = await request(syncUrl(source), 'GET', 'before-recovery', source, BUDGET.read);
-      if (before.ok && before.http === 200 && safeToRecover(before.body, source, clock()) && !authBlocked) {
-        const recoveryStartedAt = clock();
-        const recovery = await request(freshnessUrl({ audit:'1', recover:'1', source }), 'POST', 'recovery', source, BUDGET.recovery);
-        const state = recovery.ok && Array.isArray(recovery.body?.states) && recovery.body.states.length === 1 ? recovery.body.states[0] : null;
-        const a = assess(state, source, policies.get(source), clock());
-        uncertain = !recovery.ok || a.verdict === 'UNKNOWN' || recovery.body.allFresh !== (state?.status === 'fresh') ||
-          recovery.http !== (recovery.body.allFresh ? 200 : 503) || Date.parse(state?.checkedAt) < recoveryStartedAt;
-        // An aborted client never proves remote termination. Reconcile via GET only.
-        const after = authBlocked ? { ok:false, reason:'auth' }
-          : await request(syncUrl(source), 'GET', 'reconcile', source, BUDGET.read);
-        const reconciled = after.ok && after.http === 200 && safeToRecover(after.body, source, clock()) &&
-          ['completed','partial'].includes(after.body.recent.status) && after.body.recent.lastError === null &&
-          Date.parse(after.body.recent.lastSuccessAt) >= Date.parse(state?.lastSyncSuccessAt);
-        log({ phase:'reconcile', source, zeroWrite:true, remoteOutcomeKnown:!uncertain && reconciled,
-          leaseReleased:Boolean(after.ok && after.body && Object.hasOwn(after.body, 'lease') && after.body.lease === null),
-          retryAuthorized:false });
-        if (uncertain || !reconciled) results.set(source, { source, verdict:'UNKNOWN', reason:'recovery-outcome-unconfirmed' });
-        else { states.set(source,state); results.set(source,a); }
-      } else results.set(source, { source, verdict:'HOLD', reason:before.reason ?? 'lease-backfill-or-state-blocked' });
-    }
-  }
-  for (const [source,state] of states) if (results.get(source).verdict === 'PASS')
-    results.set(source, assess(state, source, policies.get(source), clock()));
-  const report = { states:SOURCES.map(s => results.get(s)), policyVersion:policies ? 1 : null,
-    allFresh:monotonic() <= deadline && !uncertain && !auditOutcomeUncertain && !authBlocked && SOURCES.every(s => results.get(s).verdict === 'PASS'),
-    recoveryOutcomeUncertain:uncertain, auditOutcomeUncertain, authBlocked, elapsedMs:monotonic() - started, calls };
-  log({ phase:'summary', ...report });
-  return report;
+  const allFresh=Boolean(nativeMode&&native.http===200&&native.body.outcome==='observed'&&native.body.officialParityCertified===true&&native.body.activeLease===false&&recentAudit&&seen.size===5&&states.every(s=>s.verdict==='PASS'));
+  const channels=summarizeNativeChannels(native.body,policies,clock(),nativeMode&&native.ok&&native.http===200&&policyResult.ok&&policyResult.http===200&&!authBlocked);
+  const report={states,channels,policyVersion:policies?1:null,allFresh,zeroWrite:true,supervisor:'github-observes-cloudflare',recoveryOutcomeUncertain:false,auditOutcomeUncertain:false,authBlocked,elapsedMs:monotonic()-started,calls};
+  report.evidenceIssues=nativeSeverityEvidenceIssues(native.body,report,clock());
+  report.historicalEvidenceHolds=nativeHistoricalCertificationHolds(native.body);
+  log({phase:'summary',...report});return report;
 }
 
 export async function publishWatchdogReport(report, { summaryPath=process.env.GITHUB_STEP_SUMMARY,
